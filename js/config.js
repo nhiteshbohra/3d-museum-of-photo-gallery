@@ -497,7 +497,7 @@ export function loadSavedConfig() {
   }
 
   try {
-    const stored = localStorage.getItem('3d_museum_config_v2');
+    const stored = localStorage.getItem('3d_museum_config_v3_pavilion');
     if (stored) {
       const parsed = JSON.parse(stored);
       currentConfig = deepMerge(DEFAULT_CONFIG, parsed);
@@ -513,7 +513,7 @@ export function loadSavedConfig() {
 
 export function saveConfig(cfg) {
   try {
-    localStorage.setItem('3d_museum_config_v2', JSON.stringify(cfg));
+    localStorage.setItem('3d_museum_config_v3_pavilion', JSON.stringify(cfg));
     return true;
   } catch (err) {
     console.warn('localStorage save failed:', err);

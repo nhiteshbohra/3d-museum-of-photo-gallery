@@ -150,11 +150,18 @@ function serveFile(req, res, filePath, stats) {
     stream.pipe(res);
   } else {
     // Standard 200 response
+    const noCacheExts = ['.html', '.js', '.mjs', '.css', '.json'];
+    const cacheHeader = noCacheExts.includes(ext)
+      ? 'no-cache, no-store, must-revalidate'
+      : 'public, max-age=86400';
+
     res.writeHead(200, {
       'Content-Length': totalSize,
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes',
-      'Cache-Control': ext === '.html' ? 'no-cache' : 'public, max-age=86400'
+      'Cache-Control': cacheHeader,
+      'Pragma': 'no-cache',
+      'Expires': '0'
     });
 
     if (req.method === 'HEAD') {
