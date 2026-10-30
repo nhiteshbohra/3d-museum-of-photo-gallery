@@ -1,5 +1,5 @@
 /* =========================================================================
-   OUR HOME • CONTROLS, STAIRS LOCOMOTION, CAMERA RIG & DEBUG TOOLING
+   OUR MUSEUM • SINGLE-FLOOR CONTROLS, CAMERA RIG & SALON NAVIGATION
    ========================================================================= */
 
 import * as THREE from 'three';
@@ -7,11 +7,6 @@ import {
   camera,
   HOUSE_WIDTH,
   HOUSE_DEPTH,
-  FLOOR_HEIGHT,
-  STAIR_X,
-  STAIR_WIDTH,
-  STAIR_START_Z,
-  STAIR_END_Z,
   interactionPoints,
   houseRooms,
   interactiveArtworks,
@@ -231,11 +226,9 @@ function initJoystick() {
 /**
  * Resolves 2D AABB obstacle penetration with smooth sliding along obstacle faces
  */
-function resolveCollisions(pos, floor, onStairs = false) {
+function resolveCollisions(pos) {
   const charRadius = 0.38;
   for (const col of houseColliders) {
-    if (onStairs && col.id === 'u_stairwell_void') continue;
-    if (col.floor !== floor && col.floor !== 'both') continue;
 
     const closestX = Math.max(col.minX, Math.min(pos.x, col.maxX));
     const closestZ = Math.max(col.minZ, Math.min(pos.z, col.maxZ));
@@ -265,7 +258,7 @@ function resolveCollisions(pos, floor, onStairs = false) {
 }
 
 /**
- * Advanced locomotion: smooth velocity, stairs ramp climbing, and 2-floor height management
+ * Single-Floor locomotion: smooth velocity, collision sliding, and boundary containment
  */
 export function handleLocomotion(delta) {
   delta = Math.min(Math.max(delta, 0), 0.05);
@@ -304,7 +297,7 @@ export function handleLocomotion(delta) {
     pos.z += Math.cos(angle) * ch.speed * delta;
 
     // Resolve room collisions with sliding physics
-    resolveCollisions(pos, 0, false);
+    resolveCollisions(pos);
 
     // Clamp inside grand museum grounds
     pos.x = THREE.MathUtils.clamp(pos.x, -HOUSE_WIDTH / 2 + 0.65, HOUSE_WIDTH / 2 - 0.65);
@@ -444,12 +437,12 @@ export function checkProximity(interactionHint, hintText, dancePill) {
     if (interactionHint) interactionHint.classList.remove('visible');
   }
 
-  // Dance Pill trigger: available in Living Room (Ground) or Memory Gallery (Upper)
+  // Dance Pill trigger: available in Grand Rotunda or Fireside Salon
   if (dancePill) {
-    const isLivingRoom = currentFloor === 0 && pPos.x > 2.5 && pPos.z < -1.0;
-    const isGallery = currentFloor === 1 && pPos.x > 0.0 && pPos.z < -2.0;
+    const isRotunda = Math.abs(pPos.x) < 4.0 && pPos.z > -2.0 && pPos.z < 5.0;
+    const isFireside = pPos.x < -5.0 && pPos.z > 0.0;
 
-    if ((isLivingRoom || isGallery) && appState === 'idle') {
+    if ((isRotunda || isFireside) && appState === 'idle') {
       dancePill.style.display = 'block';
     } else {
       dancePill.style.display = 'none';
@@ -485,7 +478,7 @@ function initDebugTooling() {
       if (isFlyCam) {
         camera.position.set(0, 14, 18);
         flyCamTarget.set(0, 2.5, 0);
-        console.log('[Debug] Fly Camera: ENABLED (Viewing whole two-floor house)');
+        console.log('[Debug] Fly Camera: ENABLED (Viewing Grand Pavilion)');
       } else {
         console.log('[Debug] Fly Camera: DISABLED (Returned to third-person follow)');
       }
@@ -533,7 +526,7 @@ function createDebugUI() {
   `;
   panel.innerHTML = `
     <div style="font-weight:bold; color:#e8d0a9; margin-bottom:6px;">🛠️ OUR HOME DEBUG</div>
-    <div id="dbg-info" style="margin-bottom:8px; line-height:1.4;">Floor: 0 | Y: 0.00m</div>
+    <div id="dbg-info" style="margin-bottom:8px; line-height:1.4;">Grand Pavilion | Single-Floor</div>
     <div style="display:flex; flex-direction:column; gap:4px;">
       <button type="button" id="dbg-btn-fly" style="background:#222; border:1px solid #555; color:#fff; padding:3px 6px; border-radius:4px; cursor:pointer;">Toggle Fly-Cam</button>
       <select id="dbg-sel-room" style="background:#111; border:1px solid #555; color:#e8d0a9; padding:3px 6px; border-radius:4px;">

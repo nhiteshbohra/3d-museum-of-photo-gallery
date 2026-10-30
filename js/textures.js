@@ -240,8 +240,8 @@ export function createRomanticPainting(slotId, title, tag, quote) {
     { sky: ['#28201a', '#544133', '#a88665'], ground: '#423327', light: '#ffe4b5', type: 'coffee' },
     // 13. Rustic kitchen baking (Slot 14)
     { sky: ['#241a15', '#483528', '#8a684c'], ground: '#33231a', light: '#ffcf8a', type: 'kitchen' },
-    // 14. Stone stair lanterns (Slot 15)
-    { sky: ['#131a2b', '#273859', '#547094'], ground: '#363d4a', light: '#ffc862', type: 'stairs' },
+    // 14. Stone gallery lanterns (Slot 15)
+    { sky: ['#131a2b', '#273859', '#547094'], ground: '#363d4a', light: '#ffc862', type: 'lantern' },
     // 15. Moonlit reading vanity (Slot 16)
     { sky: ['#0e1220', '#1c253d', '#3f4f73'], ground: '#e8e2d5', light: '#b8d6ff', type: 'vanity' },
     // 16. Radiant golden hour sunbeams (Slot 17)

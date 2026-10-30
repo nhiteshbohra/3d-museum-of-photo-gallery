@@ -104,13 +104,6 @@ const texPersianRug = createRugTexture();
 // Museum Pavilion Dimensions (Expanded Single-Floor Grounds)
 export const HOUSE_WIDTH = 28;  // X: -14.0 to +14.0
 export const HOUSE_DEPTH = 30;  // Z: -15.5 to +14.5
-export const FLOOR_HEIGHT = 0.0; // PURE SINGLE FLOOR (Y = 0)
-
-// Dummy stair exports to prevent import breakage
-export const STAIR_WIDTH = 1.2;
-export const STAIR_START_Z = 0;
-export const STAIR_END_Z = 0;
-export const STAIR_X = 0;
 
 export const matWoodFloor = new THREE.MeshStandardMaterial({
   map: texHardwood,
