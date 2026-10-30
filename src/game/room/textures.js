@@ -241,39 +241,42 @@ export function makeStuccoWallTextures({ size = 1024 } = {}) {
 	const rand = seededRand(0x57acc0)
 
 	if (ctx) {
-		ctx.fillStyle = '#d3c1a5'
+		// Premium architectural gallery wall: warm eggshell / French alabaster
+		ctx.fillStyle = '#f2efe9'
 		ctx.fillRect(0, 0, size, size)
 
-		const blobs = 520
-		for (let i = 0; i < blobs; i += 1) {
+		// Fine horizontal and vertical architectural linen threads
+		ctx.lineWidth = 1
+		for (let y = 0; y < size; y += 3) {
+			const a = 0.015 + rand() * 0.025
+			ctx.strokeStyle = `rgba(180, 168, 150, ${a})`
+			ctx.beginPath()
+			ctx.moveTo(0, y + (rand() - 0.5) * 0.5)
+			ctx.lineTo(size, y + (rand() - 0.5) * 0.5)
+			ctx.stroke()
+		}
+		for (let x = 0; x < size; x += 3) {
+			const a = 0.015 + rand() * 0.025
+			ctx.strokeStyle = `rgba(195, 185, 170, ${a})`
+			ctx.beginPath()
+			ctx.moveTo(x + (rand() - 0.5) * 0.5, 0)
+			ctx.lineTo(x + (rand() - 0.5) * 0.5, size)
+			ctx.stroke()
+		}
+
+		// Subtle natural micro-mottling (Venetian plaster eggshell depth)
+		const specks = 1200
+		for (let i = 0; i < specks; i += 1) {
 			const x = rand() * size
 			const y = rand() * size
-			const r = (0.02 + rand() * 0.10) * size
-			const a = 0.03 + rand() * 0.06
-			const hue = 30 + rand() * 14
-			const sat = 24 + rand() * 10
-			const light = 74 + (rand() - 0.5) * 10
-			ctx.fillStyle = `hsla(${hue} ${sat}% ${light}% / ${a})`
+			const r = (0.002 + rand() * 0.008) * size
+			const a = 0.02 + rand() * 0.04
+			const l = 88 + (rand() - 0.5) * 12
+			ctx.fillStyle = `hsla(38 18% ${l}% / ${a})`
 			ctx.beginPath()
 			ctx.arc(x, y, r, 0, Math.PI * 2)
 			ctx.fill()
 		}
-
-		ctx.globalAlpha = 0.09
-		ctx.strokeStyle = '#bfa889'
-		ctx.lineWidth = Math.max(2, Math.floor(size * 0.006))
-		const strokes = 90
-		for (let i = 0; i < strokes; i += 1) {
-			const x = rand() * size
-			const y = rand() * size
-			const rx = (0.10 + rand() * 0.25) * size
-			const ry = (0.04 + rand() * 0.12) * size
-			const rot = rand() * Math.PI
-			ctx.beginPath()
-			ctx.ellipse(x, y, rx, ry, rot, 0, Math.PI * 2)
-			ctx.stroke()
-		}
-		ctx.globalAlpha = 1
 	}
 
 	if (bctx) {
@@ -282,8 +285,7 @@ export function makeStuccoWallTextures({ size = 1024 } = {}) {
 		const img = bctx.getImageData(0, 0, size, size)
 		const d = img.data
 		for (let i = 0; i < d.length; i += 4) {
-
-			const n = (rand() - 0.5) * 42
+			const n = (rand() - 0.5) * 16 // ultra-subtle, velvety micro-relief
 			const v = Math.max(0, Math.min(255, 128 + n))
 			d[i] = v
 			d[i + 1] = v

@@ -1,28 +1,10 @@
-const default_wiki_language = 'en'
 const default_timeout = 8000
-const gallery_persist_key = 'linkwalk:galleryCache:v2'
+const gallery_persist_key = 'ourmuseum:galleryCache:v2'
 const gallery_persist_max = 80
 const gallery_persist_ttl = 24 * 60 * 60 * 1000
-let wikiLang = default_wiki_language
-
-function normalizeWikiLang(lang) {
-	const raw = typeof lang === 'string' ? lang.trim().toLowerCase() : ''
-	if (!raw) return default_wiki_language
-	if (!/^[a-z0-9-]{1,20}$/.test(raw)) return default_wiki_language
-	return raw
-}
-
-export function setWikipediaLanguage(lang) {
-	wikiLang = normalizeWikiLang(lang)
-	return wikiLang
-}
-
-export function getWikipediaLanguage() {
-	return wikiLang
-}
 
 function wikiHost() {
-	return `https://${wikiLang}.wikipedia.org`
+	return 'https://en.wikipedia.org'
 }
 
 function wikiRestBase() {
@@ -37,12 +19,8 @@ function wikiActionApi() {
 	return `${wikiHost()}/w/api.php`
 }
 
-function wikiCachePartitionKey() {
-	return wikiLang
-}
-
 function galleryPersistKey() {
-	return `${gallery_persist_key}:${wikiCachePartitionKey()}`
+	return `${gallery_persist_key}:en`
 }
 
 function safeNow() {
@@ -127,7 +105,7 @@ async function fetchJsonWithTimeout(url, { signal } = {}) {
 			method: 'GET',
 			headers: {
 				accept: 'application/json',
-				'Api-User-Agent': 'linkwalk (local dev)',
+				'Api-User-Agent': 'OurMuseum3D/1.0',
 			},
 			signal: controller.signal,
 		})
@@ -172,12 +150,10 @@ async function fetchJsonWithTimeout(url, { signal } = {}) {
 }
 
 function buildActionApiUrl(params) {
-	const langParams = wikiLang && wikiLang !== default_wiki_language ? { uselang: wikiLang } : {}
 	const search = new URLSearchParams({
 		format: 'json',
 		formatversion: '2',
 		origin: '*',
-		...langParams,
 		...params,
 	})
 	return `${wikiActionApi()}?${search.toString()}`
@@ -710,7 +686,7 @@ async function filterOutDisambiguationPages(pages, { signal } = {}) {
 			}
 		}
 	} catch (err) {
-		console.warn('[linkwalk] Failed to filter disambiguation related pages', err)
+		console.warn('[OurMuseum] Failed to filter disambiguation related pages', err)
 		return pages
 	}
 
@@ -953,7 +929,7 @@ export async function fetchGalleryRoomData(title, opts = {}) {
 					}
 				}
 			} catch (err) {
-				console.warn('[linkwalk] Failed to filter cached images', err)
+				console.warn('[OurMuseum] Failed to filter cached images', err)
 			}
 		}
 	}
@@ -992,7 +968,7 @@ export async function fetchGalleryRoomData(title, opts = {}) {
 					mainThumbnailUrl = null
 				}
 			} catch (err) {
-				console.warn('[linkwalk] Failed to filter large Wikipedia images', err)
+				console.warn('[OurMuseum] Failed to filter large Wikipedia images', err)
 			}
 		}
 

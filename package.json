@@ -1,7 +1,8 @@
 {
   "name": "our-museum-3d",
   "version": "1.0.0",
-  "description": "Our Museum 3D - Virtual Art Sanctuary for Maya & Ethan (Powered by notbigmuzzy baseline)",
+  "description": "Our Museum 3D - Virtual Art Sanctuary for Maya & Ethan (Crafted by Hitesh Bohra)",
+  "author": "Hitesh Bohra",
   "type": "module",
   "scripts": {
     "dev": "vite",

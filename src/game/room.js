@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl } from '../misc/helper.js'
-import { buildLobbyRoom } from './room/lobby.js'
+import { buildLobbyRoom, createRealisticGalleryPlant, createRealisticGalleryBench } from './room/lobby.js'
 import { addDoor as addDoorToRoom } from './room/doors.js'
 import { addSlot as addSlotToRoom } from './room/slots.js'
 import { getSharedRoomMaterialTextures, labelFromImageUrl, makePlaqueTexture } from './room/textures.js'
@@ -17,26 +17,26 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 	switch (mode) {
 		case 'lobby':
 			palette = {
-				floor: 0xfff1c8,
-				ceiling: 0xe9fbff,
-				wall: 0xcfeaff,
-				keyLight: 0xfff0b0,
-				keyLightIntensity: 1.55,
-				ambientIntensity: 1.05,
-				ceilingLightColor: 0xd7f1ff,
-				ceilingLightIntensity: 1.35,
+				floor: 0xf3eedf,
+				ceiling: 0xfaf8f5,
+				wall: 0xf4f1eb,
+				keyLight: 0xffedd0,
+				keyLightIntensity: 1.5,
+				ambientIntensity: 0.95,
+				ceilingLightColor: 0xfffaed,
+				ceilingLightIntensity: 1.3,
 			}
 			break;
 		case 'gallery':
 			palette = {
-				floor: 0x2a2a2f,
-				ceiling: 0xd9d9de,
-				wall: 0x4a4a52,
-				keyLight: 0xfff1d2,
+				floor: 0x222226,
+				ceiling: 0xdeded8,
+				wall: 0x3e4046,
+				keyLight: 0xffedd0,
 				keyLightIntensity: 1.6,
-				ambientIntensity: 0.95,
-				ceilingLightColor: 0xffffff,
-				ceilingLightIntensity: 0.9,
+				ambientIntensity: 0.85,
+				ceilingLightColor: 0xfffaee,
+				ceilingLightIntensity: 1.0,
 			}
 			break;
 		default:
@@ -62,6 +62,40 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		: [];
 	const imagePhotos = photos.filter(isSupportedImageUrl);
 
+	function addCeilingDownlight(x, y, z, intensityMult = 1.0) {
+		const canGeo = new THREE.CylinderGeometry(0.24, 0.24, 0.08, 32)
+		const canMat = new THREE.MeshStandardMaterial({ color: 0x181614, metalness: 0.85, roughness: 0.25 })
+		const canMesh = new THREE.Mesh(canGeo, canMat)
+		canMesh.position.set(x, y + 0.04, z)
+		group.add(canMesh)
+
+		const lensGeo = new THREE.CircleGeometry(0.18, 32)
+		const lensMat = new THREE.MeshStandardMaterial({
+			color: 0xffffff,
+			emissive: ceilingLightColor,
+			emissiveIntensity: 1.6,
+			roughness: 0.2,
+		})
+		const lensMesh = new THREE.Mesh(lensGeo, lensMat)
+		lensMesh.rotation.x = Math.PI / 2
+		lensMesh.position.set(x, y - 0.002, z)
+		group.add(lensMesh)
+
+		const spot = new THREE.SpotLight(ceilingLightColor, ceilingLightIntensity * 1.5 * intensityMult, ceilingLightDistance, Math.PI / 3.4, 0.85, ceilingLightDecay)
+		spot.position.set(x, y, z)
+		const targetObj = new THREE.Object3D()
+		targetObj.position.set(x, 0, z)
+		group.add(targetObj)
+		spot.target = targetObj
+		group.add(spot)
+
+		const fill = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 0.35 * intensityMult, ceilingLightDistance * 0.7, ceilingLightDecay)
+		fill.position.set(x, y - 0.35, z)
+		group.add(fill)
+
+		disposables.push(canGeo, canMat, lensGeo, lensMat, spot, fill)
+	}
+
 	if (mode === 'lobby') {
 		const platformHeight = 1.4
 		const upperCeilingHeight = height + 1.6
@@ -69,71 +103,32 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const centerWidth = width - 2 * platformWidth
 
 		const y1 = height - 0.25
-		const lightC1 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightC1.position.set(0, y1, -length * 0.25)
-		group.add(lightC1)
-
-		const lightC2 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightC2.position.set(0, y1, length * 0.25)
-		group.add(lightC2)
+		addCeilingDownlight(0, y1, -length * 0.25)
+		addCeilingDownlight(0, y1, length * 0.25)
 
 		const y2 = upperCeilingHeight - 0.25
 		const xEast = centerWidth / 2 + platformWidth / 2
 
-		const lightE1 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightE1.position.set(xEast, y2, -length * 0.3)
-		group.add(lightE1)
-
-		const lightE2 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightE2.position.set(xEast, y2, 0)
-		group.add(lightE2)
-
-		const lightE3 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightE3.position.set(xEast, y2, length * 0.3)
-		group.add(lightE3)
+		addCeilingDownlight(xEast, y2, -length * 0.3, 1.1)
+		addCeilingDownlight(xEast, y2, 0, 1.1)
+		addCeilingDownlight(xEast, y2, length * 0.3, 1.1)
 
 		const xWest = -(centerWidth / 2 + platformWidth / 2)
 
-		const lightW1 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightW1.position.set(xWest, y2, -length * 0.3)
-		group.add(lightW1)
-
-		const lightW2 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightW2.position.set(xWest, y2, 0)
-		group.add(lightW2)
-
-		const lightW3 = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity * 1.1, ceilingLightDistance, ceilingLightDecay)
-		lightW3.position.set(xWest, y2, length * 0.3)
-		group.add(lightW3)
+		addCeilingDownlight(xWest, y2, -length * 0.3, 1.1)
+		addCeilingDownlight(xWest, y2, 0, 1.1)
+		addCeilingDownlight(xWest, y2, length * 0.3, 1.1)
 	} else {
-
 		const y = height - 0.25
 		const x = width * 0.35
 		const z = length * 0.35
 
-		const lightTL = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightTL.position.set(-x, y, -z)
-		group.add(lightTL)
-
-		const lightTR = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightTR.position.set(x, y, -z)
-		group.add(lightTR)
-
-		const lightBL = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightBL.position.set(-x, y, z)
-		group.add(lightBL)
-
-		const lightBR = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightBR.position.set(x, y, z)
-		group.add(lightBR)
-
-		const lightML = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightML.position.set(-x, y, 0)
-		group.add(lightML)
-
-		const lightMR = new THREE.PointLight(ceilingLightColor, ceilingLightIntensity, ceilingLightDistance, ceilingLightDecay)
-		lightMR.position.set(x, y, 0)
-		group.add(lightMR)
+		addCeilingDownlight(-x, y, -z)
+		addCeilingDownlight(x, y, -z)
+		addCeilingDownlight(-x, y, z)
+		addCeilingDownlight(x, y, z)
+		addCeilingDownlight(-x, y, 0)
+		addCeilingDownlight(x, y, 0)
 	}
 
 	const {
@@ -374,8 +369,8 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		color: mode === 'lobby' ? palette.wall : 0xffffff,
 		map: wallStuccoMap,
 		bumpMap: wallStuccoBump,
-		bumpScale: 0.09,
-		roughness: 0.92,
+		bumpScale: 0.04,
+		roughness: 0.88,
 		metalness: 0.0,
 	})
 
@@ -641,44 +636,75 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		buttonGroup.rotation.y = Math.PI
 		group.add(buttonGroup)
 
-		const backPlateW = 0.62
-		const backPlateH = 1.05 * 0.5
-		const backPlateD = 0.03
-		const backPlateGeo = new THREE.BoxGeometry(backPlateW, backPlateH, backPlateD)
-		const backPlateMat = new THREE.MeshStandardMaterial({ color: 0x2f6f4e, roughness: 0.9, metalness: 0.0 })
-		const backPlate = new THREE.Mesh(backPlateGeo, backPlateMat)
-		const backPlateCenterY = topY - backPlateH / 2
-		backPlate.position.set(0, backPlateCenterY, 0)
-		buttonGroup.add(backPlate)
-		disposables.push(backPlateGeo, backPlateMat)
+		const medallionCenterY = topY - 0.26
+		const medallionR = 0.25
 
-		const capW = 0.28
-		const capH = 0.16 * 0.5
-		const capD = 0.08
-		const capGeo = new THREE.BoxGeometry(capW, capH, capD)
-		const capMat = new THREE.MeshStandardMaterial({ color: 0xff4455, roughness: 0.5, metalness: 0.0 })
-		const cap = new THREE.Mesh(capGeo, capMat)
-		cap.position.set(0, backPlateCenterY + backPlateH * 0.22, backPlateD / 2 + capD / 2 + 0.002)
-		buttonGroup.add(cap)
-		disposables.push(capGeo, capMat)
+		// 1. Outer stepped polished brass architectural escutcheon ring
+		const ringGeo = new THREE.CylinderGeometry(medallionR, medallionR * 1.05, 0.024, 48)
+		const ringMat = new THREE.MeshStandardMaterial({
+			color: 0xd4af37,
+			metalness: 0.88,
+			roughness: 0.22,
+		})
+		const ring = new THREE.Mesh(ringGeo, ringMat)
+		ring.rotation.x = Math.PI / 2
+		ring.position.set(0, medallionCenterY, 0.012)
+		buttonGroup.add(ring)
+		disposables.push(ringGeo, ringMat)
 
+		// 2. Inner concave emerald / noir lacquer medallion plate
+		const coreGeo = new THREE.CylinderGeometry(medallionR * 0.88, medallionR * 0.88, 0.018, 48)
+		const coreMat = new THREE.MeshStandardMaterial({
+			color: 0x14281e,
+			roughness: 0.35,
+			metalness: 0.2,
+		})
+		const core = new THREE.Mesh(coreGeo, coreMat)
+		core.rotation.x = Math.PI / 2
+		core.position.set(0, medallionCenterY, 0.022)
+		buttonGroup.add(core)
+		disposables.push(coreGeo, coreMat)
+
+		// 3. Circular high-resolution typography plaque
 		const canvas = document.createElement('canvas')
 		canvas.width = 512
-		canvas.height = 256
+		canvas.height = 512
 		const ctx2 = canvas.getContext('2d')
 		if (ctx2) {
 			ctx2.clearRect(0, 0, canvas.width, canvas.height)
-			ctx2.fillStyle = 'rgba(0,0,0,0)'
-			ctx2.fillRect(0, 0, canvas.width, canvas.height)
+
+			// Gilded outer concentric rings
+			ctx2.strokeStyle = '#d4af37'
+			ctx2.lineWidth = 6
+			ctx2.beginPath()
+			ctx2.arc(256, 256, 240, 0, Math.PI * 2)
+			ctx2.stroke()
+
+			ctx2.lineWidth = 2
+			ctx2.beginPath()
+			ctx2.arc(256, 256, 226, 0, Math.PI * 2)
+			ctx2.stroke()
 
 			ctx2.textAlign = 'center'
 			ctx2.textBaseline = 'middle'
-			ctx2.fillStyle = 'rgba(255,255,255,0.92)'
 
-			ctx2.font = '800 80px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-			ctx2.fillText('Go back', canvas.width / 2, canvas.height * 0.42)
-			ctx2.font = '800 70px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-			ctx2.fillText('to lobby', canvas.width / 2, canvas.height * 0.70)
+			// Compass icon / icon mark
+			ctx2.font = '36px "Montserrat", sans-serif'
+			ctx2.fillStyle = '#e8c872'
+			ctx2.fillText('✦  ✦  ✦', 256, 135)
+
+			// Elegant serif title
+			ctx2.font = '700 56px "Cormorant Garamond", Georgia, serif'
+			ctx2.fillStyle = '#ffffff'
+			ctx2.fillText('RETURN TO', 256, 225)
+
+			ctx2.font = '900 66px "Cormorant Garamond", Georgia, serif'
+			ctx2.fillStyle = '#e8c872'
+			ctx2.fillText('LOBBY', 256, 305)
+
+			ctx2.font = '600 24px "Montserrat", sans-serif'
+			ctx2.fillStyle = 'rgba(255,255,255,0.78)'
+			ctx2.fillText('GRAND ROTUNDA', 256, 380)
 		}
 
 		const labelTex = new THREE.CanvasTexture(canvas)
@@ -686,17 +712,18 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		configureGalleryTexture(labelTex)
 		labelTex.needsUpdate = true
 
-		const labelGeo = new THREE.PlaneGeometry(0.56 * 0.5, 0.28 * 0.5)
+		const labelGeo = new THREE.CircleGeometry(medallionR * 0.84, 48)
 		const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true })
 		const label = new THREE.Mesh(labelGeo, labelMat)
-		label.position.set(0, backPlateCenterY - backPlateH * 0.14, backPlateD / 2 + 0.006)
+		label.position.set(0, medallionCenterY, 0.033)
 		buttonGroup.add(label)
 		disposables.push(labelTex, labelGeo, labelMat)
 
-		const hitGeo = new THREE.PlaneGeometry(backPlateW, backPlateH)
+		// 4. Circular Raycast Hit Mesh
+		const hitGeo = new THREE.CircleGeometry(medallionR * 1.15, 32)
 		const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
 		const hit = new THREE.Mesh(hitGeo, hitMat)
-		hit.position.set(0, backPlateCenterY, backPlateD / 2 + 0.02)
+		hit.position.set(0, medallionCenterY, 0.04)
 		hit.userData.action = 'go-lobby'
 		buttonGroup.add(hit)
 		pickableMeshes.push(hit)
@@ -736,68 +763,19 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		}
 
 		{
-			const potH = 0.34
-			const potR = 0.22
-			const trunkH = 0.72
-
-			const frondW = 0.105
-			const frondL = 0.74
-
-			const potGeo = new THREE.CylinderGeometry(potR, potR * 1.08, potH, 14, 1)
-			const potMat = new THREE.MeshStandardMaterial({ color: 0x12161b, roughness: 0.95, metalness: 0.02 })
-			const trunkGeo = new THREE.CylinderGeometry(0.045, 0.06, trunkH, 12, 1)
-			const trunkMat = new THREE.MeshStandardMaterial({ color: 0x6b4b2a, roughness: 0.92, metalness: 0.0 })
-
-			const frondGeo = new THREE.PlaneGeometry(frondL, frondW, 7, 1)
-			{
-				const pos = frondGeo.attributes.position
-				for (let i = 0; i < pos.count; i += 1) {
-					const x = pos.getX(i)
-					const t = (x + frondL / 2) / frondL
-					const bend = Math.sin(t * Math.PI) * 0.11
-					pos.setZ(i, bend)
-				}
-				pos.needsUpdate = true
-				frondGeo.computeVertexNormals()
-			}
-			frondGeo.translate(frondL / 2, 0, 0)
-
-			const leafMat = new THREE.MeshStandardMaterial({ color: 0x2a8f4a, roughness: 0.9, metalness: 0.0, side: THREE.DoubleSide })
-			disposables.push(potGeo, potMat, trunkGeo, trunkMat, frondGeo, leafMat)
-
+			// Move botanical plants to the outer corners/ends of the divider partition wall
 			const z = -(pillarD / 2 + 0.55)
-			const xs = [-pillarW * 0.28, pillarW * 0.28]
-
+			const xs = [-pillarW * 0.46, pillarW * 0.46]
 			for (const x of xs) {
-				const plant = new THREE.Group()
-				plant.name = 'gallery-plant'
-				plant.position.set(x, 0, z)
-				group.add(plant)
-
-				const pot = new THREE.Mesh(potGeo, potMat)
-				pot.position.set(0, potH / 2, 0)
-				plant.add(pot)
-
-				const trunk = new THREE.Mesh(trunkGeo, trunkMat)
-				trunk.position.set(0, potH + trunkH / 2 - 0.02, 0)
-				plant.add(trunk)
-
-				const fronds = new THREE.Group()
-				fronds.position.set(0, potH + trunkH - 0.02, 0)
-				plant.add(fronds)
-
-				const frondCount = 9
-				for (let i = 0; i < frondCount; i += 1) {
-					const f = new THREE.Mesh(frondGeo, leafMat)
-					const a = (i / frondCount) * Math.PI * 2
-					f.rotation.y = a
-					f.rotation.x = -0.55
-					f.rotation.z = (Math.random() - 0.5) * 0.18
-					f.position.set(0, 0.045, 0)
-					fronds.add(f)
-				}
-
-				obstacles.push({ type: 'cylinder', x, z, radius: potR + 0.1 })
+				createRealisticGalleryPlant({
+					x,
+					y: 0,
+					z,
+					targetGroup: group,
+					disposables,
+					obstacles,
+					name: 'gallery-plant-divider',
+				})
 			}
 		}
 
@@ -806,18 +784,14 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const longExtract = typeof gallery.longExtract === 'string' ? gallery.longExtract.trim() : ''
 		const mainThumbnailUrl = typeof gallery.mainThumbnailUrl === 'string' ? gallery.mainThumbnailUrl.trim() : ''
 
-		const panelW = 1.55
-		const panelH = 1.55
-		const panelY = Math.min(height * 0.47, 1.9)
+		// Centered Highlight Artwork on FRONT FACE of partition wall (South-facing)
+		const centerPhotoW = 2.0
+		const centerPhotoH = 1.4
+		const panelY = Math.min(height * 0.52, 2.05)
 		const panelZ = pillarD / 2 + 0.08
-
-		const panelGapX = 0.28
-		const panelSpan = panelW + panelGapX + 1.55
-		const photoX = -panelSpan / 2 + panelW / 2
-		const textX = panelSpan / 2 - 1.55 / 2
-
 		const panelDepth = 0.06
-		const panelBackGeo = new THREE.BoxGeometry(panelW, panelH, panelDepth)
+
+		const panelBackGeo = new THREE.BoxGeometry(centerPhotoW, centerPhotoH, panelDepth)
 		const panelBackMat = new THREE.MeshStandardMaterial({
 			color: 0xffffff,
 			map: photoFrameBackTex,
@@ -827,10 +801,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		disposables.push(panelBackGeo, panelBackMat)
 
 		const imgBack = new THREE.Mesh(panelBackGeo, panelBackMat)
-		imgBack.position.set(photoX, panelY, panelZ)
+		imgBack.position.set(0, panelY, panelZ)
 		group.add(imgBack)
 
-		const imgGeo = new THREE.PlaneGeometry(panelW, panelH)
+		const imgGeo = new THREE.PlaneGeometry(centerPhotoW * 0.94, centerPhotoH * 0.94)
 		const imgMat = new THREE.MeshBasicMaterial({
 			color: 0xffffff,
 			transparent: true,
@@ -838,13 +812,18 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			premultipliedAlpha: true,
 		})
 		const img = new THREE.Mesh(imgGeo, imgMat)
-		img.position.set(photoX, panelY, panelZ + panelDepth / 2 + 0.002)
+		img.position.set(0, panelY, panelZ + panelDepth / 2 + 0.002)
 		group.add(img)
 		disposables.push(imgGeo, imgMat)
 
-		img.userData.pickable = true
-		img.userData.pickableType = 'column-photo'
-		img.userData.photoUrl = mainThumbnailUrl || null
+		const frontPhotoUrl = (gallery.photos && gallery.photos[0]) || mainThumbnailUrl || null
+		img.userData = {
+			pickable: true,
+			isPhoto: true,
+			pickableType: 'column-photo',
+			photoUrl: frontPhotoUrl,
+			photoTitle: gallery.title ? `${gallery.title} • Feature Art` : 'Salon Feature Art',
+		}
 		pickableMeshes.push(img)
 
 		function fitMeshToTextureAspect(mesh, { baseW, baseH, tex }) {
@@ -867,20 +846,9 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			mesh.scale.set(sx, sy, 1)
 		}
 
-		function applyNoPhoto() {
-			const tex = makeNoPhotoTexture({ size: 1024 })
-			imgMat.map = tex
-			imgMat.color.setHex(0xffffff)
-			imgMat.needsUpdate = true
-			fitMeshToTextureAspect(img, { baseW: panelW, baseH: panelH, tex })
-			fitMeshToTextureAspect(imgBack, { baseW: panelW, baseH: panelH, tex })
-			disposables.push(tex)
-		}
-
-		applyNoPhoto()
-		if (mainThumbnailUrl) {
+		if (frontPhotoUrl) {
 			deferredTextureLoads.push({
-				url: mainThumbnailUrl,
+				url: frontPhotoUrl,
 				onLoad(tex) {
 					tex.colorSpace = THREE.SRGBColorSpace
 					tex.premultiplyAlpha = true
@@ -888,327 +856,90 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 					imgMat.map = tex
 					imgMat.color.setHex(0xffffff)
 					imgMat.needsUpdate = true
-					fitMeshToTextureAspect(img, { baseW: panelW, baseH: panelH, tex })
-					fitMeshToTextureAspect(imgBack, { baseW: panelW, baseH: panelH, tex })
+					fitMeshToTextureAspect(img, { baseW: centerPhotoW * 0.94, baseH: centerPhotoH * 0.94, tex })
 					disposables.push(tex)
 				},
 				onError(err) {
-					console.warn('[linkwalk] Failed to load gallery image', mainThumbnailUrl, err)
-					applyNoPhoto()
+					console.warn('[OurMuseum] Failed to load front column photo', frontPhotoUrl, err)
+					const tex = makeNoPhotoTexture({ size: 1024 })
+					imgMat.map = tex
+					imgMat.needsUpdate = true
+					disposables.push(tex)
 				},
 			})
-		}
-
-		const descW = 1.55
-		const descH = 1.2
-		const descGeo = new THREE.PlaneGeometry(descW, descH)
-		const descCanvas = document.createElement('canvas')
-		descCanvas.width = 1024
-		descCanvas.height = 768
-		const descCtx = descCanvas.getContext('2d')
-
-		function wrapText(ctx, text, maxWidth, maxLines) {
-			const words = String(text).trim().split(/\s+/g)
-			const lines = []
-			let cur = ''
-
-			for (const word of words) {
-				const next = cur ? `${cur} ${word}` : word
-				if (ctx.measureText(next).width <= maxWidth) {
-					cur = next
-					continue
-				}
-				if (cur) lines.push(cur)
-				cur = word
-				if (lines.length >= maxLines) break
-			}
-			if (lines.length < maxLines && cur) lines.push(cur)
-
-			if (lines.length === maxLines) {
-				let last = lines[maxLines - 1] ?? ''
-				const ell = '…'
-				while (last && ctx.measureText(last + ell).width > maxWidth) last = last.slice(0, -1)
-				lines[maxLines - 1] = last ? last + ell : ell
-			}
-			return lines
-		}
-
-		function ellipsizeText(ctx, text, maxWidth) {
-			const s = String(text || '').trim()
-			if (!s) return ''
-			if (ctx.measureText(s).width <= maxWidth) return s
-			const ell = '…'
-			let out = s
-			while (out.length > 0 && ctx.measureText(out + ell).width > maxWidth) out = out.slice(0, -1)
-			return out.length ? out + ell : ell
-		}
-
-		if (descCtx) {
-			descCtx.clearRect(0, 0, descCanvas.width, descCanvas.height)
-			descCtx.fillStyle = 'rgba(0,0,0,0.28)'
-			descCtx.fillRect(0, 0, descCanvas.width, descCanvas.height)
-
-
-			descCtx.strokeStyle = 'rgba(255,255,255,0.16)'
-			descCtx.lineWidth = 10
-			descCtx.strokeRect(24, 24, descCanvas.width - 48, descCanvas.height - 48)
-
-			const padX = 64
-			let y = 118
-
-			const safeTitle = title || 'Wikipedia'
-			descCtx.font = '700 56px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-			descCtx.fillStyle = 'rgba(223,255,233,0.98)'
-			descCtx.textAlign = 'left'
-			descCtx.textBaseline = 'alphabetic'
-
-			const twoCharPad = descCtx.measureText('MM').width
-			const titleMaxW = Math.max(10, descCanvas.width - padX * 1.5 - twoCharPad)
-			descCtx.fillText(ellipsizeText(descCtx, safeTitle, titleMaxW), padX, y)
-			y += 64
-
-			if (description) {
-				y += 18
-				descCtx.font = '500 38px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-				descCtx.fillStyle = 'rgba(255,255,255,0.92)'
-
-				const descLines = wrapText(descCtx, description, descCanvas.width - padX * 2, 6)
-				for (const line of descLines) {
-					descCtx.fillText(line, padX, y)
-					y += 48
-				}
-			}
-		}
-
-		const descTex = new THREE.CanvasTexture(descCanvas)
-		descTex.colorSpace = THREE.SRGBColorSpace
-		descTex.needsUpdate = true
-		const descMat = new THREE.MeshBasicMaterial({ map: descTex, transparent: true })
-		const descPanel = new THREE.Mesh(descGeo, descMat)
-
-		const descY = Math.min(height * 0.44, 1.8)
-		const descBackGeo = new THREE.BoxGeometry(descW, descH, panelDepth)
-		const descBack = new THREE.Mesh(descBackGeo, panelMarbleBackMat)
-		descBack.position.set(textX, descY, panelZ)
-		group.add(descBack)
-		disposables.push(descBackGeo)
-
-		descPanel.position.set(textX, descY, panelZ + panelDepth / 2 + 0.002)
-		group.add(descPanel)
-		disposables.push(descGeo, descTex, descMat)
-	}
-
-	{
-		const videoUrl = typeof gallery?.videoUrl === 'string' ? gallery.videoUrl.trim() : ''
-		if (videoUrl) {
-			const pillarD = roundTo(clamp(0.35, 0.28, 0.5), 0.05)
-			const panelW = 1.55
-			const panelH = 1.05
-			const panelDepth = 0.06
-
-			const panelY = Math.min(height * 0.47, 1.9)
-			const panelZNorth = -(pillarD / 2 + 0.08)
-
-			const backGeo = new THREE.BoxGeometry(panelW, panelH, panelDepth)
-			const backMat = new THREE.MeshStandardMaterial({ color: 0x000000, roughness: 0.95, metalness: 0.0 })
-			disposables.push(backGeo, backMat)
-
-			const back = new THREE.Mesh(backGeo, backMat)
-			back.position.set(0, panelY, panelZNorth)
-			back.rotation.y = Math.PI
-			group.add(back)
-
-			const geo = new THREE.PlaneGeometry(panelW, panelH)
-			const mat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, depthWrite: false })
-			const mesh = new THREE.Mesh(geo, mat)
-			mesh.position.set(0, panelY, panelZNorth - panelDepth / 2 - 0.002)
-			mesh.rotation.y = Math.PI
-			group.add(mesh)
-			disposables.push(geo, mat)
-
-
-			const innerW = panelW * 0.92
-			const innerH = panelH * 0.92
-			mesh.scale.set(innerW / panelW, innerH / panelH, 1)
-
-
-			function makePlayOverlayTexture({ width = 1024, height = 512 } = {}) {
-				const canvas = document.createElement('canvas')
-				canvas.width = width
-				canvas.height = height
-				const ctx = canvas.getContext('2d')
-				if (ctx) {
-					ctx.clearRect(0, 0, canvas.width, canvas.height)
-
-
-					ctx.fillStyle = 'rgba(0,0,0,0.28)'
-					ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-					ctx.strokeStyle = 'rgba(255,255,255,0.18)'
-					ctx.lineWidth = Math.max(6, Math.floor(canvas.width * 0.01))
-					ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48)
-
-					ctx.textAlign = 'center'
-					ctx.textBaseline = 'middle'
-					ctx.fillStyle = 'rgba(255,255,255,0.95)'
-					ctx.font = `900 ${Math.floor(canvas.width * 0.09)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-					ctx.fillText('> PLAY VIDEO', canvas.width / 2, canvas.height / 2)
-				}
-
-				const t = new THREE.CanvasTexture(canvas)
-				t.colorSpace = THREE.SRGBColorSpace
-				configureGalleryTexture(t)
-				t.needsUpdate = true
-				return t
-			}
-
-			const overlayGeo = new THREE.PlaneGeometry(panelW, panelH)
-			const overlayTex = makePlayOverlayTexture({ width: 1024, height: 512 })
-			const overlayMat = new THREE.MeshBasicMaterial({ map: overlayTex, transparent: true, depthWrite: false })
-			const overlay = new THREE.Mesh(overlayGeo, overlayMat)
-			overlay.position.copy(mesh.position)
-			overlay.position.z -= 0.001
-			overlay.rotation.copy(mesh.rotation)
-			overlay.renderOrder = 10000
-			group.add(overlay)
-			disposables.push(overlayGeo, overlayTex, overlayMat)
-
-
-			const video = document.createElement('video')
-			video.crossOrigin = 'anonymous'
-			video.playsInline = true
-			video.preload = 'metadata'
-			video.loop = true
-			video.src = videoUrl
-			video.load()
-
-			const tex = new THREE.VideoTexture(video)
-			tex.colorSpace = THREE.SRGBColorSpace
-			tex.needsUpdate = true
-			mat.map = tex
-			mat.needsUpdate = true
+		} else {
+			const tex = makeNoPhotoTexture({ size: 1024 })
+			imgMat.map = tex
+			imgMat.needsUpdate = true
 			disposables.push(tex)
+		}
 
-			function updateOverlayVisibility() {
-				overlay.visible = Boolean(video.paused || video.ended)
-			}
-			updateOverlayVisibility()
-			video.addEventListener('play', updateOverlayVisibility)
-			video.addEventListener('pause', updateOverlayVisibility)
-			video.addEventListener('ended', updateOverlayVisibility)
+		// Centered Highlight Artwork on BACK FACE of partition wall (North-facing)
+		const panelZNorth = -(pillarD / 2 + 0.08)
 
-			function fitVideoInFrame() {
-				const vw = video.videoWidth || 0
-				const vh = video.videoHeight || 0
-				if (!(vw > 0 && vh > 0)) return
+		const backGeo = new THREE.BoxGeometry(centerPhotoW, centerPhotoH, panelDepth)
+		const backMat = new THREE.MeshStandardMaterial({
+			color: 0xffffff,
+			map: photoFrameBackTex,
+			roughness: 0.86,
+			metalness: 0.0,
+		})
+		disposables.push(backGeo, backMat)
 
-				const imageAspect = vw / vh
-				const frameAspect = innerW / innerH
+		const backMesh = new THREE.Mesh(backGeo, backMat)
+		backMesh.position.set(0, panelY, panelZNorth)
+		backMesh.rotation.y = Math.PI
+		group.add(backMesh)
 
+		const imgGeoNorth = new THREE.PlaneGeometry(centerPhotoW * 0.94, centerPhotoH * 0.94)
+		const imgMatNorth = new THREE.MeshBasicMaterial({
+			color: 0xffffff,
+			transparent: true,
+			depthWrite: false,
+			premultipliedAlpha: true,
+		})
+		const imgNorth = new THREE.Mesh(imgGeoNorth, imgMatNorth)
+		imgNorth.position.set(0, panelY, panelZNorth - panelDepth / 2 - 0.002)
+		imgNorth.rotation.y = Math.PI
+		group.add(imgNorth)
+		disposables.push(imgGeoNorth, imgMatNorth)
 
-				let displayW = innerW
-				let displayH = innerH
-				if (imageAspect > frameAspect) {
-					displayH = innerW / imageAspect
-				} else {
-					displayW = innerH * imageAspect
-				}
+		const backPhotoUrl = (gallery.photos && gallery.photos[1]) || (gallery.photos && gallery.photos[0]) || null
+		imgNorth.userData = {
+			pickable: true,
+			isPhoto: true,
+			pickableType: 'column-photo',
+			photoUrl: backPhotoUrl,
+			photoTitle: gallery.title ? `${gallery.title} • North Feature` : 'Salon North Feature',
+		}
+		pickableMeshes.push(imgNorth)
 
-				mesh.scale.set(displayW / panelW, displayH / panelH, 1)
-			}
-
-			video.addEventListener('loadedmetadata', fitVideoInFrame, { once: true })
-			video.addEventListener('loadeddata', () => {
-				tex.needsUpdate = true
-				fitVideoInFrame()
-			})
-
-			async function togglePlay() {
-				try {
-					if (!video.paused && !video.ended) {
-						video.pause()
-						return
-					}
-
-					const p = video.play()
-					if (p && typeof p.then === 'function') {
-						await p
-					}
-				} catch {
-
-					try {
-						video.muted = true
-						const p2 = video.play()
-						if (p2 && typeof p2.then === 'function') await p2
-					} catch (err2) {
-						console.warn('[linkwalk] Video playback failed', err2)
-					}
-				}
-			}
-
-			mesh.userData = {
-				...(mesh.userData || {}),
-				pickable: false,
-				pickableType: 'column-video',
-				videoUrl,
-				onClick: togglePlay,
-			}
-			pickableMeshes.push(mesh)
-
-			overlay.userData = {
-				...(overlay.userData || {}),
-				pickable: false,
-				pickableType: 'column-video',
-				videoUrl,
-				onClick: togglePlay,
-			}
-			pickableMeshes.push(overlay)
-
-			{
-				const caption = labelFromImageUrl(videoUrl) || 'Video'
-
-				const plaqueW = panelW * 0.82
-				const plaqueH = 0.22
-				const gapFromFrame = 0.06
-				const plaqueDepth = 0.04
-
-				const plaqueBackGeo = new THREE.BoxGeometry(plaqueW, plaqueH, plaqueDepth)
-				const plaqueBackMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.95, metalness: 0.0 })
-				const plaqueBack = new THREE.Mesh(plaqueBackGeo, plaqueBackMat)
-				plaqueBack.position.set(0, panelY - panelH / 2 - plaqueH / 2 - gapFromFrame, panelZNorth)
-				plaqueBack.rotation.y = Math.PI
-				group.add(plaqueBack)
-				disposables.push(plaqueBackGeo, plaqueBackMat)
-
-				const plaqueGeo = new THREE.PlaneGeometry(plaqueW, plaqueH)
-				const plaqueMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
-				const plaque = new THREE.Mesh(plaqueGeo, plaqueMat)
-				plaque.position.copy(plaqueBack.position)
-				plaque.position.z -= plaqueDepth / 2 + 0.002
-				plaque.rotation.copy(plaqueBack.rotation)
-				group.add(plaque)
-				disposables.push(plaqueGeo, plaqueMat)
-
-				const plaqueTex = makePlaqueTexture({ size: 1024, text: caption, aspect: plaqueW / plaqueH })
-				plaqueMat.map = plaqueTex
-				plaqueMat.needsUpdate = true
-				disposables.push(plaqueTex)
-			}
-
-			disposables.push({
-				dispose() {
-					try {
-						video.removeEventListener('play', updateOverlayVisibility)
-						video.removeEventListener('pause', updateOverlayVisibility)
-						video.removeEventListener('ended', updateOverlayVisibility)
-						video.pause()
-						video.removeAttribute('src')
-						video.load()
-					} catch {
-
-					}
+		if (backPhotoUrl) {
+			deferredTextureLoads.push({
+				url: backPhotoUrl,
+				onLoad(tex) {
+					tex.colorSpace = THREE.SRGBColorSpace
+					tex.premultiplyAlpha = true
+					configureGalleryTexture(tex)
+					imgMatNorth.map = tex
+					imgMatNorth.color.setHex(0xffffff)
+					imgMatNorth.needsUpdate = true
+					fitMeshToTextureAspect(imgNorth, { baseW: centerPhotoW * 0.94, baseH: centerPhotoH * 0.94, tex })
+					disposables.push(tex)
+				},
+				onError(err) {
+					console.warn('[OurMuseum] Failed to load back column photo', backPhotoUrl, err)
+					const tex = makeNoPhotoTexture({ size: 1024 })
+					imgMatNorth.map = tex
+					imgMatNorth.needsUpdate = true
+					disposables.push(tex)
 				},
 			})
+		} else {
+			const tex = makeNoPhotoTexture({ size: 1024 })
+			imgMatNorth.map = tex
+			imgMatNorth.needsUpdate = true
+			disposables.push(tex)
 		}
 	}
 
@@ -1454,95 +1185,84 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 				const plateW = clamp(boardW * 0.58, 1.9, 2.8) * 0.64
 				const plateH = 0.36
-				const plateD = 0.05
+				const plateD = 0.035
 
 				const plateGeo = new THREE.BoxGeometry(plateW, plateH, plateD)
 				const plateMat = new THREE.MeshStandardMaterial({
-
-					color: 0x2f6f4e,
-					roughness: 0.85,
-					metalness: 0.0,
+					color: 0x1c1a17,
+					roughness: 0.32,
+					metalness: 0.82,
 				})
 				const plate = new THREE.Mesh(plateGeo, plateMat)
 				plate.position.set(0, 0, 0)
 				controlGroup.add(plate)
 				disposables.push(plateGeo, plateMat)
 
+				const buttonCenterX = -plateW * 0.32
+				const labelCenterX = plateW * 0.15
+				const labelW = plateW * 0.62
+				const labelH = plateH * 0.82
 
-				const capR = 0.22
-				const capH = 0.085
-				const collarR = 0.18
-				const collarH = 0.06
-				const labelH = 0.28
-				const gapBetween = 0.10
-				const plateSidePad = 0.14
-				const usableW = Math.max(0.8, plateW - plateSidePad * 2)
-
-				let labelW = clamp(boardW * 0.42, 1.45, 2.2)
-				const requiredW = capR * 2 + gapBetween + labelW
-				if (requiredW > usableW) {
-					labelW = Math.max(0.9, usableW - (capR * 2 + gapBetween))
-				}
-
-				const contentW = capR * 2 + gapBetween + labelW
-				const leftEdge = -contentW / 2
-				const buttonCenterX = leftEdge + capR
-				const labelCenterX = leftEdge + capR * 2 + gapBetween + labelW / 2
-
-
-				const collarGeo = new THREE.CylinderGeometry(collarR, collarR, collarH, 28, 1)
-				const collarMat = new THREE.MeshStandardMaterial({ color: 0xb8c2cc, roughness: 0.35, metalness: 0.6 })
+				// Polished brass circular collar
+				const collarR = 0.15
+				const collarH = 0.03
+				const collarGeo = new THREE.CylinderGeometry(collarR, collarR * 1.05, collarH, 36)
+				const collarMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.22, metalness: 0.88 })
 				const collar = new THREE.Mesh(collarGeo, collarMat)
 				collar.rotation.x = Math.PI / 2
-				collar.position.set(buttonCenterX, 0, plateD / 2 + collarH / 2 - 0.01)
+				collar.position.set(buttonCenterX, 0, plateD / 2 + collarH / 2)
 				controlGroup.add(collar)
 				disposables.push(collarGeo, collarMat)
 
-
-				const capGeo = new THREE.CylinderGeometry(capR, capR * 0.92, capH, 32, 1)
-				const capMat = new THREE.MeshStandardMaterial({ color: 0xff4455, roughness: 0.38, metalness: 0.02 })
+				// Glowing circular discovery button
+				const capR = 0.125
+				const capH = 0.035
+				const capGeo = new THREE.CylinderGeometry(capR, capR * 0.94, capH, 36)
+				const capMat = new THREE.MeshStandardMaterial({
+					color: 0x8f1e24,
+					emissive: 0x5a1014,
+					emissiveIntensity: 0.7,
+					roughness: 0.3,
+					metalness: 0.15,
+				})
 				const cap = new THREE.Mesh(capGeo, capMat)
 				cap.rotation.x = Math.PI / 2
-				cap.position.copy(collar.position)
-				cap.position.z += collarH / 2 + capH / 2 - 0.015
+				cap.position.set(buttonCenterX, 0, plateD / 2 + collarH + capH / 2 - 0.005)
 				controlGroup.add(cap)
 				disposables.push(capGeo, capMat)
-
 
 				const labelGeo = new THREE.PlaneGeometry(labelW, labelH)
 				const labelMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true })
 				const label = new THREE.Mesh(labelGeo, labelMat)
-				label.position.set(labelCenterX, 0, plateD / 2 + 0.014)
+				label.position.set(labelCenterX, 0, plateD / 2 + 0.012)
 				controlGroup.add(label)
 				disposables.push(labelGeo, labelMat)
 
 				{
 					const canvasLabel = document.createElement('canvas')
 					canvasLabel.width = 1024
-					canvasLabel.height = 256
+					canvasLabel.height = 340
 					const ctxLabel = canvasLabel.getContext('2d')
 					if (ctxLabel) {
 						ctxLabel.clearRect(0, 0, canvasLabel.width, canvasLabel.height)
-						const line1 = 'Hit button for'
-						const line2 = 'random exhibit'
-						ctxLabel.textAlign = 'center'
-						ctxLabel.textBaseline = 'middle'
 
-						const cx = canvasLabel.width / 2
-						const cy = canvasLabel.height / 2 + 2
-						const dy = 46
+						// Subtitle tag
+						ctxLabel.textAlign = 'left'
+						ctxLabel.textBaseline = 'top'
+						ctxLabel.font = '600 36px "Montserrat", sans-serif'
+						ctxLabel.fillStyle = '#d4af37'
+						ctxLabel.letterSpacing = '4px'
+						ctxLabel.fillText('✦  INTERACTIVE CURATION', 20, 35)
 
-						ctxLabel.lineWidth = 10
-						ctxLabel.strokeStyle = 'rgba(0,0,0,0.45)'
-						ctxLabel.fillStyle = 'rgba(255,255,255,0.94)'
+						// Main serif title
+						ctxLabel.font = '700 84px "Cormorant Garamond", Georgia, serif'
+						ctxLabel.fillStyle = '#ffffff'
+						ctxLabel.fillText('DISCOVER EXHIBIT', 20, 100)
 
-						ctxLabel.font = '750 72px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-						ctxLabel.strokeText(line1, cx, cy - dy)
-						ctxLabel.fillText(line1, cx, cy - dy)
-
-						ctxLabel.font = '900 86px system-ui, -apple-system, Segoe UI, Roboto, Arial'
-						ctxLabel.strokeText(line2, cx, cy + dy)
-						ctxLabel.fillText(line2, cx, cy + dy)
+						// Subtext
+						ctxLabel.font = '500 38px "Montserrat", sans-serif'
+						ctxLabel.fillStyle = 'rgba(255,255,255,0.72)'
+						ctxLabel.fillText('Explore a surprise salon', 20, 220)
 					}
 
 					const labelTex = new THREE.CanvasTexture(canvasLabel)
@@ -1624,125 +1344,45 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			decoEast.name = 'deco-east'
 			group.add(decoEast)
 
-			const woodMat = new THREE.MeshStandardMaterial({
-				color: 0xffffff,
-				map: benchWoodMap,
-				bumpMap: benchWoodBump,
-				bumpScale: 0.045,
-				roughness: 0.58,
-				metalness: 0.0,
+			createRealisticGalleryBench({
+				x: innerEastX - 0.45,
+				y: 0,
+				z: decoEastZ,
+				rotationY: -Math.PI / 2,
+				targetGroup: decoEast,
+				disposables,
+				obstacles,
+				hasBenchTex: Boolean(benchWoodMap && benchWoodBump),
+				benchWoodMap,
+				benchWoodBump,
+				name: 'bench-east',
 			})
-			const metalMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.7, metalness: 0.05 })
-			const potMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.95, metalness: 0.0 })
-			const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f6f4e, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide })
-			disposables.push(woodMat, metalMat, potMat, leafMat)
 
-			const bench = new THREE.Group()
-			bench.name = 'bench-east'
-			bench.position.set(innerEastX - 0.42, 0, decoEastZ)
-			bench.rotation.y = -Math.PI / 2
-			decoEast.add(bench)
-
-			const seatW = 2.6
-			const seatD = 0.55
-			const seatH = 0.12
-			const seatY = 0.46
-
-			const seatGeo = new THREE.BoxGeometry(seatW, seatH, seatD)
-			const seat = new THREE.Mesh(seatGeo, woodMat)
-			seat.position.set(0, seatY, 0)
-			bench.add(seat)
-			disposables.push(seatGeo)
-
-			const backW = seatW
-			const backH = 0.55
-			const backD = 0.08
-			const backGeo = new THREE.BoxGeometry(backW, backH, backD)
-			const back = new THREE.Mesh(backGeo, woodMat)
-			back.position.set(0, seatY + backH / 2 - 0.02, -(seatD / 2 - backD / 2))
-			bench.add(back)
-			disposables.push(backGeo)
-
-			const legW = 0.08
-			const legD = 0.08
-			const legH = seatY - seatH / 2
-			const legGeo = new THREE.BoxGeometry(legW, legH, legD)
-			disposables.push(legGeo)
-
-			function addLegEast(x, z) {
-				const leg = new THREE.Mesh(legGeo, metalMat)
-				leg.position.set(x, legH / 2, z)
-				bench.add(leg)
-			}
-
-			const legX = seatW / 2 - 0.18
-			const legZ = seatD / 2 - 0.18
-			addLegEast(-legX, -legZ)
-			addLegEast(legX, -legZ)
-			addLegEast(-legX, legZ)
-			addLegEast(legX, legZ)
-
-			const potRTop = 0.19
-			const potRBottom = 0.24
-			const potH = 0.34
-			const potGeo = new THREE.CylinderGeometry(potRTop, potRBottom, potH, 14, 1)
-			const soilGeo = new THREE.CylinderGeometry(potRTop * 0.92, potRTop * 0.92, 0.06, 14, 1)
-			const leafGeo = new THREE.PlaneGeometry(0.38, 0.7)
-			disposables.push(potGeo, soilGeo, leafGeo)
-
-			function addPlantEast(z) {
-				const plant = new THREE.Group()
-				plant.name = 'plant-east'
-				plant.position.set(innerEastX - 0.38, 0, z)
-				decoEast.add(plant)
-
-				const pot = new THREE.Mesh(potGeo, potMat)
-				pot.position.set(0, potH / 2, 0)
-				plant.add(pot)
-
-				const soil = new THREE.Mesh(soilGeo, potMat)
-				soil.position.set(0, potH - 0.02, 0)
-				plant.add(soil)
-
-				const leaves = new THREE.Group()
-				leaves.position.set(0, potH + 0.05, 0)
-				plant.add(leaves)
-
-				const leafCount = 10
-				for (let i = 0; i < leafCount; i += 1) {
-					const leaf = new THREE.Mesh(leafGeo, leafMat)
-					const a = (i / leafCount) * Math.PI * 2
-					leaf.rotation.y = a
-					leaf.rotation.x = -0.25 - Math.random() * 0.25
-					leaf.position.set(0, 0.25 + Math.random() * 0.12, 0)
-					leaves.add(leaf)
-				}
-
-				obstacles.push({ type: 'cylinder', x: innerEastX - 0.38, z, radius: 0.38 })
-			}
-
-			const plantZ = seatW / 2 + 0.7
-			addPlantEast(-plantZ)
-			addPlantEast(plantZ)
-
-			obstacles.push({ type: 'cylinder', x: innerEastX - 0.42, z: -seatW * 0.28, radius: 0.5 })
-			obstacles.push({ type: 'cylinder', x: innerEastX - 0.42, z: seatW * 0.28, radius: 0.5 })
+			const plantZ = 2.0
+			createRealisticGalleryPlant({
+				x: innerEastX - 0.40,
+				y: 0,
+				z: -plantZ,
+				targetGroup: decoEast,
+				disposables,
+				obstacles,
+				name: 'plant-east-1',
+			})
+			createRealisticGalleryPlant({
+				x: innerEastX - 0.40,
+				y: 0,
+				z: plantZ,
+				targetGroup: decoEast,
+				disposables,
+				obstacles,
+				name: 'plant-east-2',
+			})
 		} else {
-			const count = Math.max(1, Math.min(4, imagePhotos.length))
-			const margin = 1.75
-			const gapU = 0.5
-			const usable = Math.max(2.8, length - margin * 2)
-
-			const aspect = stdFrameW / stdFrameH
-			let photoW = clamp((usable - (count - 1) * gapU) / count, 0.65, 1.35)
-			let photoH = photoW / aspect
-
-			const maxPhotoH = clamp(height * 0.5, 1.15, 1.85)
-			if (photoH > maxPhotoH) {
-				photoH = maxPhotoH
-				photoW = photoH * aspect
-			}
-
+			// East Wall: 5 artworks, slightly larger, zero captions
+			const count = 5
+			const gapU = 0.55
+			const photoW = 1.55
+			const photoH = 1.12
 			const y = clamp(stdFrameY, photoH / 2 + 0.25, height - photoH / 2 - 0.25)
 			const totalW = count * photoW + (count - 1) * gapU
 			const uStart = -totalW / 2 + photoW / 2
@@ -1751,65 +1391,9 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				const u = uStart + i * (photoW + gapU)
 				addSlot({ id: `east-photo-${i}`, wall: 'east', kind: 'frame', w: photoW, h: photoH, y, u, color: 0xd9d9de, opacity: 1 })
 			}
-
-			if (count === 1 || count === 2) {
-				const innerEastX = halfW - wallThickness / 2
-				const decoEast = new THREE.Group()
-				decoEast.name = 'deco-east-plants'
-				group.add(decoEast)
-
-				const potMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.95, metalness: 0.0 })
-				const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f6f4e, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide })
-				disposables.push(potMat, leafMat)
-
-				const potRTop = 0.19
-				const potRBottom = 0.24
-				const potH = 0.34
-				const potGeo = new THREE.CylinderGeometry(potRTop, potRBottom, potH, 14, 1)
-				const soilGeo = new THREE.CylinderGeometry(potRTop * 0.92, potRTop * 0.92, 0.06, 14, 1)
-				const leafGeo = new THREE.PlaneGeometry(0.38, 0.7)
-				disposables.push(potGeo, soilGeo, leafGeo)
-
-				function addPlantBesidePhoto(z) {
-					const plant = new THREE.Group()
-					plant.name = 'plant-beside-photo'
-					plant.position.set(innerEastX - 0.38, 0, z)
-					decoEast.add(plant)
-
-					const pot = new THREE.Mesh(potGeo, potMat)
-					pot.position.set(0, potH / 2, 0)
-					plant.add(pot)
-
-					const soil = new THREE.Mesh(soilGeo, potMat)
-					soil.position.set(0, potH - 0.02, 0)
-					plant.add(soil)
-
-					const leaves = new THREE.Group()
-					leaves.position.set(0, potH + 0.05, 0)
-					plant.add(leaves)
-
-					const leafCount = 10
-					for (let i = 0; i < leafCount; i += 1) {
-						const leaf = new THREE.Mesh(leafGeo, leafMat)
-						const a = (i / leafCount) * Math.PI * 2
-						leaf.rotation.y = a
-						leaf.rotation.x = -0.25 - Math.random() * 0.25
-						leaf.position.set(0, 0.25 + Math.random() * 0.12, 0)
-						leaves.add(leaf)
-					}
-
-					obstacles.push({ type: 'cylinder', x: innerEastX - 0.38, z, radius: 0.38 })
-				}
-
-				const plantGap = 1.2
-				const leftPlantZ = uStart - photoW / 2 - plantGap
-				const rightPlantZ = uStart + (count - 1) * (photoW + gapU) + photoW / 2 + plantGap
-
-				addPlantBesidePhoto(leftPlantZ)
-				addPlantBesidePhoto(rightPlantZ)
-			}
 		}
 
+		// West Wall: Narrative memory text panel
 		{
 			const margin = 1.6
 			const usable = Math.max(2.8, length - margin * 2)
@@ -1819,13 +1403,30 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 			addSlot({ id: 'west-text-0', wall: 'west', kind: 'frame', w: panelW, h: panelH, y, u: 0, color: 0xd9d9de, opacity: 1 })
 		}
+
+		// North Wall: Single big centered masterpiece artwork
+		{
+			const northW = 2.6
+			const northH = 1.6
+			const northY = clamp(height * 0.52, northH / 2 + 0.5, height - northH / 2 - 0.2)
+			addSlot({ id: 'north-photo-0', wall: 'north', kind: 'frame', w: northW, h: northH, y: northY, u: 0, color: 0xd9d9de, opacity: 1 })
+		}
+
+		// South Wall: 2 artworks flanking the entrance gate (1 left, 1 right)
+		{
+			const southW = 1.55
+			const southH = 1.10
+			const southY = clamp(height * 0.52, southH / 2 + 0.5, height - southH / 2 - 0.2)
+			addSlot({ id: 'south-photo-0', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: -2.3, color: 0xd9d9de, opacity: 1 })
+			addSlot({ id: 'south-photo-1', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: 2.3, color: 0xd9d9de, opacity: 1 })
+		}
 	}
 
 	if (mode !== 'lobby') {
 		{
 			const innerNorthZ = -halfL + wallThickness / 2
-			const benchZ = innerNorthZ + 0.42
-			const plantZ = innerNorthZ + 0.38
+			const benchZ = innerNorthZ + 0.45
+			const plantZ = innerNorthZ + 0.40
 
 			const decoNorth = new THREE.Group()
 			decoNorth.name = 'deco-north'
@@ -1835,188 +1436,104 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			decoSouth.name = 'deco-south'
 			group.add(decoSouth)
 
-			const woodMat = new THREE.MeshStandardMaterial({
-				color: 0xffffff,
-				map: benchWoodMap,
-				bumpMap: benchWoodBump,
-				bumpScale: 0.045,
-				roughness: 0.58,
-				metalness: 0.0,
+			const hasBenchTex = Boolean(benchWoodMap && benchWoodBump)
+
+			createRealisticGalleryBench({
+				x: 0,
+				y: 0,
+				z: benchZ,
+				rotationY: 0,
+				targetGroup: decoNorth,
+				disposables,
+				obstacles,
+				hasBenchTex,
+				benchWoodMap,
+				benchWoodBump,
+				name: 'bench-north',
 			})
-			const metalMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.7, metalness: 0.05 })
-			const potMat = new THREE.MeshStandardMaterial({ color: 0x0d1015, roughness: 0.95, metalness: 0.0 })
-			const leafMat = new THREE.MeshStandardMaterial({ color: 0x2f6f4e, roughness: 0.85, metalness: 0.0, side: THREE.DoubleSide })
-			disposables.push(woodMat, metalMat, potMat, leafMat)
 
-			const bench = new THREE.Group()
-			bench.name = 'bench'
-			bench.position.set(0, 0, benchZ)
-			decoNorth.add(bench)
-
-			const seatW = 2.6
-			const seatD = 0.55
-			const seatH = 0.12
-			const seatY = 0.46
-
-			const seatGeo = new THREE.BoxGeometry(seatW, seatH, seatD)
-			const seat = new THREE.Mesh(seatGeo, woodMat)
-			seat.position.set(0, seatY, 0)
-			bench.add(seat)
-			disposables.push(seatGeo)
-
-			const backW = seatW
-			const backH = 0.55
-			const backD = 0.08
-			const backGeo = new THREE.BoxGeometry(backW, backH, backD)
-			const back = new THREE.Mesh(backGeo, woodMat)
-			back.position.set(0, seatY + backH / 2 - 0.02, -(seatD / 2 - backD / 2))
-			bench.add(back)
-			disposables.push(backGeo)
-
-			const legW = 0.08
-			const legD = 0.08
-			const legH = seatY - seatH / 2
-			const legGeo = new THREE.BoxGeometry(legW, legH, legD)
-			disposables.push(legGeo)
-
-			function addLeg(x, z) {
-				const leg = new THREE.Mesh(legGeo, metalMat)
-				leg.position.set(x, legH / 2, z)
-				bench.add(leg)
-			}
-
-			const legX = seatW / 2 - 0.18
-			const legZ = seatD / 2 - 0.18
-			addLeg(-legX, -legZ)
-			addLeg(legX, -legZ)
-			addLeg(-legX, legZ)
-			addLeg(legX, legZ)
-
-			obstacles.push({ type: 'cylinder', x: -seatW * 0.28, z: benchZ + 0.02, radius: 0.5 })
-			obstacles.push({ type: 'cylinder', x: seatW * 0.28, z: benchZ + 0.02, radius: 0.5 })
-
-			const potRTop = 0.19
-			const potRBottom = 0.24
-			const potH = 0.34
-			const potGeo = new THREE.CylinderGeometry(potRTop, potRBottom, potH, 14, 1)
-			const soilGeo = new THREE.CylinderGeometry(potRTop * 0.92, potRTop * 0.92, 0.06, 14, 1)
-			const leafGeo = new THREE.PlaneGeometry(0.38, 0.7)
-			disposables.push(potGeo, soilGeo, leafGeo)
-
-			function addPlant(x) {
-				const plant = new THREE.Group()
-				plant.name = 'plant'
-				plant.position.set(x, 0, plantZ)
-				decoNorth.add(plant)
-
-				const pot = new THREE.Mesh(potGeo, potMat)
-				pot.position.set(0, potH / 2, 0)
-				plant.add(pot)
-
-				const soil = new THREE.Mesh(soilGeo, potMat)
-				soil.position.set(0, potH - 0.02, 0)
-				plant.add(soil)
-
-				const leaves = new THREE.Group()
-				leaves.position.set(0, potH + 0.05, 0)
-				plant.add(leaves)
-
-				const leafCount = 10
-				for (let i = 0; i < leafCount; i += 1) {
-					const leaf = new THREE.Mesh(leafGeo, leafMat)
-					const a = (i / leafCount) * Math.PI * 2
-					leaf.rotation.y = a
-					leaf.rotation.x = -0.25 - Math.random() * 0.25
-					leaf.position.set(0, 0.25 + Math.random() * 0.12, 0)
-					leaves.add(leaf)
-				}
-
-				obstacles.push({ type: 'cylinder', x, z: plantZ, radius: 0.38 })
-			}
-
-			const plantX = seatW / 2 + 0.7
-			addPlant(-plantX)
-			addPlant(plantX)
+			const plantX = Math.max(2.2, halfW - 0.65)
+			createRealisticGalleryPlant({
+				x: -plantX,
+				y: 0,
+				z: plantZ,
+				targetGroup: decoNorth,
+				disposables,
+				obstacles,
+				name: 'plant-north-corner-nw',
+			})
+			createRealisticGalleryPlant({
+				x: plantX,
+				y: 0,
+				z: plantZ,
+				targetGroup: decoNorth,
+				disposables,
+				obstacles,
+				name: 'plant-north-corner-ne',
+			})
 
 			{
 				const innerSouthZ = halfL - wallThickness / 2
-				const benchZSouth = innerSouthZ - 0.42
-				const plantZSouth = innerSouthZ - 0.38
+				const benchZSouth = innerSouthZ - 0.45
+				const plantZSouth = innerSouthZ - 0.40
 
 				const doorW = 1.25
 				const doorHalf = doorW / 2
+				const benchSpan = 2.4
 				const benchGap = 0.6
 
-				const maxBenchCenterX = halfW - seatW / 2 - 0.35
-				const benchCenterX = clamp(doorHalf + seatW / 2 + benchGap, 0.9, maxBenchCenterX)
+				const maxBenchCenterX = halfW - benchSpan / 2 - 0.35
+				const benchCenterX = clamp(doorHalf + benchSpan / 2 + benchGap, 1.8, Math.max(1.8, maxBenchCenterX))
 
-				const maxPlantX = halfW - 0.6
-				const plantXSouth = clamp(benchCenterX + seatW / 2 + 0.7, 1.2, maxPlantX)
+				const plantXSouth = Math.max(2.5, halfW - 0.65)
 
-				function addBenchSouth(x) {
-					const b = new THREE.Group()
-					b.name = 'bench-south'
-					b.position.set(x, 0, benchZSouth)
-					b.rotation.y = Math.PI
-					decoSouth.add(b)
+				const hasBenchTex = Boolean(benchWoodMap && benchWoodBump)
 
-					const s = new THREE.Mesh(seatGeo, woodMat)
-					s.position.set(0, seatY, 0)
-					b.add(s)
+				createRealisticGalleryBench({
+					x: -benchCenterX,
+					y: 0,
+					z: benchZSouth,
+					rotationY: Math.PI,
+					targetGroup: decoSouth,
+					disposables,
+					obstacles,
+					hasBenchTex,
+					benchWoodMap,
+					benchWoodBump,
+					name: 'bench-south-left',
+				})
+				createRealisticGalleryBench({
+					x: benchCenterX,
+					y: 0,
+					z: benchZSouth,
+					rotationY: Math.PI,
+					targetGroup: decoSouth,
+					disposables,
+					obstacles,
+					hasBenchTex,
+					benchWoodMap,
+					benchWoodBump,
+					name: 'bench-south-right',
+				})
 
-					const bk = new THREE.Mesh(backGeo, woodMat)
-					bk.position.set(0, seatY + backH / 2 - 0.02, -(seatD / 2 - backD / 2))
-					b.add(bk)
-
-					function addLegToBench(lx, lz) {
-						const leg = new THREE.Mesh(legGeo, metalMat)
-						leg.position.set(lx, legH / 2, lz)
-						b.add(leg)
-					}
-					addLegToBench(-legX, -legZ)
-					addLegToBench(legX, -legZ)
-					addLegToBench(-legX, legZ)
-					addLegToBench(legX, legZ)
-
-					obstacles.push({ type: 'cylinder', x: x - seatW * 0.28, z: benchZSouth + 0.02, radius: 0.5 })
-					obstacles.push({ type: 'cylinder', x: x + seatW * 0.28, z: benchZSouth + 0.02, radius: 0.5 })
-				}
-
-				function addPlantSouth(x) {
-					const plant = new THREE.Group()
-					plant.name = 'plant-south'
-					plant.position.set(x, 0, plantZSouth)
-					decoSouth.add(plant)
-
-					const pot = new THREE.Mesh(potGeo, potMat)
-					pot.position.set(0, potH / 2, 0)
-					plant.add(pot)
-
-					const soil = new THREE.Mesh(soilGeo, potMat)
-					soil.position.set(0, potH - 0.02, 0)
-					plant.add(soil)
-
-					const leaves = new THREE.Group()
-					leaves.position.set(0, potH + 0.05, 0)
-					plant.add(leaves)
-
-					const leafCount = 10
-					for (let i = 0; i < leafCount; i += 1) {
-						const leaf = new THREE.Mesh(leafGeo, leafMat)
-						const a = (i / leafCount) * Math.PI * 2
-						leaf.rotation.y = a
-						leaf.rotation.x = -0.25 - Math.random() * 0.25
-						leaf.position.set(0, 0.25 + Math.random() * 0.12, 0)
-						leaves.add(leaf)
-					}
-
-					obstacles.push({ type: 'cylinder', x, z: plantZSouth, radius: 0.38 })
-				}
-
-				addPlantSouth(-plantXSouth)
-				addBenchSouth(-benchCenterX)
-				addBenchSouth(benchCenterX)
-				addPlantSouth(plantXSouth)
+				createRealisticGalleryPlant({
+					x: -plantXSouth,
+					y: 0,
+					z: plantZSouth,
+					targetGroup: decoSouth,
+					disposables,
+					obstacles,
+					name: 'plant-south-left',
+				})
+				createRealisticGalleryPlant({
+					x: plantXSouth,
+					y: 0,
+					z: plantZSouth,
+					targetGroup: decoSouth,
+					disposables,
+					obstacles,
+					name: 'plant-south-right',
+				})
 			}
 		}
 
@@ -2065,7 +1582,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			return slots.find((s) => s && s.id === id) || null
 		}
 
-		function placePhotoInSlot(slot, url, { placeholderTitle = 'NO PHOTO' } = {}) {
+		function placePhotoInSlot(slot, url, { placeholderTitle = 'NO PHOTO', photoTitle = '' } = {}) {
 			if (!slot) return
 
 			const baseW = slot.width * 0.96
@@ -2092,8 +1609,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			mesh.userData = {
 				...(mesh.userData || {}),
 				pickable: true,
+				isPhoto: true,
 				pickableType: 'wall-photo',
 				photoUrl: url || null,
+				photoTitle: photoTitle || slot.id || 'Gallery Art',
 			}
 			pickableMeshes.push(mesh)
 
@@ -2132,7 +1651,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 					url,
 					onLoad: (tex) => applyTexture(tex),
 					onError: (err) => {
-						console.warn('[linkwalk] Failed to load wall photo', url, err)
+						console.warn('[OurMuseum] Failed to load wall photo', url, err)
 						applyTexture(makeNoPhotoTexture({ size: 1024, title: placeholderTitle }))
 					},
 				})
@@ -2177,8 +1696,8 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			}
 		}
 
-		function makeWallTextTexture({ size = 1024, title, text, aspect, startLine = 0, withTitle = true, twoColumn = false } = {}) {
-			const maxW = typeof size === 'number' && Number.isFinite(size) ? Math.max(512, Math.floor(size)) : 1024
+		function makeWallTextTexture({ size = 1536, title, text, aspect, startLine = 0, withTitle = true, twoColumn = false } = {}) {
+			const maxW = typeof size === 'number' && Number.isFinite(size) ? Math.max(512, Math.floor(size)) : 1536
 			const a = typeof aspect === 'number' && Number.isFinite(aspect) && aspect > 0 ? aspect : null
 
 			let canvasW = maxW
@@ -2201,136 +1720,208 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			let nextLine = Math.max(0, Math.floor(startLine || 0))
 
 			if (ctx) {
-				ctx.clearRect(0, 0, canvas.width, canvas.height)
-				ctx.fillStyle = 'rgba(0,0,0,0.28)'
-				ctx.fillRect(0, 0, canvas.width, canvas.height)
-
-				ctx.strokeStyle = 'rgba(255,255,255,0.16)'
-				ctx.lineWidth = Math.max(6, Math.floor(size * 0.01))
-				ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48)
-
-				const pad = 52
-				let y = pad + 10
-
-				const safeTitle = String(title || 'Wikipedia')
-				ctx.textAlign = 'left'
-				ctx.textBaseline = 'alphabetic'
-
-				if (withTitle) {
-					ctx.fillStyle = 'rgba(223,255,233,0.96)'
-					const titleFontSize = twoColumn ? Math.min(52, Math.floor(maxW * 0.052)) : Math.floor(maxW * 0.072)
-					ctx.font = `800 ${titleFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-					const titleMaxWidth = canvas.width - pad * 1.5
-					const ell = '…'
-					const twoCharPad = ctx.measureText('MM').width
-					const maxTitleW = Math.max(10, titleMaxWidth - twoCharPad)
-
-					let titleOut = safeTitle
-					if (ctx.measureText(titleOut).width > maxTitleW) {
-						while (titleOut.length > 0 && ctx.measureText(titleOut + ell).width > maxTitleW) titleOut = titleOut.slice(0, -1)
-						titleOut = titleOut.length ? titleOut + ell : ell
-					}
-
-					ctx.fillText(titleOut, pad, y)
-					const titleSpacing = twoColumn ? Math.min(65, Math.floor(maxW * 0.065)) : Math.floor(maxW * 0.09)
-					y += titleSpacing
-				}
-
-				const bodyFontSize = twoColumn ? Math.min(18, Math.floor(maxW * 0.018)) : Math.floor(maxW * 0.038)
-				ctx.font = `600 ${bodyFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-				ctx.fillStyle = 'rgba(255,255,255,0.9)'
-
-				function wrapText(text, maxWidth) {
-					const words = String(text).trim().split(/\s+/g)
-					const out = []
-					let cur = ''
-					for (const w of words) {
-						const next = cur ? `${cur} ${w}` : w
-						if (ctx.measureText(next).width <= maxWidth) {
-							cur = next
-							continue
-						}
-						if (cur) out.push(cur)
-						cur = w
-					}
-					if (cur) out.push(cur)
-					return out
-				}
-
-				const maxWidth = canvas.width - pad * 2
 				const safeText = String(text || '').trim()
-				const lineHeight = Math.floor(bodyFontSize * 1.28)
+				const isShortNarrative = safeText.length < 800
 
-				const allLines = []
-				const paragraphs = safeText ? safeText.split(/\n{2,}/g) : ['No additional info']
-				for (const para of paragraphs) {
-					const trimmed = String(para || '').trim()
-					if (!trimmed) continue
-					const lines = wrapText(trimmed, twoColumn ? (maxWidth - pad) / 2 : maxWidth)
-					for (const line of lines) allLines.push(line)
-					allLines.push('')
-				}
-				while (allLines.length > 0 && allLines[allLines.length - 1] === '') allLines.pop()
+				if (isShortNarrative) {
+					// 1. Obsidian Noir Velvet Background
+					const bgGrad = ctx.createLinearGradient(0, 0, 0, canvas.height)
+					bgGrad.addColorStop(0, '#0f121a')
+					bgGrad.addColorStop(0.5, '#090b10')
+					bgGrad.addColorStop(1, '#05070a')
+					ctx.fillStyle = bgGrad
+					ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-				if (twoColumn) {
+					// 2. 24k Gilded Double Filigree Frame
+					ctx.strokeStyle = '#c5a059'
+					ctx.lineWidth = 6
+					ctx.strokeRect(28, 28, canvas.width - 56, canvas.height - 56)
+
+					ctx.strokeStyle = 'rgba(255, 215, 0, 0.45)'
+					ctx.lineWidth = 2
+					ctx.strokeRect(40, 40, canvas.width - 80, canvas.height - 80)
+
+					const drawDiamond = (cx, cy, r) => {
+						ctx.fillStyle = '#ffd700'
+						ctx.beginPath()
+						ctx.moveTo(cx, cy - r)
+						ctx.lineTo(cx + r, cy)
+						ctx.lineTo(cx, cy + r)
+						ctx.lineTo(cx - r, cy)
+						ctx.closePath()
+						ctx.fill()
+					}
+					drawDiamond(40, 40, 7)
+					drawDiamond(canvas.width - 40, 40, 7)
+					drawDiamond(40, canvas.height - 40, 7)
+					drawDiamond(canvas.width - 40, canvas.height - 40, 7)
+
+					// 3. Header: Salon Title
+					ctx.textAlign = 'center'
+					ctx.textBaseline = 'middle'
+					ctx.fillStyle = '#ffd700'
+					ctx.font = 'bold 34px "Cormorant Garamond", Georgia, serif'
+					ctx.letterSpacing = '3px'
+					ctx.fillText(String(title || 'SANCTUARY DEDICATION').toUpperCase(), canvas.width / 2, 68)
+
+					// Gold Divider Rule
+					ctx.fillStyle = '#d4af37'
+					ctx.font = '20px serif'
+					ctx.fillText('✦ ―――――――――― ✦', canvas.width / 2, 102)
+
+					// 4. Parse Dedication & Body Text
+					let dedication = ''
+					let quoteBody = safeText
+					const match = safeText.match(/^(From\s+[^:]+:\s*)(.*)$/is)
+					if (match) {
+						dedication = match[1].trim()
+						quoteBody = match[2].trim()
+					}
+
+					if (dedication) {
+						ctx.fillStyle = '#d4af37'
+						ctx.font = 'bold 20px "Montserrat", sans-serif'
+						ctx.letterSpacing = '2px'
+						ctx.fillText(dedication.toUpperCase(), canvas.width / 2, 140)
+					}
+
+					// Dynamic Font Size for Quote to Fill Board Beautifully
+					let fontSize = 34
+					let lineHeight = 50
+					if (quoteBody.length < 180) {
+						fontSize = 42
+						lineHeight = 64
+					} else if (quoteBody.length < 320) {
+						fontSize = 36
+						lineHeight = 54
+					} else if (quoteBody.length < 520) {
+						fontSize = 32
+						lineHeight = 48
+					} else {
+						fontSize = 28
+						lineHeight = 42
+					}
+
+					ctx.font = `italic 400 ${fontSize}px "Cormorant Garamond", Georgia, serif`
+					ctx.fillStyle = '#fcf8f0'
+					ctx.shadowColor = 'rgba(0, 0, 0, 0.85)'
+					ctx.shadowBlur = 8
+
+					function wrapQuoteText(txt, maxWidth) {
+						const words = txt.split(/\s+/g)
+						const lines = []
+						let cur = ''
+						for (const w of words) {
+							const next = cur ? `${cur} ${w}` : w
+							if (ctx.measureText(next).width <= maxWidth) {
+								cur = next
+							} else {
+								if (cur) lines.push(cur)
+								cur = w
+							}
+						}
+						if (cur) lines.push(cur)
+						return lines
+					}
+
+					const maxQuoteW = canvas.width - 240
+					const quoteLines = wrapQuoteText(quoteBody, maxQuoteW)
+
+					const totalTextH = quoteLines.length * lineHeight
+					const startY = 185 + Math.max(0, (canvas.height - 275 - totalTextH) / 2)
+
+					for (let i = 0; i < quoteLines.length; i++) {
+						ctx.fillText(quoteLines[i], canvas.width / 2, startY + i * lineHeight)
+					}
+
+					ctx.shadowBlur = 0
+
+					// 5. Signature / Footer
+					ctx.fillStyle = '#c5a059'
+					ctx.font = 'italic 22px "Cormorant Garamond", Georgia, serif'
+					ctx.fillText('— Maya & Ethan • The Eternal Sanctuary —', canvas.width / 2, canvas.height - 62)
+
+					nextLine = quoteLines.length
+				} else {
+					ctx.clearRect(0, 0, canvas.width, canvas.height)
+					ctx.fillStyle = 'rgba(0,0,0,0.85)'
+					ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+					ctx.strokeStyle = '#c5a059'
+					ctx.lineWidth = 4
+					ctx.strokeRect(24, 24, canvas.width - 48, canvas.height - 48)
+
+					const pad = 52
+					let y = pad + 10
+
+					const safeTitle = String(title || 'Wikipedia')
+					ctx.textAlign = 'left'
+					ctx.textBaseline = 'alphabetic'
+
+					if (withTitle) {
+						ctx.fillStyle = '#ffd700'
+						const titleFontSize = Math.min(52, Math.floor(maxW * 0.052))
+						ctx.font = `800 ${titleFontSize}px "Cormorant Garamond", serif`
+						ctx.fillText(safeTitle, pad, y)
+						y += 65
+					}
+
+					const bodyFontSize = 26
+					ctx.font = `500 ${bodyFontSize}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
+					ctx.fillStyle = 'rgba(255,255,255,0.92)'
+
+					function wrapText(txt, maxWidth) {
+						const words = String(txt).trim().split(/\s+/g)
+						const lines = []
+						let cur = ''
+						for (const w of words) {
+							const next = cur ? `${cur} ${w}` : w
+							if (ctx.measureText(next).width <= maxWidth) {
+								cur = next
+								continue
+							}
+							if (cur) lines.push(cur)
+							cur = w
+						}
+						if (cur) lines.push(cur)
+						return lines
+					}
+
+					const maxWidth = canvas.width - pad * 2
+					const lineHeight = Math.floor(bodyFontSize * 1.35)
+					const allLines = []
+					const paragraphs = safeText.split(/\n{2,}/g)
+					for (const para of paragraphs) {
+						const lines = wrapText(para, (maxWidth - pad) / 2)
+						for (const l of lines) allLines.push(l)
+						allLines.push('')
+					}
+
 					const columnWidth = (maxWidth - pad) / 2
-					const linesPerColumn = Math.floor((canvas.height - y - pad * 0.5) / lineHeight)
-					const maxLinesToShow = linesPerColumn * 2
-
 					let i = nextLine
 					let leftY = y
 					let rightY = y
 					let currentColumn = 0
 
-					while (i < allLines.length && i < nextLine + maxLinesToShow) {
+					while (i < allLines.length) {
 						const line = allLines[i]
-
 						if (currentColumn === 0) {
-
 							if (line) {
 								ctx.fillText(line, pad, leftY)
 								leftY += lineHeight
 							} else {
 								leftY += Math.floor(lineHeight * 0.55)
 							}
-
-							if (leftY > canvas.height - pad || (i - nextLine) >= linesPerColumn - 1) {
-								currentColumn = 1
-							}
+							if (leftY > canvas.height - pad) currentColumn = 1
 						} else {
-
 							if (line) {
 								ctx.fillText(line, pad + columnWidth + pad, rightY)
 								rightY += lineHeight
 							} else {
 								rightY += Math.floor(lineHeight * 0.55)
 							}
-
-							if (rightY > canvas.height - pad) {
-								i += 1
-								break
-							}
+							if (rightY > canvas.height - pad) break
 						}
-
-						i += 1
-					}
-					nextLine = i
-				} else {
-					let i = nextLine
-					while (i < allLines.length) {
-						const line = allLines[i]
-						if (line) {
-							ctx.fillText(line, pad, y)
-							y += lineHeight
-						} else {
-							y += Math.floor(lineHeight * 0.55)
-						}
-
-						if (y > canvas.height - pad) {
-							i += 1
-							break
-						}
-
 						i += 1
 					}
 					nextLine = i
@@ -2375,17 +1966,35 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		}
 
 		{
-			const eastPhotoSlots = [slotById('east-photo-0'), slotById('east-photo-1'), slotById('east-photo-2'), slotById('east-photo-3')]
-			const shuffled = [...imagePhotos]
-			for (let i = shuffled.length - 1; i > 0; i -= 1) {
-				const j = Math.floor(Math.random() * (i + 1))
-				const tmp = shuffled[i]
-				shuffled[i] = shuffled[j]
-				shuffled[j] = tmp
+			const galleryTitle = typeof gallery.title === 'string' ? gallery.title.trim() : ''
+
+			// North wall masterpiece (photo index 2)
+			const northSlot = slotById('north-photo-0')
+			if (northSlot) {
+				const northUrl = photos[2] || photos[0] || null
+				placePhotoInSlot(northSlot, northUrl, { placeholderTitle: 'Masterpiece', photoTitle: galleryTitle ? `${galleryTitle} • Masterpiece` : 'North Masterpiece' })
 			}
 
-			for (let i = 0; i < eastPhotoSlots.length; i += 1) {
-				placePhotoWithCaption(eastPhotoSlots[i], shuffled[i] ?? null)
+			// South wall flanking gate (photo indices 3 and 4)
+			const southSlot0 = slotById('south-photo-0')
+			if (southSlot0) {
+				const s0Url = photos[3] || photos[1] || null
+				placePhotoInSlot(southSlot0, s0Url, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • South Wing I` : 'South Wing I' })
+			}
+			const southSlot1 = slotById('south-photo-1')
+			if (southSlot1) {
+				const s1Url = photos[4] || photos[2] || null
+				placePhotoInSlot(southSlot1, s1Url, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • South Wing II` : 'South Wing II' })
+			}
+
+			// East wall (5 photos, slightly larger, ZERO captions, photo indices 5, 6, 7, 8, 9)
+			for (let i = 0; i < 5; i += 1) {
+				const slot = slotById(`east-photo-${i}`)
+				if (slot) {
+					const photoIdx = 5 + i
+					const photoUrl = photos[photoIdx] || photos[i % photos.length] || null
+					placePhotoInSlot(slot, photoUrl, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • Artwork #${i + 1}` : `Artwork #${i + 1}` })
+				}
 			}
 		}
 
@@ -2395,7 +2004,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 			const panel0 = slotById('west-text-0')
 
-			placeTextInSlot(panel0, { title: galleryTitle || 'Wikipedia', text: source, startLine: 0, withTitle: false, twoColumn: true })
+			placeTextInSlot(panel0, { title: galleryTitle || 'Sanctuary Dedication', text: source, startLine: 0, withTitle: true, twoColumn: source.length > 700 })
 		}
 	}
 

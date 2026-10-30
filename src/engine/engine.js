@@ -11,6 +11,7 @@ export function startYourEngines({
 	onDoorTrigger,
 	onRandomExhibitRequested,
 	onGoLobbyRequested,
+	onPhotoClick,
 	roomSeedTitle = 'Lobby',
 	roomMode = 'gallery',
 	lobbyCategories,
@@ -53,6 +54,27 @@ export function startYourEngines({
 	camera.add(flashlight)
 	flashlight.visible = false
 	let flashlightTimeoutId = 0
+
+	// Floating Dust / Ambient Particle System
+	const particleCount = 180
+	const particleGeo = new THREE.BufferGeometry()
+	const particlePositions = new Float32Array(particleCount * 3)
+	for (let i = 0; i < particleCount; i++) {
+		particlePositions[i * 3 + 0] = (Math.random() - 0.5) * 16
+		particlePositions[i * 3 + 1] = Math.random() * 4.5 + 0.2
+		particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 16
+	}
+	particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3))
+	const particleMat = new THREE.PointsMaterial({
+		color: 0xffffff,
+		size: 0.045,
+		transparent: true,
+		opacity: 0.65,
+		blending: THREE.AdditiveBlending,
+	})
+	const dustParticles = new THREE.Points(particleGeo, particleMat)
+	scene.add(dustParticles)
+	let prePlayIdleTime = 0
 
 	const staticDisposables = []
 	staticDisposables.push({
@@ -399,6 +421,7 @@ export function startYourEngines({
 
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
+		applyAmbiencePreset()
 
 		deferredTextureLoadToken += 1
 		void runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
@@ -474,6 +497,9 @@ export function startYourEngines({
 	function onKeyDown(e) {
 		keysDown.add(e.code)
 		if (e.code === 'Space') jumpRequested = true
+		if (isPointerLocked() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+			e.preventDefault()
+		}
 	}
 
 	function onKeyUp(e) {
@@ -540,17 +566,27 @@ export function startYourEngines({
 
 	function onMouseDown(e) {
 		if (e.button !== 0) return
-		if (!isPointerLocked()) return
 		if (interactionLocked) return
+		const locked = isPointerLocked()
+		if (!locked && !document.body.classList.contains('in-sanctuary')) return
 
-		flashlight.visible = true
-		if (flashlightTimeoutId) window.clearTimeout(flashlightTimeoutId)
-		flashlightTimeoutId = window.setTimeout(() => {
-			flashlight.visible = false
-			flashlightTimeoutId = 0
-		}, 120)
+		if (locked) {
+			flashlight.visible = true
+			if (flashlightTimeoutId) window.clearTimeout(flashlightTimeoutId)
+			flashlightTimeoutId = window.setTimeout(() => {
+				flashlight.visible = false
+				flashlightTimeoutId = 0
+			}, 120)
+		}
 
-		raycaster.setFromCamera(rayNdc, camera)
+		if (locked) {
+			raycaster.setFromCamera(rayNdc, camera)
+		} else {
+			const rect = canvas.getBoundingClientRect()
+			const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1
+			const mouseY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
+			raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera)
+		}
 		const candidates = []
 		if (doorHitMeshes.length) candidates.push(...doorHitMeshes)
 		if (pickableMeshes.length) candidates.push(...pickableMeshes)
@@ -561,6 +597,32 @@ export function startYourEngines({
 
 		const hitObj = hits[0]?.object
 		const hitPoint = hits[0]?.point
+
+		// Check if clicked an artwork / photo (allowed from up to 14 meters away across the gallery)
+		{
+			let cur = hitObj
+			while (cur) {
+				if (cur.userData?.isPhoto || cur.userData?.pickableType === 'wall-photo' || cur.userData?.pickableType === 'column-photo') {
+					const photoUrl = cur.userData.photoUrl
+					if (photoUrl) {
+						const d = hitPoint && typeof hitPoint.distanceTo === 'function' ? hitPoint.distanceTo(camera.position) : 0
+						if (d <= 14.0) {
+							if (document.exitPointerLock) {
+								document.exitPointerLock()
+							}
+							if (typeof onPhotoClick === 'function') {
+								onPhotoClick({
+									url: photoUrl,
+									title: cur.userData.photoTitle || 'Masterpiece',
+								})
+							}
+							return
+						}
+					}
+				}
+				cur = cur.parent
+			}
+		}
 
 		const interactMaxDistance = 2.25
 		if (hitPoint && typeof hitPoint.distanceTo === 'function') {
@@ -576,7 +638,7 @@ export function startYourEngines({
 					try {
 						onClick({ object: cur, hitObject: hitObj, hitPoint, camera })
 					} catch (err) {
-						console.warn('[linkwalk] onClick handler failed', err)
+						console.warn('[OurMuseum] onClick handler failed', err)
 					}
 					return
 				}
@@ -587,10 +649,10 @@ export function startYourEngines({
 						try {
 							onRandomExhibitRequested()
 						} catch (err) {
-							console.warn('[linkwalk] Random exhibit handler failed', err)
+							console.warn('[OurMuseum] Random exhibit handler failed', err)
 						}
 					} else {
-						console.info('[linkwalk] Random exhibit requested')
+						console.info('[OurMuseum] Random exhibit requested')
 					}
 					return
 				}
@@ -600,10 +662,10 @@ export function startYourEngines({
 						try {
 							onGoLobbyRequested()
 						} catch (err) {
-							console.warn('[linkwalk] Go lobby handler failed', err)
+							console.warn('[OurMuseum] Go lobby handler failed', err)
 						}
 					} else {
-						console.info('[linkwalk] Go lobby requested')
+						console.info('[OurMuseum] Go lobby requested')
 					}
 					return
 				}
@@ -632,7 +694,7 @@ export function startYourEngines({
 		if (typeof onDoorTrigger === 'function') {
 			onDoorTrigger(door)
 		} else {
-			console.info(`[linkwalk] Door clicked: ${doorId}`)
+			console.info(`[OurMuseum] Door clicked: ${doorId}`)
 		}
 	}
 
@@ -648,8 +710,13 @@ export function startYourEngines({
 			return
 		}
 
-		const inputX = (keysDown.has('KeyD') ? 1 : 0) - (keysDown.has('KeyA') ? 1 : 0)
-		const inputZ = (keysDown.has('KeyW') ? 1 : 0) - (keysDown.has('KeyS') ? 1 : 0)
+		const moveForward = keysDown.has('KeyW') || keysDown.has('ArrowUp')
+		const moveBackward = keysDown.has('KeyS') || keysDown.has('ArrowDown')
+		const moveLeft = keysDown.has('KeyA') || keysDown.has('ArrowLeft')
+		const moveRight = keysDown.has('KeyD') || keysDown.has('ArrowRight')
+
+		const inputX = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0)
+		const inputZ = (moveForward ? 1 : 0) - (moveBackward ? 1 : 0)
 
 		let moveX = 0
 		let moveZ = 0
@@ -840,6 +907,23 @@ export function startYourEngines({
 
 		updatePlayer(dt)
 
+		// Floating embers subtle motion
+		if (dustParticles) {
+			const posArr = dustParticles.geometry.attributes.position.array
+			for (let i = 0; i < particleCount; i++) {
+				posArr[i * 3 + 1] += Math.sin(clock.elapsedTime + i) * 0.002 - 0.0004
+				if (posArr[i * 3 + 1] < 0.2) posArr[i * 3 + 1] = 4.8
+			}
+			dustParticles.geometry.attributes.position.needsUpdate = true
+		}
+
+		// Cinematic drift before entering
+		if (!isPointerLocked()) {
+			prePlayIdleTime += dt
+			camera.rotation.y = yaw + Math.sin(prePlayIdleTime * 0.25) * 0.06
+			camera.rotation.x = pitch + Math.sin(prePlayIdleTime * 0.35) * 0.02
+		}
+
 		setBodyClickableCursor(computeIsAimingAtClickable())
 
 		resize()
@@ -850,6 +934,20 @@ export function startYourEngines({
 	window.addEventListener('resize', resize)
 	resize()
 	rafId = window.requestAnimationFrame(frame)
+
+	function applyAmbiencePreset() {
+		if (!currentRoom) return
+		renderer.toneMappingExposure = 1.0
+		scene.background.set(0x05030a)
+		particleMat.color.set(0xffffff)
+		currentRoom.group.traverse((o) => {
+			if (o.isLight) {
+				if (o.isAmbientLight) { o.color.set(0xf5f8ff); o.intensity = 1.0 }
+				else if (o.isDirectionalLight) { o.color.set(0xffffff); o.intensity = 1.55 }
+				else if (o.isPointLight) { o.color.set(0xebf2ff); o.intensity = 1.15 }
+			}
+		})
+	}
 
 	return {
 		setInteractionLocked(locked) {

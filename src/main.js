@@ -1,175 +1,193 @@
 import './style.css'
 import { startYourEngines } from './engine/engine.js'
 import { coupleSalons, coupleCategories } from './data/coupleMuseum.js'
-import { fetchGalleryRoomData, fetchGalleryRoomRelated, fetchWikipediaRandomTitle, setWikipediaLanguage } from './wiki/wiki.js'
+import { fetchGalleryRoomData, fetchGalleryRoomRelated, fetchWikipediaRandomTitle } from './wiki/wiki.js'
 
 const app = document.querySelector('#app');
 app.innerHTML = `
+  <div id="top-bar">
+    <button id="btn-audio-toggle" class="top-bar-btn" title="Toggle Romantic Classical Ambience (Press M)">
+      <span id="audio-label">Music</span>
+      <div id="soundwave-anim" class="soundwave">
+        <div class="soundwave-bar"></div>
+        <div class="soundwave-bar"></div>
+        <div class="soundwave-bar"></div>
+        <div class="soundwave-bar"></div>
+      </div>
+      <span class="top-bar-key">M</span>
+    </button>
+    <button id="btn-fullscreen-toggle" class="top-bar-btn" title="Toggle Fullscreen (Press F)">
+      <span>⛶</span>
+      <span class="top-bar-key">F</span>
+    </button>
+  </div>
+
   <div id="scene-container">
   	<canvas id="scene" aria-label="3D scene"></canvas>
   </div>
-  <div id="overlay" aria-label="Click to start">
-	<div id="overlay-titlebar">
-    <div id="overlay-titlebar-inner">
-      <p>OUR MUSEUM</p>
-      <div style="font-size: 14px; opacity: 0.85; margin-top: 4px; letter-spacing: 1px;">A Sanctuary for Maya & Ethan</div>
-      <div id="language-picker" aria-label="Language">
-        <span id="language-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" />
-            <path d="M3 12h18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-            <path d="M12 3c3.5 3.5 3.5 14 0 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-            <path d="M12 3c-3.5 3.5-3.5 14 0 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
-          </svg>
-        </span>
-		<select id="language-select" aria-label="Language">
-			<option value="en">English</option>
-			<option value="de">Deutsch</option>
-			<option value="es">Español</option>
-			<option value="fr">Français</option>
-			<option value="it">Italiano</option>
-			<option value="ja">日本語</option>
-			<option value="pl">Polski</option>
-			<option value="pt">Português</option>
-			<option value="ru">Русский</option>
-			<option value="sr">Српски</option>
-			<option value="zh">中文</option>
-			<option value="ceb">Cebuano</option>
-			<option value="sv">Svenska</option>
-			<option value="nl">Nederlands</option>
-		</select>
-        <span id="language-caret" aria-hidden="true">▾</span>
+
+  <div id="overlay" aria-label="Welcome">
+    <div id="ticket-card">
+      <div class="ticket-header">
+        <span class="ticket-tag">PRIVATE EXHIBITION PASS</span>
+        <span class="ticket-number">NO. 2026-1030</span>
+      </div>
+      <h1 class="ticket-title">OUR MUSEUM</h1>
+      <div class="ticket-subtitle">A Sanctuary for Maya &amp; Ethan</div>
+      <div class="ticket-quote">"In every hall, a memory; in every frame, a promise."</div>
+      <div class="ticket-divider"></div>
+
+      <button id="btn-enter-museum" class="btn-enter">
+        <span class="btn-enter-sparkle">✦</span>
+        <span>ENTER SANCTUARY</span>
+        <span class="btn-enter-sparkle">✦</span>
+      </button>
+
+      <div class="ticket-controls">
+        <span class="key-badge">W A S D</span> or <span class="key-badge">↑ ← ↓ →</span> Move
+        <span class="sep">·</span>
+        <span class="key-badge">SPACE</span> Jump
+        <span class="sep">·</span>
+        <span class="key-badge">SHIFT</span> Sprint
+        <span class="sep">·</span>
+        <span class="key-badge">M</span> Music
+        <span class="sep">·</span>
+        <span class="key-badge">F</span> Fullscreen
+        <span class="sep">·</span>
+        <span class="key-badge">ESC</span> Unlock Cursor
       </div>
     </div>
-	</div>
-    <div id="overlay-inner">
-      <div id="overlay-title">Click to play</div>
-      <div id="overlay-sub">WASD/Arrows move · Mouse look · SPACE jump · SHIFT sprint · ESCAPE unlock</div>
+
+    <div id="overlay-footer">
+      <p>Curated with ❤️ for Maya &amp; Ethan · Crafted by Hitesh Bohra</p>
     </div>
-	<div id="overlay-footer">
-		<p>Curated with ❤️ for Maya & Ethan · Powered by notbigmuzzy</p>
-	</div>
   </div>
+
   <div id="hud">
     <div id="crosshair" aria-hidden="true"></div>
   </div>
 `
 
 const canvas = document.querySelector('#scene')
-const overlayEl = document.querySelector('#overlay-inner')
+const overlayEl = document.querySelector('#overlay')
 const crosshairEl = document.querySelector('#crosshair')
-const languageSelectEl = document.querySelector('#language-select')
 
 function requestPlay() {
 	canvas.requestPointerLock()
 }
 
-overlayEl.addEventListener('click', requestPlay)
-overlayEl.addEventListener('keydown', (e) => {
-	if (e.code === 'Enter' || e.code === 'Space') requestPlay()
-})
+// -------------------------------------------------------------------------
+// ROMANTIC AMBIENT SYNTH (Web Audio API - Chopin / Debussy chord progression)
+// -------------------------------------------------------------------------
+let audioCtx = null
+let isAudioPlaying = false
+let chordIntervalId = null
 
-const language_key_from_local_storage = 'linkwalk:language:v1'
+function initAudio() {
+	if (audioCtx) return
+	const AudioContextClass = window.AudioContext || window.webkitAudioContext
+	if (!AudioContextClass) return
+	audioCtx = new AudioContextClass()
+}
 
-function lobbyCategoriesForLanguage(lang) {
-	const languageCode = String(lang || '').trim().toLowerCase()
-	switch (languageCode) {
-		case 'en':
-			return ['Culture', 'Geography', 'Animals', 'History', 'Nature', 'England', 'Philosophy', 'Cosmology', 'Society', 'Technology', 'Music', 'Painting'];
-		case 'de':
-			return ['Kultur', 'Geografie', 'Tiere', 'Geschichte', 'Natur', 'Deutschland', 'Philosophie', 'Kosmologie', 'Gesellschaft', 'Technologie', 'Musik', 'Malerei'];
-		case 'es':
-			return ['Cultura', 'Geografía', 'Animales', 'Historia', 'Naturaleza', 'España', 'Filosofía', 'Cosmología', 'Sociedad', 'Tecnología', 'Música', 'Pintura'];
-		case 'fr':
-			return ['Culture', 'Géographie', 'Animaux', 'Histoire', 'Nature', 'France', 'Philosophie', 'Cosmologie', 'Société', 'Technologie', 'Musique', 'Peinture'];
-		case 'it':
-			return ['Cultura', 'Geografia', 'Animali', 'Storia', 'Natura', 'Italia', 'Filosofia', 'Cosmologia', 'Società', 'Tecnologia', 'Musica', 'Pittura'];
-		case 'ja':
-			return ['文化', '地理', '動物', '歴史', '自然', '日本国', '哲学', '宇宙論', '社会', 'テクノロジー', '音楽', '絵画'];
-		case 'pl':
-			return ['Kultura', 'Geografia', 'Zwierzęta', 'Historia', 'Przyroda', 'Polska', 'Filozofia', 'Kosmologia', 'Społeczeństwo', 'Technologia', 'Muzyka', 'Malarstwo'];
-		case 'pt':
-			return ['Cultura', 'Geografia', 'Animais', 'História', 'Natureza', 'Portugal', 'Filosofia', 'Cosmologia', 'Sociedade', 'Tecnologia', 'Música', 'Pintura'];
-		case 'ru':
-			return ['Культура', 'География', 'Животные', 'История', 'Природа', 'Russia', 'Философия', 'Космология', 'Общество', 'Технологии', 'Музыка', 'Живопись'];
-		case 'sr':
-			return ['Култура', 'Географија', 'Животиње', 'Историја', 'Природа', 'Србија', 'Филозофија', 'Космологија', 'Друштво', 'Технологија', 'Музика', 'Сликарство'];
-		case 'zh':
-			return ['文化', '地理', '动物', '历史', '自然', '中华人民共和国', '哲学', '宇宙学', '社会', '科技', '音乐', '绘画'];
-		case 'ceb':
-			return ['Kultura', 'Heograpiya', 'Mga Mananap', 'Kasaysayan', 'Kinaiyahan', 'Pilipinas', 'Pilosopiya', 'Kosmolohiya', 'Sosyedad', 'Teknolohiya', 'Musika', 'Pamintal'];
-		case 'sv':
-			return ['Kultur', 'Geografi', 'Djur', 'Historia', 'Natur', 'Sverige', 'Filosofi', 'Kosmologi', 'Samhälle', 'Teknik', 'Musik', 'Måleri'];
-		case 'nl':
-			return ['Cultuur', 'Geografie', 'Dieren', 'Geschiedenis', 'Natuur', 'Nederland', 'Filosofie', 'Kosmologie', 'Samenleving', 'Technologie', 'Muziek', 'Schilderkunst'];
-		default:
-			return ['Culture', 'Geography', 'Animals', 'History', 'Nature', 'England', 'Philosophy', 'Cosmology', 'Society', 'Technology', 'Music', 'Painting'];;
+function playRomanticChord(frequencies) {
+	if (!audioCtx || audioCtx.state !== 'running') return
+	const now = audioCtx.currentTime
+	const masterGain = audioCtx.createGain()
+	masterGain.gain.setValueAtTime(0.001, now)
+	masterGain.gain.exponentialRampToValueAtTime(0.12, now + 1.2)
+	masterGain.gain.exponentialRampToValueAtTime(0.001, now + 5.5)
+
+	const filter = audioCtx.createBiquadFilter()
+	filter.type = 'lowpass'
+	filter.frequency.setValueAtTime(750, now)
+
+	masterGain.connect(filter)
+	filter.connect(audioCtx.destination)
+
+	frequencies.forEach((freq, idx) => {
+		const osc = audioCtx.createOscillator()
+		osc.type = idx % 2 === 0 ? 'sine' : 'triangle'
+		osc.frequency.setValueAtTime(freq, now)
+		osc.detune.setValueAtTime((idx - 1.5) * 5, now)
+		osc.connect(masterGain)
+		osc.start(now)
+		osc.stop(now + 6.0)
+	})
+}
+
+const chordProgression = [
+	[220.00, 261.63, 329.63, 392.00], // Am7
+	[174.61, 220.00, 261.63, 329.63], // Fmaj7
+	[130.81, 164.81, 196.00, 246.94], // Cmaj7
+	[196.00, 246.94, 293.66, 349.23], // G7
+]
+let chordIndex = 0
+
+function toggleAmbientAudio() {
+	initAudio()
+	if (!audioCtx) return
+
+	if (audioCtx.state === 'suspended') {
+		audioCtx.resume()
 	}
-}
 
-function loadUrlLanguage() {
-	const raw = new URLSearchParams(window.location.search).get('language')
-	return typeof raw === 'string' ? raw.trim() : ''
-}
+	isAudioPlaying = !isAudioPlaying
+	const soundwaveEl = document.querySelector('#soundwave-anim')
+	const audioLabelEl = document.querySelector('#audio-label')
 
-function loadPersistedLanguage() {
-	try {
-		const raw = window?.localStorage?.getItem(LANGUAGE_PERSIST_KEY)
-		return typeof raw === 'string' ? raw.trim() : ''
-	} catch {
-		return ''
-	}
-}
-
-function savePersistedLanguage(lang) {
-	try {
-		if (!window?.localStorage) return
-		window.localStorage.setItem(LANGUAGE_PERSIST_KEY, String(lang || ''))
-	} catch { }
-}
-
-const initialUrlLang = loadUrlLanguage()
-const initialPersistedLang = loadPersistedLanguage()
-
-let activeLanguage = setWikipediaLanguage(initialUrlLang || initialPersistedLang || 'en')
-savePersistedLanguage(activeLanguage)
-
-function syncLanguageFromUrlOrStorage() {
-	const urlLang = loadUrlLanguage()
-	const persistedLang = loadPersistedLanguage()
-	const next = setWikipediaLanguage(urlLang || persistedLang || 'en')
-	if (next !== activeLanguage) {
-		activeLanguage = next
-		savePersistedLanguage(activeLanguage)
-		return {
-			changed: true,
-			value: activeLanguage
+	if (isAudioPlaying) {
+		soundwaveEl?.classList.add('playing')
+		if (audioLabelEl) audioLabelEl.textContent = 'Playing'
+		playRomanticChord(chordProgression[chordIndex % chordProgression.length])
+		chordIntervalId = setInterval(() => {
+			chordIndex++
+			playRomanticChord(chordProgression[chordIndex % chordProgression.length])
+		}, 5500)
+	} else {
+		soundwaveEl?.classList.remove('playing')
+		if (audioLabelEl) audioLabelEl.textContent = 'Music'
+		if (chordIntervalId) {
+			clearInterval(chordIntervalId)
+			chordIntervalId = null
 		}
 	}
-	savePersistedLanguage(activeLanguage)
-	return {
-		changed: false,
-		value: activeLanguage
+}
+
+// Event Listeners for UI
+let hasEntered = false
+
+function enterMuseum() {
+	hasEntered = true
+	document.body.classList.add('in-sanctuary')
+	overlayEl.hidden = true
+	requestPlay()
+	if (!isAudioPlaying) {
+		toggleAmbientAudio()
 	}
 }
 
-function applyLanguage(nextLang, { persist = true, updateUrl = true, reloadToLobby = false } = {}) {
-	const normalized = setWikipediaLanguage(nextLang)
-	activeLanguage = normalized
-	if (persist) savePersistedLanguage(activeLanguage)
+document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuseum)
 
-	if (updateUrl) {
-		setUrlAndState(null, { push: false })
+// Resume pointer lock on canvas click if already entered and unlocked
+canvas.addEventListener('click', () => {
+	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden) {
+		requestPlay()
 	}
+})
 
-	if (reloadToLobby) {
-		window.location.reload()
+document.querySelector('#btn-audio-toggle')?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	toggleAmbientAudio()
+})
+
+document.querySelector('#btn-fullscreen-toggle')?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	if (!document.fullscreenElement) {
+		document.documentElement.requestFullscreen().catch(() => {})
+	} else {
+		document.exitFullscreen().catch(() => {})
 	}
-}
-
-languageSelectEl.value = activeLanguage
-languageSelectEl.addEventListener('change', () => {
-	applyLanguage(languageSelectEl.value, { persist: true, updateUrl: true, reloadToLobby: true })
 })
 
 const params = new URLSearchParams(window.location.search)
@@ -183,7 +201,7 @@ let randomAbortController = null
 let activeNavId = 0
 let activeDoorLabelOverride = null
 
-const trail_key_from_local_storage = 'linkwalk:trail:v1'
+const trail_key_from_local_storage = 'ourmuseum:trail:v1'
 const trail_maximum_length = 30
 
 function loadTrailPersist() {
@@ -230,13 +248,12 @@ let historyIndex = 0
 
 function setUrlAndState(title, { push = false } = {}) {
 	const nextParams = new URLSearchParams(window.location.search)
-	nextParams.set('language', activeLanguage)
 	if (title) nextParams.set('exhibit', title)
 	else nextParams.delete('exhibit')
 
 	const q = nextParams.toString()
 	const url = q ? `${window.location.pathname}?${q}` : window.location.pathname
-	const nextState = { linkwalk: true, idx: historyIndex, title: title || null }
+	const nextState = { ourmuseum: true, idx: historyIndex, title: title || null }
 
 	if (push) {
 		historyIndex += 1
@@ -248,8 +265,6 @@ function setUrlAndState(title, { push = false } = {}) {
 }
 
 function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState = true, loadingDoorId = null } = {}) {
-	syncLanguageFromUrlOrStorage()
-
 	if (activeDoorLabelOverride && engineApi && typeof engineApi.setDoorLabelOverride === 'function') {
 		engineApi.setDoorLabelOverride(activeDoorLabelOverride.doorId, '')
 		activeDoorLabelOverride = null
@@ -383,7 +398,7 @@ function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState
 		})
 		.catch((err) => {
 			if (err && err.code === 'aborted') return
-			console.warn('[linkwalk] Wiki fetch failed', err)
+			console.warn('[OurMuseum] Wiki fetch failed', err)
 		})
 		.finally(() => {
 			if (navId !== activeNavId) return
@@ -453,10 +468,78 @@ function requestRandomExhibit() {
 		})
 		.catch((err) => {
 			if (err && err.code === 'aborted') return
-			console.warn('[linkwalk] Random exhibit failed', err)
+			console.warn('[OurMuseum] Random exhibit failed', err)
 			setLoading(false)
 		})
 }
+
+// Photo Lightbox Modal (Click-to-Enlarge Artworks)
+const lightboxEl = document.createElement('div')
+lightboxEl.id = 'photo-lightbox-modal'
+lightboxEl.className = 'photo-lightbox'
+lightboxEl.hidden = true
+lightboxEl.innerHTML = `
+	<div class="photo-lightbox-backdrop"></div>
+	<div class="photo-lightbox-content">
+		<button class="photo-lightbox-close" title="Close (Esc)" aria-label="Close">✕</button>
+		<div class="photo-lightbox-frame">
+			<img class="photo-lightbox-img" src="" alt="Exhibition Artwork" />
+		</div>
+		<div class="photo-lightbox-meta">
+			<div class="photo-lightbox-badge">✦ SANCTUARY EXHIBITION ✦</div>
+			<div class="photo-lightbox-title"></div>
+			<div class="photo-lightbox-hint">Click outside or press [ESC] to return to gallery</div>
+		</div>
+	</div>
+`
+document.body.appendChild(lightboxEl)
+
+const lightboxImg = lightboxEl.querySelector('.photo-lightbox-img')
+const lightboxTitle = lightboxEl.querySelector('.photo-lightbox-title')
+const lightboxCloseBtn = lightboxEl.querySelector('.photo-lightbox-close')
+const lightboxBackdrop = lightboxEl.querySelector('.photo-lightbox-backdrop')
+
+let lightboxOpenedAt = 0
+
+function openPhotoLightbox({ url, title }) {
+	if (!url) return
+	lightboxImg.src = url
+	lightboxTitle.textContent = title || 'Our Museum Masterpiece'
+	lightboxEl.hidden = false
+	lightboxEl.classList.add('active')
+	lightboxOpenedAt = Date.now()
+}
+
+function closePhotoLightbox(force = false) {
+	if (!force && Date.now() - lightboxOpenedAt < 250) {
+		return
+	}
+	lightboxEl.classList.remove('active')
+	lightboxEl.hidden = true
+	lightboxImg.src = ''
+}
+
+lightboxCloseBtn.addEventListener('click', () => closePhotoLightbox(true))
+lightboxBackdrop.addEventListener('click', () => closePhotoLightbox(false))
+window.addEventListener('keydown', (e) => {
+	if (e.key === 'Escape' && !lightboxEl.hidden) {
+		closePhotoLightbox(true)
+		return
+	}
+	// Hotkeys for Music and Fullscreen while moving or unlocked
+	if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
+		toggleAmbientAudio()
+		return
+	}
+	if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+		if (!document.fullscreenElement) {
+			document.documentElement.requestFullscreen().catch(() => {})
+		} else {
+			document.exitFullscreen().catch(() => {})
+		}
+		return
+	}
+})
 
 engineApi = startYourEngines({
 	canvas,
@@ -465,11 +548,16 @@ engineApi = startYourEngines({
 	roomSpawn: { type: 'fromWall', wall: 'south' },
 	lobbyCategories: coupleCategories,
 	onRandomExhibitRequested: requestRandomExhibit,
+	onPhotoClick: openPhotoLightbox,
 	onGoLobbyRequested() {
 		enterlobby({ push: false })
 	},
 	onPointerLockChange(locked) {
-		overlayEl.hidden = locked
+		if (!hasEntered) {
+			overlayEl.hidden = locked
+		} else {
+			overlayEl.hidden = true
+		}
 		document.body.classList.toggle('locked', locked)
 	},
 	onDoorTrigger(door) {
@@ -511,10 +599,8 @@ if (!initialTitle) {
 setUrlAndState(initialTitle ? initialTitle : null, { push: false })
 
 window.addEventListener('popstate', (e) => {
-	const { changed } = syncLanguageFromUrlOrStorage()
-
 	const st = e?.state
-	if (st && st.linkwalk && typeof st.idx === 'number') {
+	if (st && st.ourmuseum && typeof st.idx === 'number') {
 		historyIndex = st.idx
 	}
 
@@ -530,9 +616,6 @@ window.addEventListener('popstate', (e) => {
 		return
 	}
 
-	if (changed && engineApi && typeof engineApi.setRoom === 'function') {
-		engineApi.setRoom({ roomMode: 'lobby', lobbyCategories: lobbyCategoriesForLanguage(activeLanguage) })
-	}
 	enterlobby({ push: false })
 	setLoading(false)
 })

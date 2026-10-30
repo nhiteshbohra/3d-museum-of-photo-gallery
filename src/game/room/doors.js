@@ -21,7 +21,7 @@ function seededRand(seed) {
 	}
 }
 
-function makeMarbleTexture({ size = 512, seed = 1 } = {}) {
+export function makeMarbleTexture({ size = 512, seed = 1 } = {}) {
 	const canvas = document.createElement('canvas')
 	canvas.width = size
 	canvas.height = size
@@ -30,26 +30,26 @@ function makeMarbleTexture({ size = 512, seed = 1 } = {}) {
 	const rand = seededRand(seed)
 
 	if (ctx) {
-		ctx.fillStyle = '#d8d8dc'
+		ctx.fillStyle = '#f6f6f8'
 		ctx.fillRect(0, 0, size, size)
 
-		const clouds = 340
+		const clouds = 320
 		for (let i = 0; i < clouds; i += 1) {
 			const x = rand() * size
 			const y = rand() * size
 			const r = (0.02 + rand() * 0.12) * size
-			const a = 0.025 + rand() * 0.05
-			const g = 205 + Math.floor((rand() - 0.5) * 30)
+			const a = 0.025 + rand() * 0.04
+			const g = 215 + Math.floor((rand() - 0.5) * 30)
 			ctx.fillStyle = `rgba(${g},${g},${g},${a})`
 			ctx.beginPath()
 			ctx.arc(x, y, r, 0, Math.PI * 2)
 			ctx.fill()
 		}
 
-		ctx.globalAlpha = 0.6
-		ctx.strokeStyle = 'rgba(115,115,122,0.55)'
+		ctx.globalAlpha = 0.55
+		ctx.strokeStyle = 'rgba(125,120,115,0.45)'
 		ctx.lineWidth = Math.max(1, Math.floor(size * 0.004))
-		const veins = 18
+		const veins = 16
 		for (let i = 0; i < veins; i += 1) {
 			const y0 = rand() * size
 			const wobble = (rand() - 0.5) * size * 0.22
@@ -57,57 +57,87 @@ function makeMarbleTexture({ size = 512, seed = 1 } = {}) {
 			ctx.moveTo(-size * 0.1, y0)
 			ctx.bezierCurveTo(size * 0.25, y0 + wobble, size * 0.55, y0 - wobble, size * 1.1, y0 + wobble * 0.35)
 			ctx.stroke()
-
-
-			if (rand() < 0.55) {
-				ctx.globalAlpha = 0.28
-				ctx.beginPath()
-				ctx.moveTo(-size * 0.1, y0 + (rand() - 0.5) * size * 0.08)
-				ctx.bezierCurveTo(size * 0.25, y0 + wobble * 0.7, size * 0.55, y0 - wobble * 0.7, size * 1.1, y0 + wobble * 0.22)
-				ctx.stroke()
-				ctx.globalAlpha = 0.6
-			}
 		}
-		ctx.globalAlpha = 1
-
-		const v = ctx.createRadialGradient(size / 2, size / 2, size * 0.08, size / 2, size / 2, size * 0.8)
-		v.addColorStop(0, 'rgba(255,255,255,0.02)')
-		v.addColorStop(1, 'rgba(0,0,0,0.10)')
-		ctx.fillStyle = v
-		ctx.fillRect(0, 0, size, size)
 	}
 
 	const tex = new THREE.CanvasTexture(canvas)
 	tex.colorSpace = THREE.SRGBColorSpace
-	tex.wrapS = THREE.ClampToEdgeWrapping
-	tex.wrapT = THREE.ClampToEdgeWrapping
-	tex.needsUpdate = true
 	return tex
 }
 
-export function addDoor(ctx, { id, wall, w, h, y = 0, u = 0, color = 0x22ffee, meta = {} }) {
-	const { walls, height, wallThickness, group, markers, disposables, doorHitMeshes, doors } = ctx
+export function addDoor(ctx, opts = {}) {
+	const options = opts && typeof opts === 'object' && Object.keys(opts).length > 0 ? opts : (ctx || {})
+	const context = opts && typeof opts === 'object' && Object.keys(opts).length > 0 ? (ctx || {}) : (options || {})
 
-	const wallInfo = walls[wall]
-	const wallNormal = wallInfo.normal.clone().normalize()
-	const wallUp = new THREE.Vector3(0, 1, 0)
-	const wallRight = wall === 'east' || wall === 'west' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)
+	const {
+		walls = {},
+		height = 3.5,
+		halfW = 7.0,
+		halfL = 7.0,
+		wallThickness = 0.2,
+		group = new THREE.Group(),
+		markers = new THREE.Group(),
+		disposables = [],
+		doorHitMeshes = [],
+		doors = [],
+		doorStyle = null,
+		textures = {},
+	} = context
+
+	const {
+		id = 'door',
+		wall = 'north',
+		w = 1.25,
+		h = 2.4,
+		y = 0,
+		u = 0,
+		color = 0x22ffee,
+		meta = {},
+	} = options
+
+	const doorWoodMap = textures?.doorWoodMap
+	const doorWoodBump = textures?.doorWoodBump
+	const hasWoodTex = Boolean(doorWoodMap && doorWoodBump)
+
+	let wallNormal = new THREE.Vector3()
+	let wallRight = new THREE.Vector3()
+	let wallUp = new THREE.Vector3(0, 1, 0)
+	let baseCenter = new THREE.Vector3()
+
+	const wallInfo = walls && walls[wall]
+	if (wallInfo && wallInfo.normal) {
+		wallNormal.copy(wallInfo.normal).normalize()
+		wallRight = wall === 'east' || wall === 'west' ? new THREE.Vector3(0, 0, 1) : new THREE.Vector3(1, 0, 0)
+		baseCenter = wallInfo.center
+			.clone()
+			.add(wallRight.clone().multiplyScalar(u))
+			.add(wallUp.clone().multiplyScalar(y - height / 2))
+			.add(wallNormal.clone().multiplyScalar(wallThickness / 2 + 0.03))
+	} else if (wall === 'north') {
+		wallNormal.set(0, 0, 1)
+		wallRight.set(1, 0, 0)
+		baseCenter.set(u, y, -halfL + 0.03)
+	} else if (wall === 'south') {
+		wallNormal.set(0, 0, -1)
+		wallRight.set(-1, 0, 0)
+		baseCenter.set(u, y, halfL - 0.03)
+	} else if (wall === 'east') {
+		wallNormal.set(-1, 0, 0)
+		wallRight.set(0, 0, 1)
+		baseCenter.set(halfW - 0.03, y, u)
+	} else if (wall === 'west') {
+		wallNormal.set(1, 0, 0)
+		wallRight.set(0, 0, -1)
+		baseCenter.set(-halfW + 0.03, y, u)
+	}
 
 	const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), wallNormal)
-	const baseCenter = wallInfo.center
-		.clone()
-		.add(wallRight.clone().multiplyScalar(u))
-		.add(wallUp.clone().multiplyScalar(y - height / 2))
-		.add(wallNormal.clone().multiplyScalar(wallThickness / 2 + 0.03))
 
 	const doorFrameGroup = new THREE.Group()
 	doorFrameGroup.name = `door-frame-${id}`
 
-	const style = ctx?.doorStyle || {}
-	const frameStyle = style?.frame || null
-	const doorStyle = style?.door || null
-	const fillStyle = style?.fill || null
-
+	// Materials
+	const frameStyle = doorStyle?.frame || null
 	const frameMat = frameStyle
 		? new THREE.MeshStandardMaterial({
 			color: frameStyle.color ?? 0x1a0f09,
@@ -115,161 +145,182 @@ export function addDoor(ctx, { id, wall, w, h, y = 0, u = 0, color = 0x22ffee, m
 			metalness: frameStyle.metalness ?? 0.0,
 		})
 		: new THREE.MeshStandardMaterial({
-			color,
-			roughness: 0.35,
-			metalness: 0.0,
+			color: 0x1c1714,
+			roughness: 0.48,
+			metalness: 0.1,
 		})
-	disposables.push(frameMat)
 
 	const doorPanelMat = new THREE.MeshStandardMaterial({
-		color: doorStyle?.color ?? 0x2a170d,
-		map: doorStyle?.map ?? null,
-		bumpMap: doorStyle?.bumpMap ?? null,
-		bumpScale: typeof doorStyle?.bumpScale === 'number' ? doorStyle.bumpScale : 0.02,
-		roughness: doorStyle?.roughness ?? 0.52,
-		metalness: doorStyle?.metalness ?? 0.0,
+		color: doorStyle?.color ?? (hasWoodTex ? 0xffffff : 0x3d2716),
+		map: hasWoodTex ? doorWoodMap : null,
+		bumpMap: hasWoodTex ? doorWoodBump : null,
+		bumpScale: 0.05,
+		roughness: doorStyle?.roughness ?? 0.42,
+		metalness: doorStyle?.metalness ?? 0.05,
 	})
-	disposables.push(doorPanelMat)
+	const brassMat = new THREE.MeshStandardMaterial({
+		color: 0xd4af37,
+		roughness: 0.24,
+		metalness: 0.88,
+	})
+	disposables.push(frameMat, doorPanelMat, brassMat)
 
 	const frameW = 0.08
 	const frameDepth = 0.08
 	const frameInsetX = 0.012
 
-	const fillGeo = new THREE.PlaneGeometry(w, h)
-	const fillMat = new THREE.MeshStandardMaterial({
-		color: fillStyle?.color ?? 0x0d1015,
-		roughness: fillStyle?.roughness ?? 0.95,
-		metalness: fillStyle?.metalness ?? 0.0,
+	// 1. Solid Recessed Door Base
+	const panelInset = 0.04
+	const innerW = Math.max(0.2, w - panelInset * 2)
+	const innerH = Math.max(0.2, h - panelInset * 2)
+	const doorSlabGeo = new THREE.BoxGeometry(innerW, innerH, 0.035)
+	const doorSlab = new THREE.Mesh(doorSlabGeo, doorPanelMat)
+	doorSlab.position.set(0, h / 2, -0.012)
+	doorFrameGroup.add(doorSlab)
+	disposables.push(doorSlabGeo)
+
+	// 2. Classical Raised Molding Frames (Upper & Lower Field Panels)
+	const moldingMat = new THREE.MeshStandardMaterial({
+		color: doorStyle?.color ?? 0x2e1d11,
+		roughness: 0.45,
+		metalness: 0.05,
 	})
-	const fill = new THREE.Mesh(fillGeo, fillMat)
-	fill.position.set(0, h / 2, -0.02)
-	doorFrameGroup.add(fill)
-	disposables.push(fillGeo, fillMat)
+	disposables.push(moldingMat)
 
-	const panelInset = 0.05
-	const panelGeo = new THREE.PlaneGeometry(Math.max(0.2, w - panelInset * 2), Math.max(0.2, h - panelInset * 2))
-	const panel = new THREE.Mesh(panelGeo, doorPanelMat)
-	panel.position.set(0, h / 2, -0.016)
-	doorFrameGroup.add(panel)
-	disposables.push(panelGeo)
+	const panelFieldW = innerW * 0.76
+	const upperFieldH = innerH * 0.38
+	const lowerFieldH = innerH * 0.38
+	const upperCenterY = h * 0.70
+	const lowerCenterY = h * 0.28
 
+	// Upper fielded molding frame
+	const upperTrimGeo = new THREE.BoxGeometry(panelFieldW, upperFieldH, 0.012)
+	const upperTrim = new THREE.Mesh(upperTrimGeo, moldingMat)
+	upperTrim.position.set(0, upperCenterY, 0.01)
+	doorFrameGroup.add(upperTrim)
+
+	// Lower fielded molding frame
+	const lowerTrimGeo = new THREE.BoxGeometry(panelFieldW, lowerFieldH, 0.012)
+	const lowerTrim = new THREE.Mesh(lowerTrimGeo, moldingMat)
+	lowerTrim.position.set(0, lowerCenterY, 0.01)
+	doorFrameGroup.add(lowerTrim)
+	disposables.push(upperTrimGeo, lowerTrimGeo)
+
+	// 3. Realistic Architectural Polished Brass Lever Handle & Escutcheon
+	const handleHeight = Math.min(1.05, h * 0.44)
+	const handleX = innerW / 2 - 0.12
+
+	// Circular Brass Backplate
+	const escutcheonGeo = new THREE.CylinderGeometry(0.042, 0.042, 0.01, 24)
+	const escutcheon = new THREE.Mesh(escutcheonGeo, brassMat)
+	escutcheon.rotation.x = Math.PI / 2
+	escutcheon.position.set(handleX, handleHeight, 0.012)
+	doorFrameGroup.add(escutcheon)
+
+	// Horizontal Brass Lever Handle
+	const stemGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.035, 16)
+	const stem = new THREE.Mesh(stemGeo, brassMat)
+	stem.rotation.x = Math.PI / 2
+	stem.position.set(handleX, handleHeight, 0.026)
+	doorFrameGroup.add(stem)
+
+	const leverGeo = new THREE.BoxGeometry(0.12, 0.018, 0.018)
+	const lever = new THREE.Mesh(leverGeo, brassMat)
+	lever.position.set(handleX - 0.048, handleHeight, 0.042)
+	doorFrameGroup.add(lever)
+
+	disposables.push(escutcheonGeo, stemGeo, leverGeo)
+
+	// 4. Plaque & Typography
 	const labelText =
-		typeof meta.label === 'string' && meta.label.trim().length > 0
+		typeof meta?.label === 'string' && meta.label.trim().length > 0
 			? meta.label.trim()
-			: typeof meta.category === 'string' && meta.category.trim().length > 0
+			: typeof meta?.category === 'string' && meta.category.trim().length > 0
 				? meta.category.trim()
 				: ''
 
 	let labelControl = null
 
 	if (labelText) {
-		const plaqueW = Math.min(w * 0.82, 1.35)
-		const plaqueH = 0.24
-		const plaqueCenterY = Math.min(h - 0.25, 1.4)
-		const plaqueGeo = new THREE.PlaneGeometry(plaqueW, plaqueH)
+		const plaqueW = Math.min(w * 0.85, 1.40)
+		const plaqueH = 0.28
+		const plaqueCenterY = Math.min(h - 0.22, 1.45)
 
-		const marbleTex = makeMarbleTexture({ size: 512, seed: hashStringToSeed(id) ^ 0x6d617262 })
+		// Brass beveled plaque backing frame
+		const plaqueBackGeo = new THREE.BoxGeometry(plaqueW + 0.04, plaqueH + 0.04, 0.014)
+		const plaqueBack = new THREE.Mesh(plaqueBackGeo, brassMat)
+		plaqueBack.position.set(0, plaqueCenterY, 0.008)
+		doorFrameGroup.add(plaqueBack)
+		disposables.push(plaqueBackGeo)
+
+		// Deep obsidian/noir plaque plate with gilded rim
+		const plaqueGeo = new THREE.PlaneGeometry(plaqueW, plaqueH)
 		const plaqueMat = new THREE.MeshStandardMaterial({
-			color: 0xffffff,
-			map: marbleTex,
-			roughness: 0.78,
-			metalness: 0.0,
+			color: 0x0c0d10,
+			roughness: 0.25,
+			metalness: 0.80,
 		})
 		const plaque = new THREE.Mesh(plaqueGeo, plaqueMat)
-		plaque.position.set(0, plaqueCenterY, -0.015)
+		plaque.position.set(0, plaqueCenterY, 0.014)
 		doorFrameGroup.add(plaque)
-		disposables.push(marbleTex, plaqueGeo, plaqueMat)
+		disposables.push(plaqueGeo, plaqueMat)
 
 		const canvas = document.createElement('canvas')
-		canvas.width = 512
-		canvas.height = 128
+		canvas.width = 1024
+		canvas.height = 256
 		const ctx2 = canvas.getContext('2d')
 		let drawLabelText = null
+
 		if (ctx2) {
 			drawLabelText = function drawLabelText(nextText) {
-				function wrapLines(text, maxWidth, maxLines) {
-					const words = String(text).trim().split(/\s+/g)
-					const lines = []
-					let cur = ''
-
-					function pushLine(line) {
-						if (line.trim()) lines.push(line.trim())
-					}
-
-					for (const word of words) {
-						const next = cur ? `${cur} ${word}` : word
-						if (ctx2.measureText(next).width <= maxWidth) {
-							cur = next
-							continue
-						}
-
-						if (cur) pushLine(cur)
-						cur = word
-
-						if (ctx2.measureText(cur).width > maxWidth) {
-							let chunk = ''
-							for (const ch of cur) {
-								const nextChunk = chunk + ch
-								if (ctx2.measureText(nextChunk).width <= maxWidth) {
-									chunk = nextChunk
-								} else {
-									pushLine(chunk)
-									chunk = ch
-								}
-							}
-							cur = chunk
-						}
-
-						if (lines.length >= maxLines) break
-					}
-
-					if (lines.length < maxLines && cur) pushLine(cur)
-
-					if (lines.length > maxLines) lines.length = maxLines
-					if (lines.length === maxLines) {
-						const lastIdx = maxLines - 1
-						let last = lines[lastIdx] ?? ''
-						const ell = '…'
-						while (last && ctx2.measureText(last + ell).width > maxWidth) {
-							last = last.slice(0, -1)
-						}
-						lines[lastIdx] = last ? last + ell : ell
-					}
-
-					return lines
-				}
-
 				const safeText = String(nextText || '').trim()
 				ctx2.clearRect(0, 0, canvas.width, canvas.height)
 
+				// Rich dark lacquered background
+				ctx2.fillStyle = '#0c0d11'
+				ctx2.fillRect(0, 0, canvas.width, canvas.height)
 
-				const padX = 18
-				const maxLines = 3
-				let fontPx = 56
-				ctx2.font = `700 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-				ctx2.fillStyle = '#2b2b2f'
-				ctx2.textAlign = 'center'
-				ctx2.textBaseline = 'middle'
+				// Gilded double filigree border
+				ctx2.strokeStyle = '#d4af37'
+				ctx2.lineWidth = 5
+				ctx2.strokeRect(12, 12, canvas.width - 24, canvas.height - 24)
+				ctx2.strokeStyle = 'rgba(255, 215, 0, 0.65)'
+				ctx2.lineWidth = 2
+				ctx2.strokeRect(20, 20, canvas.width - 40, canvas.height - 40)
 
-				const maxWidth = canvas.width - padX * 2
-				let lines = wrapLines(safeText, maxWidth, maxLines)
-
-				if (lines.length >= 3) fontPx = 28
-				else if (lines.length === 2) fontPx = 38
-				else fontPx = 56
-
-				ctx2.font = `700 ${fontPx}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-				lines = wrapLines(safeText, maxWidth, maxLines)
-
-				const lineHeight = Math.round(fontPx * 1.1)
-				const totalH = lines.length * lineHeight
-				const startY = canvas.height / 2 - totalH / 2 + lineHeight / 2
-
-				for (let i = 0; i < lines.length; i += 1) {
-					ctx2.fillText(lines[i], canvas.width / 2, startY + i * lineHeight)
+				// Corner diamond ornaments
+				const drawDiamond = (cx, cy, r) => {
+					ctx2.fillStyle = '#ffd700'
+					ctx2.beginPath()
+					ctx2.moveTo(cx, cy - r)
+					ctx2.lineTo(cx + r, cy)
+					ctx2.lineTo(cx, cy + r)
+					ctx2.lineTo(cx - r, cy)
+					ctx2.closePath()
+					ctx2.fill()
 				}
-			}
+				drawDiamond(20, 20, 6)
+				drawDiamond(canvas.width - 20, 20, 6)
+				drawDiamond(20, canvas.height - 20, 6)
+				drawDiamond(canvas.width - 20, canvas.height - 20, 6)
 
+				// Header tag (bright gold)
+				ctx2.font = '700 24px "Montserrat", sans-serif'
+				ctx2.fillStyle = '#e8c264'
+				ctx2.textAlign = 'center'
+				ctx2.textBaseline = 'top'
+				ctx2.letterSpacing = '4px'
+				ctx2.fillText('MEMORABILIA SALON', canvas.width / 2, 34)
+
+				// Main Title (Luminous high-contrast typography)
+				ctx2.font = '700 50px "Cormorant Garamond", Georgia, serif'
+				ctx2.fillStyle = '#ffffff'
+				ctx2.shadowColor = 'rgba(255, 225, 140, 0.9)'
+				ctx2.shadowBlur = 12
+				ctx2.textBaseline = 'bottom'
+				ctx2.fillText(safeText.toUpperCase(), canvas.width / 2, canvas.height - 32)
+				ctx2.shadowBlur = 0
+			}
 			drawLabelText(labelText)
 		}
 
@@ -293,14 +344,16 @@ export function addDoor(ctx, { id, wall, w, h, y = 0, u = 0, color = 0x22ffee, m
 			},
 		}
 
-		const textGeo = new THREE.PlaneGeometry(plaqueW * 0.96, plaqueH * 0.78)
+		// Self-illuminated high-contrast face mesh so text is always crystal-clear
+		const textGeo = new THREE.PlaneGeometry(plaqueW * 0.98, plaqueH * 0.98)
 		const textMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true })
 		const text = new THREE.Mesh(textGeo, textMat)
-		text.position.set(0, plaqueCenterY, -0.012)
+		text.position.set(0, plaqueCenterY, 0.016)
 		doorFrameGroup.add(text)
 		disposables.push(tex, textGeo, textMat)
 	}
 
+	// 5. Outer Door Jambs & Lintel Frame
 	const jambGeo = new THREE.BoxGeometry(frameW, h, frameDepth)
 	const headerGeo = new THREE.BoxGeometry(w + frameW * 2 - frameInsetX * 2, frameW, frameDepth)
 	disposables.push(jambGeo, headerGeo)
@@ -317,10 +370,56 @@ export function addDoor(ctx, { id, wall, w, h, y = 0, u = 0, color = 0x22ffee, m
 	header.position.set(0, h - frameW / 2, 0)
 	doorFrameGroup.add(header)
 
+	// 6. Dedicated Museum Overhead Plaque Fixture & Focused Spotlight!
+	const lightFixtureGroup = new THREE.Group()
+
+	// Brass mounting arm extending outward from wall
+	const armGeo = new THREE.CylinderGeometry(0.012, 0.012, 0.28, 16)
+	const arm = new THREE.Mesh(armGeo, brassMat)
+	arm.rotation.x = Math.PI / 2
+	arm.position.set(0, 0, 0.14)
+	lightFixtureGroup.add(arm)
+
+	// Polished Brass Downlight Canister
+	const canisterGeo = new THREE.CylinderGeometry(0.10, 0.10, 0.06, 24)
+	const canister = new THREE.Mesh(canisterGeo, brassMat)
+	canister.rotation.x = Math.PI / 3.5
+	canister.position.set(0, -0.02, 0.28)
+	lightFixtureGroup.add(canister)
+
+	const lensGeo = new THREE.CircleGeometry(0.08, 24)
+	const lensMat = new THREE.MeshStandardMaterial({
+		color: 0xffffff,
+		emissive: 0xffe6b8,
+		emissiveIntensity: 2.2,
+		roughness: 0.15,
+	})
+	const lens = new THREE.Mesh(lensGeo, lensMat)
+	lens.position.set(0, -0.045, 0.30)
+	lens.rotation.x = -Math.PI / 3.5
+	lightFixtureGroup.add(lens)
+
+	lightFixtureGroup.position.set(0, h + 0.12, 0.06)
+	doorFrameGroup.add(lightFixtureGroup)
+
+	// High-intensity spotlight focused directly onto the salon name plaque!
+	const doorSpot = new THREE.SpotLight(0xfff1d6, 5.5, 6.0, Math.PI / 3.2, 0.75, 1.5)
+	doorSpot.position.set(0, h + 0.15, 0.38)
+	const spotTarget = new THREE.Object3D()
+	// Target set precisely at the center of the salon name plaque
+	spotTarget.position.set(0, 1.45, 0.02)
+	doorFrameGroup.add(spotTarget)
+	doorSpot.target = spotTarget
+	doorFrameGroup.add(doorSpot)
+
+	disposables.push(armGeo, canisterGeo, lensGeo, lensMat, doorSpot)
+
+	// Orientation and placement
 	doorFrameGroup.quaternion.copy(quat)
 	doorFrameGroup.position.copy(baseCenter)
 	group.add(doorFrameGroup)
 
+	// 7. Raycast Hit Plane
 	const hitGeo = new THREE.PlaneGeometry(w, h)
 	const hitMat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.0, depthWrite: false })
 	const hitMesh = new THREE.Mesh(hitGeo, hitMat)
@@ -328,7 +427,7 @@ export function addDoor(ctx, { id, wall, w, h, y = 0, u = 0, color = 0x22ffee, m
 	hitMesh.userData.doorId = id
 	if (labelControl) hitMesh.userData.labelControl = labelControl
 	hitMesh.quaternion.copy(quat)
-	hitMesh.position.copy(baseCenter.clone().add(wallUp.clone().multiplyScalar(h / 2)).add(wallNormal.clone().multiplyScalar(0.02)))
+	hitMesh.position.copy(baseCenter.clone().add(wallUp.clone().multiplyScalar(h / 2)).add(wallNormal.clone().multiplyScalar(0.04)))
 	group.add(hitMesh)
 	doorHitMeshes.push(hitMesh)
 	disposables.push(hitGeo, hitMat)
