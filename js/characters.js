@@ -26,7 +26,7 @@ export function onActiveControlChange(fn) {
   onActiveControlChangeCallbacks.push(fn);
 }
 export function setActiveControl(mode) {
-  if (!['couple', 'maya', 'jack'].includes(mode) || appState === 'loading' || appState === 'entrance' || appState === 'dancing') return;
+  if (!['couple', 'maya', 'jack'].includes(mode) || appState === 'dancing') return;
   Object.values(characters).forEach(c => {
     c.speed = 0;
     if (c.state === 'walking') { c.state = 'idle'; playAction(c, 'idle'); }
@@ -203,6 +203,7 @@ export function applySitPose(model, isSit) {
   for (const side of ['Left', 'Right']) {
     rotateJoint(model, side + 'UpLeg', new THREE.Vector3(1, 0, 0), -Math.PI / 2);
     rotateJoint(model, side + 'Leg', new THREE.Vector3(1, 0, 0), Math.PI / 2);
+    rotateJoint(model, side + 'Foot', new THREE.Vector3(1, 0, 0), -0.22);
     rotateJoint(model, side + 'Arm', new THREE.Vector3(0, 0, 1), side === 'Left' ? -1.15 : 1.15);
     rotateJoint(model, side + 'ForeArm', new THREE.Vector3(1, 0, 0), -1.2);
   }
@@ -217,19 +218,68 @@ export function applyLiePose(model, isLie) {
   }
 }
 
+function applyHeadTurn(charObj, dirToPartner, maxAngle = 0.35) {
+  if (!charObj || !charObj.root) return;
+  const head = charObj.root.getObjectByName('mixamorigHead') || charObj.root.getObjectByName('mixamorigNeck');
+  if (!head || !head.userData.restQuat) return;
+
+  const charWorldQuat = charObj.root.getWorldQuaternion(new THREE.Quaternion());
+  const charForward = new THREE.Vector3(0, 0, 1).applyQuaternion(charWorldQuat);
+  const charRight = new THREE.Vector3(1, 0, 0).applyQuaternion(charWorldQuat);
+
+  const dotForward = charForward.dot(dirToPartner);
+  const dotRight = charRight.dot(dirToPartner);
+  const targetYaw = Math.atan2(dotRight, dotForward);
+  const clampedYaw = Math.max(-maxAngle, Math.min(maxAngle, targetYaw));
+
+  if (typeof head.userData.currentYaw !== 'number') head.userData.currentYaw = 0;
+  head.userData.currentYaw += (clampedYaw - head.userData.currentYaw) * 0.08;
+
+  const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), head.userData.currentYaw);
+  head.quaternion.copy(head.userData.restQuat).multiply(yawQuat);
+}
+
+function resetHeadTurn(charObj) {
+  if (!charObj || !charObj.root) return;
+  const head = charObj.root.getObjectByName('mixamorigHead') || charObj.root.getObjectByName('mixamorigNeck');
+  if (!head || !head.userData.restQuat || !head.userData.currentYaw) return;
+
+  head.userData.currentYaw += (0 - head.userData.currentYaw) * 0.08;
+  const yawQuat = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), head.userData.currentYaw);
+  head.quaternion.copy(head.userData.restQuat).multiply(yawQuat);
+}
+
 /**
- * Human lifelike idle animations driven smoothly by Mixamo clips & gentle breathing
+ * Human lifelike idle animations driven smoothly by Mixamo clips & gentle breathing & romantic partner look-at IK
  */
 export function updateLifelikeMotions(time) {
-  if (appState === 'sitting' || appState === 'lying' || appState === 'dancing') return;
+  if (appState === 'dancing') return;
   const breath = Math.sin(time * 2.2) * 0.007;
-  if (characters.maya.root) {
-    const spine = characters.maya.root.getObjectByName('mixamorig:Spine');
-    if (spine) spine.rotation.x = breath;
+
+  // Gentle breathing active in standing and sitting
+  for (const charKey of ['maya', 'jack']) {
+    const c = characters[charKey];
+    if (c && c.root) {
+      const spine = c.root.getObjectByName('mixamorig:Spine') || c.root.getObjectByName('mixamorigSpine');
+      if (spine) spine.rotation.x = breath;
+    }
   }
-  if (characters.jack.root) {
-    const spine = characters.jack.root.getObjectByName('mixamorig:Spine');
-    if (spine) spine.rotation.x = breath;
+
+  // Romantic Partner Head-Tracking Look-At IK
+  if (characters.maya.root && characters.jack.root && characters.maya.controller && characters.jack.controller) {
+    const posM = characters.maya.controller.position;
+    const posJ = characters.jack.controller.position;
+    const dist = posM.distanceTo(posJ);
+
+    if (dist > 0.4 && dist < 3.2 && appState !== 'dancing') {
+      const dirMToJ = new THREE.Vector3().subVectors(posJ, posM).normalize();
+      const dirJToM = new THREE.Vector3().subVectors(posM, posJ).normalize();
+      applyHeadTurn(characters.maya, dirMToJ, 0.35);
+      applyHeadTurn(characters.jack, dirJToM, 0.35);
+    } else {
+      resetHeadTurn(characters.maya);
+      resetHeadTurn(characters.jack);
+    }
   }
 }
 

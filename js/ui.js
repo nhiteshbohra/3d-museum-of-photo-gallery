@@ -102,22 +102,55 @@ export function updateWorldOverlays() {
 // =========================================================================
 // ART & PLAQUE INSPECTION MODAL
 // =========================================================================
-export function openInspectionModal(item) {
+export let currentModalArtIndex = 0;
+
+export function showArtworkByIndex(index) {
+  if (!galleryItems || galleryItems.length === 0) return;
+  currentModalArtIndex = (index + galleryItems.length) % galleryItems.length;
+  const item = galleryItems[currentModalArtIndex];
   if (!item || !inspectOverlay) return;
 
-  document.getElementById('modal-tag').innerText = item.tag || 'A PERMANENT COLLECTION';
-  document.getElementById('modal-title').innerText = item.title || 'Exhibition Piece';
-  document.getElementById('modal-desc').innerText = `"${item.quote || ''}"`;
-  document.getElementById('modal-sign').innerText = item.sign || `Love, ${currentConfig.partnerFrom}`;
-
+  const tagEl = document.getElementById('modal-tag');
+  const titleEl = document.getElementById('modal-title');
+  const descEl = document.getElementById('modal-desc');
+  const signEl = document.getElementById('modal-sign');
+  const counterEl = document.getElementById('modal-counter');
   const fullImg = document.getElementById('full-art-img');
-  if (item.url) {
-    fullImg.src = item.url;
-    fullImg.style.display = 'block';
-  } else {
-    fullImg.style.display = 'none';
-  }
 
+  if (tagEl) tagEl.innerText = item.tag || 'A PERMANENT COLLECTION';
+  if (titleEl) titleEl.innerText = item.title || 'Exhibition Piece';
+  if (descEl) descEl.innerText = `"${item.quote || ''}"`;
+  if (signEl) signEl.innerText = item.sign || `Love, ${currentConfig ? currentConfig.partnerFrom : 'Ethan'}`;
+  if (counterEl) counterEl.innerText = `Photo ${currentModalArtIndex + 1} of ${galleryItems.length}`;
+
+  if (fullImg) {
+    if (item.url) {
+      fullImg.src = item.url;
+      fullImg.style.display = 'block';
+    } else {
+      const artTex = createFallbackArtCanvas(item);
+      const canvas = (artTex && artTex.image) ? artTex.image : artTex;
+      if (canvas && typeof canvas.toDataURL === 'function') {
+        fullImg.src = canvas.toDataURL('image/png');
+      }
+      fullImg.style.display = 'block';
+    }
+  }
+}
+
+export function nextArtwork() {
+  showArtworkByIndex(currentModalArtIndex + 1);
+}
+
+export function prevArtwork() {
+  showArtworkByIndex(currentModalArtIndex - 1);
+}
+
+export function openInspectionModal(item) {
+  if (!inspectOverlay) return;
+  const foundIdx = galleryItems.findIndex(g => g.id === (item ? item.id : 1));
+  currentModalArtIndex = foundIdx >= 0 ? foundIdx : 0;
+  showArtworkByIndex(currentModalArtIndex);
   inspectOverlay.style.display = 'flex';
 }
 
@@ -569,13 +602,43 @@ export function initUI() {
     });
   }
 
-  // Modal inspection dismissal
+  // Modal inspection carousel & navigation
+  const prevBtn = document.getElementById('modal-prev-btn');
+  const nextBtn = document.getElementById('modal-next-btn');
+  const backBtn = document.getElementById('modal-back-btn');
+  const closeIcon = document.getElementById('modal-close-icon');
+
+  if (prevBtn) prevBtn.addEventListener('click', (e) => { e.stopPropagation(); prevArtwork(); });
+  if (nextBtn) nextBtn.addEventListener('click', (e) => { e.stopPropagation(); nextArtwork(); });
+  if (backBtn) backBtn.addEventListener('click', (e) => { e.stopPropagation(); closeModal(); });
+  if (closeIcon) closeIcon.addEventListener('click', (e) => { e.stopPropagation(); closeModal(); });
+
+  window.addEventListener('keydown', (e) => {
+    if (inspectOverlay && inspectOverlay.style.display !== 'none') {
+      if (e.key === 'ArrowLeft') { prevArtwork(); }
+      else if (e.key === 'ArrowRight') { nextArtwork(); }
+      else if (e.key === 'Escape') { closeModal(); }
+    }
+  });
+
   if (inspectOverlay) {
     inspectOverlay.addEventListener('click', e => {
-      if (!e.target.closest('#plaque-card, #full-art-img')) {
+      if (!e.target.closest('#plaque-card, .modal-art-frame, .modal-nav-arrow, .modal-top-bar')) {
         closeModal();
       }
     });
   }
+
+  // Pre-game 'Choose Your Look' Selector (Reference Parity)
+  const lookCards = document.querySelectorAll('.look-card');
+  lookCards.forEach(card => {
+    card.addEventListener('click', () => {
+      lookCards.forEach(c => c.classList.remove('active'));
+      card.classList.add('active');
+      const charId = card.getAttribute('data-char');
+      setActiveControl(charId);
+      showToast(`Selected avatar: ${charId === 'maya' ? 'Maya' : (charId === 'jack' ? 'Ethan' : 'Couple')}`);
+    });
+  });
 
 }

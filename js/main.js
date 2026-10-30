@@ -27,6 +27,9 @@ import {
 } from './ui.js';
 import { audioEngine } from './audio.js';
 import { loadSavedConfig } from './config.js';
+import { initNetwork, updateNetworkInterpolation } from './network.js';
+import { initMinimap, updateMinimap } from './minimap.js';
+import { initPhotoMode } from './photo.js';
 
 // =========================================================================
 // ASSET PRELOADER
@@ -82,6 +85,9 @@ if (btnAudioToggle) {
 // =========================================================================
 initControls(handleContextualAction, closeModal);
 initUI();
+initNetwork();
+initMinimap();
+initPhotoMode();
 window.__camera = camera;
 window.__characters = characters;
 
@@ -124,8 +130,10 @@ function animate() {
   });
 
   handleLocomotion(delta);
+  updateNetworkInterpolation(delta);
   updateCameraRig();
   updateWorldOverlays();
+  updateMinimap();
   checkProximity(interactionHint, hintText, dancePill);
 
   renderer.render(scene, camera);

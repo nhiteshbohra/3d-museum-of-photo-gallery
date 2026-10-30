@@ -539,6 +539,7 @@ export const fireLight = new THREE.PointLight(0xff6a20, 1.8, 7, 2.0);
 fireLight.position.set(5.5, 0.55, -5.7);
 scene.add(fireLight);
 
+
 // Grand / Upright Piano & Stool
 const pianoBody = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.1, 0.75), matDarkWood);
 pianoBody.position.set(7.8, 0.55, -2.5);

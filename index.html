@@ -10,12 +10,14 @@
   <!-- External CSS Stylesheet -->
   <link rel="stylesheet" href="css/style.css">
 
-  <!-- Three.js Importmap -->
+  <!-- Three.js Importmap (Offline Local Vendor) -->
   <script type="importmap">
     {
       "imports": {
-        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
-        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+        "three": "./js/vendor/three.module.js",
+        "three/addons/loaders/GLTFLoader.js": "./js/vendor/GLTFLoader.js",
+        "three/addons/utils/SkeletonUtils.js": "./js/vendor/SkeletonUtils.js",
+        "three/addons/": "./js/vendor/"
       }
     }
   </script>
@@ -31,6 +33,28 @@
     <h1 id="start-title">Our Museum</h1>
     <div class="subtitle">From <span id="start-from">Ethan</span> &nbsp;&bull;&nbsp; To <span id="start-to">Maya</span></div>
     <p class="start-description">Quiet rooms. Collected memories. A little world to call home.</p>
+    <!-- Choose Your Look Pre-Game Selector (Reference Parity) -->
+    <div class="choose-look-container" id="choose-look-container">
+      <div class="choose-look-title">Choose Your Character</div>
+      <div class="look-cards-row">
+        <button type="button" class="look-card active" data-char="maya" id="look-card-maya">
+          <span class="look-avatar-badge">🌸</span>
+          <span class="look-name">Maya</span>
+          <span class="look-role">Her</span>
+        </button>
+        <button type="button" class="look-card" data-char="jack" id="look-card-jack">
+          <span class="look-avatar-badge">🌿</span>
+          <span class="look-name">Ethan</span>
+          <span class="look-role">Him</span>
+        </button>
+        <button type="button" class="look-card" data-char="couple" id="look-card-couple">
+          <span class="look-avatar-badge">✨</span>
+          <span class="look-name">Together</span>
+          <span class="look-role">Couple</span>
+        </button>
+      </div>
+    </div>
+
     <div class="progress-bar-container">
       <div class="progress-fill" id="loading-bar"></div>
     </div>
@@ -74,17 +98,29 @@
     <div id="joystick-knob"></div>
   </div>
 
-  <!-- 6. Art & Plaque Inspection Modal -->
+  <!-- 6. Art & Plaque Inspection Modal (Reference Parity) -->
   <div id="inspect-overlay">
-    <div class="viewing-pill">Viewing</div>
+    <div class="modal-top-bar">
+      <button type="button" id="modal-back-btn" class="modal-back-btn" aria-label="Back to Museum">❮ Back</button>
+      <span id="modal-counter" class="modal-counter-badge">Photo 1 of 18</span>
+      <button type="button" id="modal-close-icon" class="modal-close-icon" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-carousel-stage">
+      <button type="button" id="modal-prev-btn" class="modal-nav-arrow prev-arrow" aria-label="Previous artwork">❮</button>
+      <div class="modal-art-frame">
+        <img id="full-art-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Exhibition Piece">
+      </div>
+      <button type="button" id="modal-next-btn" class="modal-nav-arrow next-arrow" aria-label="Next artwork">❯</button>
+    </div>
+
     <div class="plaque-card" id="plaque-card">
       <div class="plaque-tag" id="modal-tag">A PERMANENT COLLECTION</div>
       <div class="plaque-title" id="modal-title">For Maya</div>
       <div class="plaque-desc" id="modal-desc">"Our whole winter, hung on the walls, just for you."</div>
       <div class="plaque-signature" id="modal-sign">Love, Ethan</div>
     </div>
-    <img id="full-art-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Exhibition Piece">
-    <div class="close-modal-hint">Click anywhere or press Esc to return</div>
+    <div class="close-modal-hint">Use ❮ / ❯ keys to browse &bull; Esc to return</div>
   </div>
 
   <!-- Toast Notification -->
