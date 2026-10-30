@@ -1,10 +1,8 @@
 # Ignore the following files and directories
 project-log
 tests
-sample
 docs
 node_modules
-scratch
 .agents
 skills-lock.json
 dist

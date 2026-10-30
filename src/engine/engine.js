@@ -351,6 +351,8 @@ export function startYourEngines({
 		}
 	}
 
+	let lastLoadedRoomParams = null
+
 	function loadRoom({
 		mode,
 		seedTitle,
@@ -366,6 +368,21 @@ export function startYourEngines({
 		galleryTrail: nextGalleryTrail,
 		spawn,
 	}) {
+		lastLoadedRoomParams = {
+			mode,
+			seedTitle,
+			categories,
+			galleryEntryWall,
+			galleryRelatedTitles: relatedTitles,
+			galleryTitle: nextGalleryTitle,
+			galleryDescription: nextGalleryDescription,
+			galleryMainThumbnailUrl: nextGalleryMainThumbnailUrl,
+			galleryPhotos: nextGalleryPhotos,
+			galleryVideoUrl: nextGalleryVideoUrl,
+			galleryLongExtract: nextGalleryLongExtract,
+			galleryTrail: nextGalleryTrail,
+		}
+
 		const wallThickness = 0.2
 
 		let roomWidth = 21
@@ -1021,6 +1038,13 @@ export function startYourEngines({
 				galleryLongExtract: hasGalleryLongExtract ? (typeof nextGalleryLongExtract === 'string' ? nextGalleryLongExtract : null) : galleryLongExtract,
 				galleryTrail: hasGalleryTrail ? (Array.isArray(nextGalleryTrail) ? nextGalleryTrail : null) : null,
 				spawn,
+			})
+		},
+		reloadRoomInPlace() {
+			if (!lastLoadedRoomParams) return
+			loadRoom({
+				...lastLoadedRoomParams,
+				spawn: null,
 			})
 		},
 		stop() {

@@ -4,6 +4,7 @@ import { buildLobbyRoom, createRealisticGalleryPlant, createRealisticGalleryBenc
 import { addDoor as addDoorToRoom } from './room/doors.js'
 import { addSlot as addSlotToRoom } from './room/slots.js'
 import { getSharedRoomMaterialTextures, labelFromImageUrl, makePlaqueTexture } from './room/textures.js'
+import { getArtworkSizes } from '../config/artworkSizes.js'
 
 export function buildRoom({ width, length, height, wallThickness = 0.2, mode = 'gallery', lobby = {}, gallery = {} }) {
 	const group = new THREE.Group()
@@ -11,6 +12,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 	const disposables = []
 	const deferredTextureLoads = []
+	const artSizes = getArtworkSizes()
 
 	let palette = {}
 
@@ -785,9 +787,11 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const mainThumbnailUrl = typeof gallery.mainThumbnailUrl === 'string' ? gallery.mainThumbnailUrl.trim() : ''
 
 		// Centered Highlight Artwork on FRONT FACE of partition wall (South-facing)
-		const centerPhotoW = 2.0
-		const centerPhotoH = 1.4
-		const panelY = Math.min(height * 0.52, 2.05)
+		const centerCfg = artSizes.centerPartition || {}
+		const centerPhotoW = typeof centerCfg.width === 'number' ? centerCfg.width : 3.50
+		const centerPhotoH = typeof centerCfg.height === 'number' ? centerCfg.height : 2.50
+		const customCenterY = typeof centerCfg.y === 'number' ? centerCfg.y : 2.05
+		const panelY = clamp(customCenterY, centerPhotoH / 2 + 0.1, height - centerPhotoH / 2 - 0.05)
 		const panelZ = pillarD / 2 + 0.08
 		const panelDepth = 0.06
 
@@ -1378,12 +1382,14 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				name: 'plant-east-2',
 			})
 		} else {
-			// East Wall: 5 artworks, slightly larger, zero captions
-			const count = 5
-			const gapU = 0.55
-			const photoW = 1.55
-			const photoH = 1.12
-			const y = clamp(stdFrameY, photoH / 2 + 0.25, height - photoH / 2 - 0.25)
+			// East Wall: sequential artworks, zero captions
+			const eastCfg = artSizes.eastWall || {}
+			const count = typeof eastCfg.count === 'number' ? eastCfg.count : 5
+			const gapU = typeof eastCfg.gap === 'number' ? eastCfg.gap : 0.30
+			const photoW = typeof eastCfg.width === 'number' ? eastCfg.width : 1.70
+			const photoH = typeof eastCfg.height === 'number' ? eastCfg.height : 1.55
+			const customEastY = typeof eastCfg.y === 'number' ? eastCfg.y : 2.05
+			const y = clamp(customEastY, photoH / 2 + 0.1, height - photoH / 2 - 0.05)
 			const totalW = count * photoW + (count - 1) * gapU
 			const uStart = -totalW / 2 + photoW / 2
 
@@ -1395,30 +1401,35 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 		// West Wall: Narrative memory text panel
 		{
-			const margin = 1.6
-			const usable = Math.max(2.8, length - margin * 2)
-			const panelW = clamp(usable, 3.74, 7.7)
-			const panelH = clamp(height * 0.8, 1.9, 3.0)
-			const y = clamp(stdFrameY, panelH / 2 + 0.25, height - panelH / 2 - 0.25)
+			const westCfg = artSizes.westNarrativeBoard || {}
+			const panelW = typeof westCfg.width === 'number' ? westCfg.width : 6.60
+			const panelH = typeof westCfg.height === 'number' ? westCfg.height : 3.00
+			const customWestY = typeof westCfg.y === 'number' ? westCfg.y : 2.30
+			const y = clamp(customWestY, panelH / 2 + 0.1, height - panelH / 2 - 0.05)
 
 			addSlot({ id: 'west-text-0', wall: 'west', kind: 'frame', w: panelW, h: panelH, y, u: 0, color: 0xd9d9de, opacity: 1 })
 		}
 
 		// North Wall: Single big centered masterpiece artwork
 		{
-			const northW = 2.6
-			const northH = 1.6
-			const northY = clamp(height * 0.52, northH / 2 + 0.5, height - northH / 2 - 0.2)
+			const northCfg = artSizes.northMasterpiece || {}
+			const northW = typeof northCfg.width === 'number' ? northCfg.width : 4.50
+			const northH = typeof northCfg.height === 'number' ? northCfg.height : 3.00
+			const customNorthY = typeof northCfg.y === 'number' ? northCfg.y : 2.40
+			const northY = clamp(customNorthY, northH / 2 + 0.1, height - northH / 2 - 0.05)
 			addSlot({ id: 'north-photo-0', wall: 'north', kind: 'frame', w: northW, h: northH, y: northY, u: 0, color: 0xd9d9de, opacity: 1 })
 		}
 
 		// South Wall: 2 artworks flanking the entrance gate (1 left, 1 right)
 		{
-			const southW = 1.55
-			const southH = 1.10
-			const southY = clamp(height * 0.52, southH / 2 + 0.5, height - southH / 2 - 0.2)
-			addSlot({ id: 'south-photo-0', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: -2.3, color: 0xd9d9de, opacity: 1 })
-			addSlot({ id: 'south-photo-1', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: 2.3, color: 0xd9d9de, opacity: 1 })
+			const southCfg = artSizes.southGateArtworks || {}
+			const southW = typeof southCfg.width === 'number' ? southCfg.width : 3.00
+			const southH = typeof southCfg.height === 'number' ? southCfg.height : 2.15
+			const offsetU = typeof southCfg.doorOffsetU === 'number' ? southCfg.doorOffsetU : 3.20
+			const customSouthY = typeof southCfg.y === 'number' ? southCfg.y : 2.05
+			const southY = clamp(customSouthY, southH / 2 + 0.1, height - southH / 2 - 0.05)
+			addSlot({ id: 'south-photo-0', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: -offsetU, color: 0xd9d9de, opacity: 1 })
+			addSlot({ id: 'south-photo-1', wall: 'south', kind: 'frame', w: southW, h: southH, y: southY, u: offsetU, color: 0xd9d9de, opacity: 1 })
 		}
 	}
 
@@ -1987,8 +1998,9 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				placePhotoInSlot(southSlot1, s1Url, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • South Wing II` : 'South Wing II' })
 			}
 
-			// East wall (5 photos, slightly larger, ZERO captions, photo indices 5, 6, 7, 8, 9)
-			for (let i = 0; i < 5; i += 1) {
+			// East wall (sequential photos, zero captions, photo indices starting at 5)
+			const eastCount = typeof artSizes.eastWall?.count === 'number' ? artSizes.eastWall.count : 5
+			for (let i = 0; i < eastCount; i += 1) {
 				const slot = slotById(`east-photo-${i}`)
 				if (slot) {
 					const photoIdx = 5 + i

@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { clamp, roundTo } from '../../misc/helper.js'
 import lobbyPhotoUrl from '../../assets/lobbyphoto.png'
 import { makeMarbleTexture } from './doors.js'
+import { getArtworkSizes } from '../../config/artworkSizes.js'
 
 export function createRealisticGalleryPlant({
 	x = 0,
@@ -623,11 +624,13 @@ export function buildLobbyRoom(ctx, lobby) {
 		addBenchAt(-1.6)
 		addBenchAt(1.6)
 
-		const frameW = roundTo(clamp(width * 0.72, 2.4, 5.8), 0.05)
-		const frameH = roundTo(clamp(height * 0.58, 1.2, 2.0), 0.05)
+		const artSizes = getArtworkSizes()
+		const lobbyCfg = artSizes.lobbyMasterpiece || {}
+		const frameW = typeof lobbyCfg.width === 'number' ? lobbyCfg.width : roundTo(clamp(width * 0.72, 2.4, 5.8), 0.05)
+		const frameH = typeof lobbyCfg.height === 'number' ? lobbyCfg.height : roundTo(clamp(height * 0.58, 1.2, 2.0), 0.05)
 		const frameDepth = 0.08
 		const frameThickness = 0.12
-		const frameY = height * 0.7
+		const frameY = typeof lobbyCfg.y === 'number' ? lobbyCfg.y : height * 0.7
 
 		const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.3, metalness: 0.1 })
 		const matteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.9, metalness: 0.0 })
