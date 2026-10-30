@@ -1,23 +1,28 @@
 /* =========================================================================
-   OUR HOME 3D • 2D RADAR MINIMAP HUD
+   OUR HOME 3D • 2D RADAR MINIMAP HUD (THE PAVILION OF ROOMS)
    Renders real-time architectural floorplan with live blips for both partners
    ========================================================================= */
 
 import { characters, activeControl } from './characters.js';
-import { HOUSE_WIDTH, HOUSE_DEPTH, STAIR_X, STAIR_WIDTH, STAIR_START_Z, STAIR_END_Z, interactiveArtworks } from './environment.js';
+import { HOUSE_WIDTH, HOUSE_DEPTH, interactiveArtworks } from './environment.js';
 
 let canvas = null;
 let ctx = null;
 let container = null;
+let roomLabel = null;
 
-const MAP_W = 140;
-const MAP_H = 160;
+const MAP_W = 150;
+const MAP_H = 165;
 
-// World house bounds: X in [-10, 10], Z in [-10, 14]
+// World museum bounds: X in [-14, 14], Z in [-16, 15]
 const WORLD_MIN_X = -HOUSE_WIDTH / 2;
 const WORLD_MAX_X = HOUSE_WIDTH / 2;
-const WORLD_MIN_Z = -HOUSE_DEPTH / 2;
-const WORLD_MAX_Z = HOUSE_DEPTH / 2 + 4;
+const WORLD_MIN_Z = -16.0;
+const WORLD_MAX_Z = 15.5;
+
+export function updateMinimap() {
+  drawMinimap();
+}
 
 export function initMinimap() {
   if (document.getElementById('minimap-container')) return;
@@ -30,11 +35,11 @@ export function initMinimap() {
     right: 18px;
     width: ${MAP_W}px;
     height: ${MAP_H}px;
-    background: rgba(12, 16, 22, 0.85);
+    background: rgba(12, 16, 22, 0.88);
     border: 1px solid rgba(232, 208, 169, 0.45);
     border-radius: 12px;
-    backdrop-filter: blur(10px);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
     z-index: 95;
     overflow: hidden;
     user-select: none;
@@ -45,140 +50,173 @@ export function initMinimap() {
 
   const header = document.createElement('div');
   header.style.cssText = `
-    padding: 4px 8px;
+    padding: 5px 8px;
     background: rgba(232, 208, 169, 0.12);
     border-bottom: 1px solid rgba(232, 208, 169, 0.2);
-    font-family: 'Inter', sans-serif;
-    font-size: 9px;
-    font-weight: 600;
-    letter-spacing: 0.5px;
-    color: #e8d0a9;
-    text-transform: uppercase;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    font-family: 'Cormorant Garamond', Georgia, serif;
+    font-size: 0.74rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: #ede8dc;
   `;
-  header.innerHTML = `<span>Radar</span><span id="minimap-floor-label">Floor 0</span>`;
+  header.innerHTML = `<span>🏛️ Grand Pavilion</span><span id="mm-room-badge" style="color:#e8d0a9;font-weight:600;">Rotunda</span>`;
   container.appendChild(header);
 
   canvas = document.createElement('canvas');
   canvas.width = MAP_W;
-  canvas.height = MAP_H - 22;
-  canvas.style.cssText = 'width: 100%; height: calc(100% - 22px); display: block;';
+  canvas.height = MAP_H - 26;
+  canvas.style.display = 'block';
   container.appendChild(canvas);
+
   ctx = canvas.getContext('2d');
-
   document.body.appendChild(container);
+
+  roomLabel = header.querySelector('#mm-room-badge');
+  
 }
 
-function worldToMap(wx, wz) {
-  const normX = (wx - WORLD_MIN_X) / (WORLD_MAX_X - WORLD_MIN_X);
-  const normZ = (wz - WORLD_MIN_Z) / (WORLD_MAX_Z - WORLD_MIN_Z);
-  return {
-    x: normX * (MAP_W - 16) + 8,
-    y: (1 - normZ) * (canvas.height - 16) + 8
-  };
+function toMapX(worldX) {
+  return ((worldX - WORLD_MIN_X) / (WORLD_MAX_X - WORLD_MIN_X)) * (MAP_W - 16) + 8;
 }
 
-export function updateMinimap() {
+function toMapY(worldZ) {
+  return ((worldZ - WORLD_MIN_Z) / (WORLD_MAX_Z - WORLD_MIN_Z)) * (canvas.height - 16) + 8;
+}
+
+function detectActiveRoom(x, z) {
+  if (z > 5.5) return 'Garden Courtyard';
+  if (z >= -2.0 && Math.abs(x) <= 4.0) return 'Grand Rotunda';
+  if (x < -4.0 && z >= -2.0) return 'Fireside Salon';
+  if (x > 4.0 && z >= -2.0) return 'Music Conservatory';
+  if (x < -4.0 && z < -2.0) return 'Library Nook';
+  if (x > 4.0 && z < -2.0) return 'Monolith Hall';
+  if (z <= -12.0 && Math.abs(x) <= 2.5) return 'Promise Alcove';
+  if (z < -2.0 && Math.abs(x) <= 4.8) return 'Glass Orangery';
+  return 'Main Pavilion';
+}
+
+function drawMinimap() {
   if (!ctx || !canvas) return;
 
-  const floor = characters.maya.controller?.userData?.floor ?? 0;
-  const floorLabel = document.getElementById('minimap-floor-label');
-  if (floorLabel) {
-    floorLabel.textContent = floor === 1 ? 'Upper Floor' : 'Ground Floor';
-  }
+  ctx.fillStyle = '#0e1219';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  // Draw 7-Salon Outer Perimeter
+  const pMinX = toMapX(WORLD_MIN_X);
+  const pMaxX = toMapX(WORLD_MAX_X);
+  const pMinZ = toMapY(-15.5);
+  const pSouth = toMapY(5.5);
+  const pGarden = toMapY(15.5);
 
-  // 1. Draw outer walls
-  ctx.strokeStyle = 'rgba(232, 208, 169, 0.4)';
+  ctx.strokeStyle = 'rgba(232, 208, 169, 0.6)';
   ctx.lineWidth = 1.5;
-  const tl = worldToMap(WORLD_MIN_X + 0.5, WORLD_MAX_Z - 0.5);
-  const br = worldToMap(WORLD_MAX_X - 0.5, WORLD_MIN_Z + 0.5);
-  ctx.strokeRect(tl.x, tl.y, br.x - tl.x, br.y - tl.y);
+  ctx.strokeRect(pMinX, pMinZ, pMaxX - pMinX, pSouth - pMinZ);
 
-  // 2. Draw interior partition lines
-  ctx.strokeStyle = 'rgba(232, 208, 169, 0.18)';
+  // Garden Courtyard Enclosure
+  ctx.strokeStyle = 'rgba(100, 140, 110, 0.45)';
+  ctx.setLineDash([3, 3]);
+  ctx.strokeRect(pMinX, pSouth, pMaxX - pMinX, pGarden - pSouth);
+  ctx.setLineDash([]);
+
+  // Room Partition Walls
+  ctx.strokeStyle = 'rgba(232, 208, 169, 0.35)';
   ctx.lineWidth = 1;
+
+  // Rotunda West & East Partitions (X: -4, +4)
+  const rotWestX = toMapX(-4.0);
+  const rotEastX = toMapX(4.0);
+  const rotNorthZ = toMapY(-2.0);
+  const rotSouthZ = toMapY(5.5);
+
   ctx.beginPath();
-  // Central divider
-  const d1 = worldToMap(0, WORLD_MIN_Z);
-  const d2 = worldToMap(0, WORLD_MAX_Z);
-  ctx.moveTo(d1.x, d1.y);
-  ctx.lineTo(d2.x, d2.y);
-  // Horizontal divider
-  const h1 = worldToMap(WORLD_MIN_X, 0);
-  const h2 = worldToMap(WORLD_MAX_X, 0);
-  ctx.moveTo(h1.x, h1.y);
-  ctx.lineTo(h2.x, h2.y);
+  ctx.moveTo(rotWestX, rotNorthZ);
+  ctx.lineTo(rotWestX, rotSouthZ);
+  ctx.moveTo(rotEastX, rotNorthZ);
+  ctx.lineTo(rotEastX, rotSouthZ);
+
+  // North/South room split (Z: -2.0)
+  ctx.moveTo(pMinX, rotNorthZ);
+  ctx.lineTo(rotWestX, rotNorthZ);
+  ctx.moveTo(rotEastX, rotNorthZ);
+  ctx.lineTo(pMaxX, rotNorthZ);
+
+  // Orangery South Portal (Z: -7.0)
+  const orangeryZ = toMapY(-7.0);
+  ctx.moveTo(rotWestX, orangeryZ);
+  ctx.lineTo(rotEastX, orangeryZ);
+
+  // Library / Orangery West Wall (Z: -10.0)
+  const libNorthZ = toMapY(-10.0);
+  ctx.moveTo(pMinX, libNorthZ);
+  ctx.lineTo(rotWestX, libNorthZ);
+
   ctx.stroke();
 
-  // 3. Draw staircase ramp proxy
-  ctx.fillStyle = 'rgba(232, 208, 169, 0.2)';
-  const st1 = worldToMap(STAIR_X - STAIR_WIDTH / 2, STAIR_START_Z);
-  const st2 = worldToMap(STAIR_X + STAIR_WIDTH / 2, STAIR_END_Z);
-  ctx.fillRect(st1.x, st1.y, st2.x - st1.x, st2.y - st1.y);
+  // Draw 3 Freestanding Art Monoliths in Salon 5
+  ctx.fillStyle = 'rgba(232, 208, 169, 0.7)';
+  const m1X = toMapX(7.5), m1Y = toMapY(-4.6);
+  const m2X = toMapX(10.5), m2Y = toMapY(-6.9);
+  const m3X = toMapX(7.5), m3Y = toMapY(-9.3);
+  ctx.fillRect(m1X - 4, m1Y - 1, 8, 2);
+  ctx.fillRect(m2X - 4, m2Y - 1, 8, 2);
+  ctx.fillRect(m3X - 4, m3Y - 1, 8, 2);
 
-  // 4. Draw photo frame locations (golden dots)
-  if (Array.isArray(interactiveArtworks)) {
-    ctx.fillStyle = 'rgba(240, 200, 130, 0.7)';
-    interactiveArtworks.forEach(art => {
-      const p = worldToMap(art.position.x, art.position.z);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
-      ctx.fill();
-    });
-  }
-
-  // 5. Draw Maya's Blip (Rose / Gold)
-  if (characters.maya.controller) {
-    const pos = characters.maya.controller.position;
-    const rot = characters.maya.controller.rotation.y;
-    const pt = worldToMap(pos.x, pos.z);
-    drawPlayerBlip(pt.x, pt.y, rot, '#f472b6', '#fb7185', activeControl === 'maya' || activeControl === 'couple');
-  }
-
-  // 6. Draw Ethan's Blip (Sky Blue / Cyan)
-  if (characters.jack.controller) {
-    const pos = characters.jack.controller.position;
-    const rot = characters.jack.controller.rotation.y;
-    const pt = worldToMap(pos.x, pos.z);
-    drawPlayerBlip(pt.x, pt.y, rot, '#38bdf8', '#0284c7', activeControl === 'jack' || activeControl === 'couple');
-  }
-}
-
-function drawPlayerBlip(x, y, rot, color1, color2, isActive) {
-  ctx.save();
-  ctx.translate(x, y);
-
-  // Pulsing halo for active selection
-  if (isActive) {
+  // Draw 40 Exhibition Artworks as Golden Dots
+  ctx.fillStyle = '#ffcf70';
+  for (const art of interactiveArtworks) {
+    if (!art.userData || !art.userData.pos) continue;
+    const ax = toMapX(art.userData.pos[0]);
+    const ay = toMapY(art.userData.pos[2]);
     ctx.beginPath();
-    ctx.arc(0, 0, 7, 0, Math.PI * 2);
-    ctx.fillStyle = color1 + '33';
+    ctx.arc(ax, ay, art.userData.isCenterpiece ? 2.5 : 1.2, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Dot
-  ctx.beginPath();
-  ctx.arc(0, 0, 3.5, 0, Math.PI * 2);
-  ctx.fillStyle = color1;
-  ctx.fill();
-  ctx.strokeStyle = '#ffffff';
-  ctx.lineWidth = 1;
-  ctx.stroke();
+  // Draw Characters Blips
+  const drawBlip = (charObj, color, haloColor, label) => {
+    if (!charObj || !charObj.controller) return;
+    const pos = charObj.controller.position;
+    const bx = toMapX(pos.x);
+    const by = toMapY(pos.z);
 
-  // Direction pointer arrow
-  ctx.rotate(-rot);
-  ctx.beginPath();
-  ctx.moveTo(0, -6);
-  ctx.lineTo(2.5, -3);
-  ctx.lineTo(-2.5, -3);
-  ctx.closePath();
-  ctx.fillStyle = color2;
-  ctx.fill();
+    // Halo
+    ctx.fillStyle = haloColor;
+    ctx.beginPath();
+    ctx.arc(bx, by, 6.5, 0, Math.PI * 2);
+    ctx.fill();
 
-  ctx.restore();
+    // Core
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(bx, by, 3.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Heading direction tick
+    const heading = charObj.controller.rotation.y;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + Math.sin(heading) * 6, by + Math.cos(heading) * 6);
+    ctx.stroke();
+  };
+
+  // Maya (Pink / Gold) & Ethan (Cyan / Sky)
+  drawBlip(characters.maya, '#ff70a6', 'rgba(255, 112, 166, 0.35)', 'M');
+  drawBlip(characters.jack, '#4cc9f0', 'rgba(76, 201, 240, 0.35)', 'E');
+
+  // Update Room Badge
+  const activeChar = activeControl === 'jack' ? characters.jack : characters.maya;
+  if (activeChar && activeChar.controller && roomLabel) {
+    const rName = detectActiveRoom(activeChar.controller.position.x, activeChar.controller.position.z);
+    roomLabel.textContent = rName;
+  }
 }
 
+function drawMinimapLoop() {
+  drawMinimap();
+  
+}

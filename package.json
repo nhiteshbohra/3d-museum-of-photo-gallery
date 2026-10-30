@@ -16,7 +16,7 @@
     "websocket",
     "3d-museum"
   ],
-  "author": "Engineering",
+  "author": "Hitesh Bohra",
   "license": "MIT",
   "dependencies": {
     "ws": "^8.22.0"

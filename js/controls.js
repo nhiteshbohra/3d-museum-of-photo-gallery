@@ -269,8 +269,7 @@ function resolveCollisions(pos, floor, onStairs = false) {
  */
 export function handleLocomotion(delta) {
   delta = Math.min(Math.max(delta, 0), 0.05);
-  const target = getControlTarget();
-  if (target) currentFloor = target.userData.floor ?? (target.position.y > FLOOR_HEIGHT / 2 ? 1 : 0);
+  currentFloor = 0;
   if (isFlyCam || ['dancing', 'loading', 'entrance'].includes(appState) || document.getElementById('inspect-overlay')?.style.display === 'flex') return;
   let moveX = Number(!!(keys.d || keys.arrowright)) - Number(!!(keys.a || keys.arrowleft));
   let moveZ = Number(!!(keys.s || keys.arrowdown)) - Number(!!(keys.w || keys.arrowup));
@@ -294,39 +293,34 @@ export function handleLocomotion(delta) {
     actor.rotation.y += diff * (1 - Math.exp(-ROTATION_SPEED * delta));
     const pos = actor.position;
     const previous = pos.clone();
-    const floor = actor.userData.floor ?? (pos.y > FLOOR_HEIGHT / 2 ? 1 : 0);
-    const nearStairs = Math.abs(pos.x - STAIR_X) < STAIR_WIDTH / 2 + 0.1 && pos.z <= STAIR_START_Z + 0.15 && pos.z >= STAIR_END_Z - 0.45;
-    const targetSpeed = Math.min(keys.shift || joystickLength > 0.9 ? 3.2 : MOVE_SPEED, nearStairs ? 1.8 : Infinity) * Math.min(inputLen, 1);
+
+    // Single-floor ground plane (Y = 0)
+    pos.y = 0;
+    actor.userData.floor = 0;
+
+    const targetSpeed = Math.min(keys.shift || joystickLength > 0.9 ? 3.2 : MOVE_SPEED, 3.2) * Math.min(inputLen, 1);
     ch.speed = THREE.MathUtils.lerp(ch.speed || 0, targetSpeed, 1 - Math.exp(-9 * delta));
     pos.x += Math.sin(angle) * ch.speed * delta;
     pos.z += Math.cos(angle) * ch.speed * delta;
-    const onStairs = Math.abs(pos.x - STAIR_X) < STAIR_WIDTH / 2 + 0.1 && pos.z <= STAIR_START_Z + 0.15 && pos.z >= STAIR_END_Z - 0.45;
-    if (onStairs) {
-      const t = THREE.MathUtils.clamp((STAIR_START_Z - pos.z) / (STAIR_START_Z - STAIR_END_Z), 0, 1);
-      pos.y = t * FLOOR_HEIGHT;
-      actor.userData.floor = t > 0.5 ? 1 : 0;
-      if (t > 0 && t < 1) pos.x = THREE.MathUtils.clamp(pos.x, STAIR_X - STAIR_WIDTH / 2 + 0.1, STAIR_X + STAIR_WIDTH / 2 - 0.1);
-    } else {
-      if (previous.y > 0.01 && previous.y < FLOOR_HEIGHT - 0.01) pos.copy(previous);
-      else pos.y = floor * FLOOR_HEIGHT;
-      actor.userData.floor = floor;
-    }
-    // The upper landing barrier must not obstruct the ramp itself.
-    resolveCollisions(pos, actor.userData.floor, onStairs);
+
+    // Resolve room collisions with sliding physics
+    resolveCollisions(pos, 0, false);
+
+    // Clamp inside grand museum grounds
     pos.x = THREE.MathUtils.clamp(pos.x, -HOUSE_WIDTH / 2 + 0.65, HOUSE_WIDTH / 2 - 0.65);
-    pos.z = Math.max(-(HOUSE_DEPTH / 2 - 0.65), pos.z);
-    if (onStairs) {
-      // Ramp height and side rails define this corridor on both floors.
-    } else if (actor.userData.floor === 0) {
-      if (previous.z <= 6.4 && Math.abs(pos.x) >= 1.85) pos.z = Math.min(5.9, pos.z);
-      if (previous.z > 6.4 && pos.z < 6.4 && Math.abs(pos.x) >= 1.85) pos.z = 6.4;
-      pos.z = Math.min(13.8, pos.z);
-    } else pos.z = Math.min(Math.abs(pos.x) < 3.6 ? 5.4 : 2.3, pos.z);
+    pos.z = THREE.MathUtils.clamp(pos.z, -15.0, 14.8);
+
+    // Front portal doorway boundary check
+    if (previous.z <= 5.5 && pos.z > 5.5 && Math.abs(pos.x) >= 2.1) {
+      pos.z = 5.3;
+    } else if (previous.z > 5.5 && pos.z <= 5.5 && Math.abs(pos.x) >= 2.1) {
+      pos.z = 5.6;
+    }
+
     ch.state = 'walking';
     playAction(ch, ch.speed > 2 ? 'run' : 'walk');
     isMoving = true;
   }
-  if (target) currentFloor = target.userData.floor ?? 0;
   if (['idle', 'walking'].includes(appState)) setAppState(isMoving ? 'walking' : 'idle');
 }
 
@@ -515,6 +509,7 @@ function initDebugTooling() {
       };
     },
     rooms: Object.keys(houseRooms),
+    houseRooms,
     characters,
     camera,
     interactiveArtworks,
