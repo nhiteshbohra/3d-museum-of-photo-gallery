@@ -5,3 +5,6 @@ sample
 docs
 node_modules
 scratch
+.agents
+skills-lock.json
+dist

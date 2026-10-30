@@ -1,24 +1,19 @@
 {
-  "name": "our-home-3d",
+  "name": "our-museum-3d",
   "version": "1.0.0",
-  "description": "Our Home 3D - Interactive 3D Museum & Romantic Keepsake with Real-Time Multiplayer",
-  "main": "server.js",
+  "description": "Our Museum 3D - Virtual Art Sanctuary for Maya & Ethan (Powered by notbigmuzzy baseline)",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test": "node tests/config-check.mjs"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "start": "node server.js"
   },
-  "keywords": [
-    "threejs",
-    "webgl",
-    "multiplayer",
-    "websocket",
-    "3d-museum"
-  ],
-  "author": "Hitesh Bohra",
-  "license": "MIT",
   "dependencies": {
+    "three": "^0.182.0",
     "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "vite": "^7.2.4"
   }
 }

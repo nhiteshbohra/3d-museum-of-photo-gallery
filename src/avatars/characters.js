@@ -4,10 +4,17 @@
 
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { scene } from './environment.js';
 
+export let scene = null;
 export const coupleGroup = new THREE.Group();
-scene.add(coupleGroup);
+
+export function setCharacterScene(targetScene) {
+  scene = targetScene;
+  if (scene) {
+    if (!coupleGroup.parent) scene.add(coupleGroup);
+    if (!selectionRing.parent) if (scene) scene.add(selectionRing);
+  }
+}
 
 export const characters = {
   maya: { root: null, mixer: null, actions: {}, currentAction: null, modelFile: 'Claire.glb' },
@@ -49,7 +56,8 @@ const ringMat = new THREE.MeshBasicMaterial({ color: 0xe8d0a9, side: THREE.Doubl
 export const selectionRing = new THREE.Mesh(ringGeo, ringMat);
 selectionRing.rotation.x = -Math.PI / 2;
 selectionRing.visible = false;
-scene.add(selectionRing);
+selectionRing.visible = false;
+if (scene) scene.add(selectionRing);
 
 export function updateSelectionRing(time) {
   if (activeControl === 'couple') {
@@ -350,7 +358,8 @@ export async function loadAvatars(loadingManager) {
     characters.maya.controller.rotation.y = Math.PI;
     characters.maya.controller.add(mayaModel);
     mayaModel.position.set(0, 0, 0);
-    scene.add(characters.maya.controller);
+    (scene ? scene : coupleGroup).add(characters.maya.controller);
+    characters.maya.controller.visible = false;
     characters.maya.state = 'idle';
 
     characters.maya.mixer = new THREE.AnimationMixer(mayaModel);
@@ -379,7 +388,8 @@ export async function loadAvatars(loadingManager) {
     characters.jack.controller.rotation.y = Math.PI;
     characters.jack.controller.add(jackModel);
     jackModel.position.set(0, 0, 0);
-    scene.add(characters.jack.controller);
+    (scene ? scene : coupleGroup).add(characters.jack.controller);
+    characters.jack.controller.visible = false;
     characters.jack.state = 'idle';
 
     characters.jack.mixer = new THREE.AnimationMixer(jackModel);

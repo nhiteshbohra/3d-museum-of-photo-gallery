@@ -1,135 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Our Museum &bull; 3D Grand Pavilion</title>
-  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-  <meta http-equiv="Pragma" content="no-cache">
-  <meta http-equiv="Expires" content="0">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,400&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-  <!-- External CSS Stylesheet -->
-  <link rel="stylesheet" href="css/style.css?v=pavilion_40_salons">
-
-  <!-- Three.js Importmap (Offline Local Vendor) -->
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "./js/vendor/three.module.js",
-        "three/addons/loaders/GLTFLoader.js": "./js/vendor/GLTFLoader.js",
-        "three/addons/utils/SkeletonUtils.js": "./js/vendor/SkeletonUtils.js",
-        "three/addons/": "./js/vendor/"
-      }
-    }
-  </script>
+	<meta charset="UTF-8">
+	<link rel="icon" type="image/png" href="icon.png">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>Our Museum | Virtual 3D Art Sanctuary for Maya &amp; Ethan</title>
 </head>
+
 <body>
-
-  <!-- WebGL Canvas -->
-  <canvas id="webgl-canvas"></canvas>
-
-  <!-- 1. Start Screen -->
-  <div id="start-screen">
-    <div class="start-badge">A place for the two of you</div>
-    <h1 id="start-title">Our Museum</h1>
-    <div class="subtitle">From <span id="start-from">Ethan</span> &nbsp;&bull;&nbsp; To <span id="start-to">Maya</span></div>
-    <p class="start-description">Quiet rooms. Collected memories. A little world to call home.</p>
-    <!-- Choose Your Look Pre-Game Selector (Reference Parity) -->
-    <div class="choose-look-container" id="choose-look-container">
-      <div class="choose-look-title">Choose Your Character</div>
-      <div class="look-cards-row">
-        <button type="button" class="look-card active" data-char="maya" id="look-card-maya">
-          <span class="look-avatar-badge">🌸</span>
-          <span class="look-name">Maya</span>
-          <span class="look-role">Her</span>
-        </button>
-        <button type="button" class="look-card" data-char="jack" id="look-card-jack">
-          <span class="look-avatar-badge">🌿</span>
-          <span class="look-name">Ethan</span>
-          <span class="look-role">Him</span>
-        </button>
-        <button type="button" class="look-card" data-char="couple" id="look-card-couple">
-          <span class="look-avatar-badge">✨</span>
-          <span class="look-name">Together</span>
-          <span class="look-role">Couple</span>
-        </button>
-      </div>
-    </div>
-
-    <div class="progress-bar-container">
-      <div class="progress-fill" id="loading-bar"></div>
-    </div>
-    <div class="status-text" id="status-label">Loading 3D Gallery &bull; 0%</div>
-    <button type="button" class="btn-start" id="start-btn" disabled>
-      <span>Come inside</span> &rarr;
-    </button>
-  </div>
-
-  <!-- 2. Top Bar (Clean Client View) -->
-  <div id="top-bar">
-    <div class="top-left-title" id="hud-museum-title">Our Museum</div>
-    <div class="top-right-actions">
-      <button type="button" class="icon-btn" id="btn-audio-toggle" title="Toggle Romantic Piano Music">🎵</button>
-    </div>
-  </div>
-
-  <!-- 3. Contextual Overlays -->
-  <div id="name-tag-jack">Ethan</div>
-  <div id="dance-pill">Dance with me 💃</div>
-  <div id="speech-bubble">i love you maya ❤️</div>
-  <div id="interaction-hint">
-    <span class="key-badge">E</span> <span id="hint-text">Inspect Plaque</span>
-  </div>
-
-  <!-- 4. Bottom HUD -->
-  <div id="hud-controls">
-    <div class="control-caption" id="control-caption" aria-live="polite">Exploring as Maya</div>
-    <div class="char-switch-group" id="char-switch-group">
-      <button type="button" class="char-pill" id="btn-char-couple" title="Control Both [1]">Together</button>
-      <button type="button" class="char-pill active" id="btn-char-maya" title="Control Maya [2]">Maya</button>
-      <button type="button" class="char-pill" id="btn-char-jack" title="Control Ethan [3]">Ethan</button>
-    </div>
-    <button type="button" class="action-btn" id="btn-sit">Sit</button>
-    <button type="button" class="action-btn" id="btn-dance">Dance with me 💃</button>
-  </div>
-  <div class="movement-guide">W A S D &nbsp; Move <span>·</span> Shift &nbsp; Run <span>·</span> Drag &nbsp; Look <span>·</span> 2 / 3 &nbsp; Switch</div>
-
-  <!-- 5. Mobile Virtual Joystick -->
-  <div id="mobile-joystick">
-    <div id="joystick-knob"></div>
-  </div>
-
-  <!-- 6. Art & Plaque Inspection Modal (Reference Parity) -->
-  <div id="inspect-overlay">
-    <div class="modal-top-bar">
-      <button type="button" id="modal-back-btn" class="modal-back-btn" aria-label="Back to Museum">❮ Back</button>
-      <span id="modal-counter" class="modal-counter-badge">Photo 1 of 40</span>
-      <button type="button" id="modal-close-icon" class="modal-close-icon" aria-label="Close">✕</button>
-    </div>
-
-    <div class="modal-carousel-stage">
-      <button type="button" id="modal-prev-btn" class="modal-nav-arrow prev-arrow" aria-label="Previous artwork">❮</button>
-      <div class="modal-art-frame">
-        <img id="full-art-img" src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E" alt="Exhibition Piece">
-      </div>
-      <button type="button" id="modal-next-btn" class="modal-nav-arrow next-arrow" aria-label="Next artwork">❯</button>
-    </div>
-
-    <div class="plaque-card" id="plaque-card">
-      <div class="plaque-tag" id="modal-tag">A PERMANENT COLLECTION</div>
-      <div class="plaque-title" id="modal-title">For Maya</div>
-      <div class="plaque-desc" id="modal-desc">"Our whole winter, hung on the walls, just for you."</div>
-      <div class="plaque-signature" id="modal-sign">Love, Ethan</div>
-    </div>
-    <div class="close-modal-hint">Use ❮ / ❯ keys to browse &bull; Esc to return</div>
-  </div>
-
-  <!-- Toast Notification -->
-  <div id="toast-msg">Configuration saved! ✨</div>
-
-  <!-- Modular JavaScript Application -->
-  <script type="module" src="js/main.js?v=pavilion_40_salons"></script>
+	<div id="app"></div>
+	<script type="module" src="/src/main.js"></script>
 </body>
+
 </html>

@@ -78,6 +78,16 @@ const server = http.createServer((req, res) => {
     pathname = '/index.html';
   }
 
+  // Prioritize modern production bundle from dist/ if it exists
+  const distCandidate = path.normalize(path.join(__dirname, 'dist', pathname));
+  if (distCandidate.startsWith(path.join(__dirname, 'dist')) && fs.existsSync(distCandidate)) {
+    const dStats = fs.statSync(distCandidate);
+    if (!dStats.isDirectory()) {
+      serveFile(req, res, distCandidate, dStats);
+      return;
+    }
+  }
+
   const safePath = path.normalize(path.join(__dirname, pathname));
 
   // Directory traversal guard
