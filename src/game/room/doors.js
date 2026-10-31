@@ -1,67 +1,76 @@
 import * as THREE from 'three'
 import { makeOutlineRect } from '../../misc/helper.js'
 
-function hashStringToSeed(str) {
-	const s = String(str || '')
-	let h = 2166136261
-	for (let i = 0; i < s.length; i += 1) {
-		h ^= s.charCodeAt(i)
-		h = Math.imul(h, 16777619)
-	}
-	return h >>> 0
-}
+const doorPlaqueTextureCache = new Map()
 
-function seededRand(seed) {
-	let s = (seed >>> 0) || 1
-	return function rand() {
-		s ^= s << 13
-		s ^= s >>> 17
-		s ^= s << 5
-		return (s >>> 0) / 0xffffffff
+function getOrCreateDoorPlaqueTexture(labelText) {
+	const key = String(labelText || '').trim().toUpperCase()
+	if (doorPlaqueTextureCache.has(key)) {
+		return doorPlaqueTextureCache.get(key)
 	}
-}
 
-export function makeMarbleTexture({ size = 512, seed = 1 } = {}) {
 	const canvas = document.createElement('canvas')
-	canvas.width = size
-	canvas.height = size
-	const ctx = canvas.getContext('2d')
+	canvas.width = 1024
+	canvas.height = 256
+	const ctx2 = canvas.getContext('2d')
 
-	const rand = seededRand(seed)
+	if (ctx2) {
+		const safeText = key
+		ctx2.clearRect(0, 0, canvas.width, canvas.height)
 
-	if (ctx) {
-		ctx.fillStyle = '#f6f6f8'
-		ctx.fillRect(0, 0, size, size)
+		// Rich dark lacquered background
+		ctx2.fillStyle = '#0c0d11'
+		ctx2.fillRect(0, 0, canvas.width, canvas.height)
 
-		const clouds = 320
-		for (let i = 0; i < clouds; i += 1) {
-			const x = rand() * size
-			const y = rand() * size
-			const r = (0.02 + rand() * 0.12) * size
-			const a = 0.025 + rand() * 0.04
-			const g = 215 + Math.floor((rand() - 0.5) * 30)
-			ctx.fillStyle = `rgba(${g},${g},${g},${a})`
-			ctx.beginPath()
-			ctx.arc(x, y, r, 0, Math.PI * 2)
-			ctx.fill()
+		// Gilded double filigree border
+		ctx2.strokeStyle = '#d4af37'
+		ctx2.lineWidth = 5
+		ctx2.strokeRect(12, 12, canvas.width - 24, canvas.height - 24)
+		ctx2.strokeStyle = 'rgba(255, 215, 0, 0.65)'
+		ctx2.lineWidth = 2
+		ctx2.strokeRect(20, 20, canvas.width - 40, canvas.height - 40)
+
+		// Corner diamond ornaments
+		const drawDiamond = (cx, cy, r) => {
+			ctx2.fillStyle = '#ffd700'
+			ctx2.beginPath()
+			ctx2.moveTo(cx, cy - r)
+			ctx2.lineTo(cx + r, cy)
+			ctx2.lineTo(cx, cy + r)
+			ctx2.lineTo(cx - r, cy)
+			ctx2.closePath()
+			ctx2.fill()
 		}
+		drawDiamond(20, 20, 6)
+		drawDiamond(canvas.width - 20, 20, 6)
+		drawDiamond(20, canvas.height - 20, 6)
+		drawDiamond(canvas.width - 20, canvas.height - 20, 6)
 
-		ctx.globalAlpha = 0.55
-		ctx.strokeStyle = 'rgba(125,120,115,0.45)'
-		ctx.lineWidth = Math.max(1, Math.floor(size * 0.004))
-		const veins = 16
-		for (let i = 0; i < veins; i += 1) {
-			const y0 = rand() * size
-			const wobble = (rand() - 0.5) * size * 0.22
-			ctx.beginPath()
-			ctx.moveTo(-size * 0.1, y0)
-			ctx.bezierCurveTo(size * 0.25, y0 + wobble, size * 0.55, y0 - wobble, size * 1.1, y0 + wobble * 0.35)
-			ctx.stroke()
-		}
+		// Header tag (bright gold)
+		ctx2.font = '700 24px "Montserrat", sans-serif'
+		ctx2.fillStyle = '#e8c264'
+		ctx2.textAlign = 'center'
+		ctx2.textBaseline = 'top'
+		ctx2.letterSpacing = '4px'
+		ctx2.fillText('MEMORABILIA SALON', canvas.width / 2, 34)
+
+		// Main Title (Luminous high-contrast typography)
+		ctx2.font = '700 50px "Cormorant Garamond", Georgia, serif'
+		ctx2.fillStyle = '#ffffff'
+		ctx2.shadowColor = 'rgba(255, 225, 140, 0.9)'
+		ctx2.shadowBlur = 12
+		ctx2.textBaseline = 'bottom'
+		ctx2.fillText(safeText, canvas.width / 2, canvas.height - 32)
+		ctx2.shadowBlur = 0
 	}
 
 	const tex = new THREE.CanvasTexture(canvas)
 	tex.colorSpace = THREE.SRGBColorSpace
+	tex.generateMipmaps = false
+	tex.minFilter = THREE.LinearFilter
+	tex.magFilter = THREE.LinearFilter
+	tex.needsUpdate = true
+	doorPlaqueTextureCache.set(key, tex)
 	return tex
 }
 
@@ -265,68 +274,7 @@ export function addDoor(ctx, opts = {}) {
 		doorFrameGroup.add(plaque)
 		disposables.push(plaqueGeo, plaqueMat)
 
-		const canvas = document.createElement('canvas')
-		canvas.width = 1024
-		canvas.height = 256
-		const ctx2 = canvas.getContext('2d')
-		let drawLabelText = null
-
-		if (ctx2) {
-			drawLabelText = function drawLabelText(nextText) {
-				const safeText = String(nextText || '').trim()
-				ctx2.clearRect(0, 0, canvas.width, canvas.height)
-
-				// Rich dark lacquered background
-				ctx2.fillStyle = '#0c0d11'
-				ctx2.fillRect(0, 0, canvas.width, canvas.height)
-
-				// Gilded double filigree border
-				ctx2.strokeStyle = '#d4af37'
-				ctx2.lineWidth = 5
-				ctx2.strokeRect(12, 12, canvas.width - 24, canvas.height - 24)
-				ctx2.strokeStyle = 'rgba(255, 215, 0, 0.65)'
-				ctx2.lineWidth = 2
-				ctx2.strokeRect(20, 20, canvas.width - 40, canvas.height - 40)
-
-				// Corner diamond ornaments
-				const drawDiamond = (cx, cy, r) => {
-					ctx2.fillStyle = '#ffd700'
-					ctx2.beginPath()
-					ctx2.moveTo(cx, cy - r)
-					ctx2.lineTo(cx + r, cy)
-					ctx2.lineTo(cx, cy + r)
-					ctx2.lineTo(cx - r, cy)
-					ctx2.closePath()
-					ctx2.fill()
-				}
-				drawDiamond(20, 20, 6)
-				drawDiamond(canvas.width - 20, 20, 6)
-				drawDiamond(20, canvas.height - 20, 6)
-				drawDiamond(canvas.width - 20, canvas.height - 20, 6)
-
-				// Header tag (bright gold)
-				ctx2.font = '700 24px "Montserrat", sans-serif'
-				ctx2.fillStyle = '#e8c264'
-				ctx2.textAlign = 'center'
-				ctx2.textBaseline = 'top'
-				ctx2.letterSpacing = '4px'
-				ctx2.fillText('MEMORABILIA SALON', canvas.width / 2, 34)
-
-				// Main Title (Luminous high-contrast typography)
-				ctx2.font = '700 50px "Cormorant Garamond", Georgia, serif'
-				ctx2.fillStyle = '#ffffff'
-				ctx2.shadowColor = 'rgba(255, 225, 140, 0.9)'
-				ctx2.shadowBlur = 12
-				ctx2.textBaseline = 'bottom'
-				ctx2.fillText(safeText.toUpperCase(), canvas.width / 2, canvas.height - 32)
-				ctx2.shadowBlur = 0
-			}
-			drawLabelText(labelText)
-		}
-
-		const tex = new THREE.CanvasTexture(canvas)
-		tex.colorSpace = THREE.SRGBColorSpace
-		tex.needsUpdate = true
+		const tex = getOrCreateDoorPlaqueTexture(labelText)
 
 		labelControl = {
 			originalText: labelText,
@@ -334,10 +282,9 @@ export function addDoor(ctx, opts = {}) {
 			setOverride(nextText) {
 				const t = String(nextText || '').trim()
 				this.overrideText = t || null
-				if (typeof drawLabelText === 'function') {
-					drawLabelText(t || this.originalText)
-				}
-				tex.needsUpdate = true
+				const activeTex = getOrCreateDoorPlaqueTexture(t || this.originalText)
+				textMat.map = activeTex
+				textMat.needsUpdate = true
 			},
 			clearOverride() {
 				this.setOverride('')
@@ -350,7 +297,7 @@ export function addDoor(ctx, opts = {}) {
 		const text = new THREE.Mesh(textGeo, textMat)
 		text.position.set(0, plaqueCenterY, 0.016)
 		doorFrameGroup.add(text)
-		disposables.push(tex, textGeo, textMat)
+		disposables.push(textGeo, textMat)
 	}
 
 	// 5. Outer Door Jambs & Lintel Frame
@@ -435,9 +382,12 @@ export function addDoor(ctx, opts = {}) {
 	doors.push({
 		id,
 		wall,
-		normal: wallNormal,
-		right: wallRight,
-		up: wallUp,
+		position: baseCenter.clone(),
+		normal: wallNormal.clone(),
+		right: wallRight.clone(),
+		up: wallUp.clone(),
+		u,
+		y,
 		...meta,
 	})
 

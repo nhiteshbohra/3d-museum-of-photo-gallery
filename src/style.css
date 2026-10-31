@@ -80,6 +80,29 @@ body.in-sanctuary #scene-container,
 	transform: translateY(-1px);
 }
 
+.top-bar-admin-badge {
+	background: rgba(212, 175, 55, 0.15);
+	border: 1px solid rgba(212, 175, 55, 0.55);
+	color: #ffd700;
+	border-radius: 999px;
+	padding: 7px 16px;
+	font-family: 'Montserrat', sans-serif;
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 2px;
+	display: flex;
+	align-items: center;
+	backdrop-filter: blur(12px);
+	box-shadow: 0 0 16px rgba(212, 175, 55, 0.25);
+	user-select: none;
+	animation: adminGlowPulse 3s infinite ease-in-out;
+}
+
+@keyframes adminGlowPulse {
+	0%, 100% { box-shadow: 0 0 12px rgba(212, 175, 55, 0.2); }
+	50% { box-shadow: 0 0 22px rgba(212, 175, 55, 0.45); }
+}
+
 .top-bar-key {
 	display: inline-flex;
 	align-items: center;
@@ -459,51 +482,17 @@ body.locked.cursor-clickable #crosshair:not(.loading) {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	max-width: 86vw;
-	max-height: 75vh;
+	max-width: 90vw;
+	max-height: 88vh;
 }
 
 .photo-lightbox-img {
 	display: block;
 	max-width: 100%;
-	max-height: 75vh;
+	max-height: 88vh;
 	width: auto;
 	height: auto;
 	object-fit: contain;
-}
-
-.photo-lightbox-meta {
-	margin-top: 16px;
-	text-align: center;
-	display: flex;
-	flex-direction: column;
-	align-items: center;
-	gap: 6px;
-}
-
-.photo-lightbox-badge {
-	font-family: 'Montserrat', sans-serif;
-	font-size: 11px;
-	font-weight: 700;
-	letter-spacing: 2.5px;
-	color: #d4af37;
-	text-transform: uppercase;
-}
-
-.photo-lightbox-title {
-	font-family: 'Cormorant Garamond', Georgia, serif;
-	font-size: 26px;
-	font-weight: 700;
-	color: #ffffff;
-	letter-spacing: 0.5px;
-	text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
-}
-
-.photo-lightbox-hint {
-	font-family: 'Montserrat', sans-serif;
-	font-size: 12px;
-	color: rgba(255, 255, 255, 0.5);
-	letter-spacing: 0.5px;
 }
 
 @keyframes lightboxFadeIn {

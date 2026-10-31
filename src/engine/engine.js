@@ -55,25 +55,6 @@ export function startYourEngines({
 	flashlight.visible = false
 	let flashlightTimeoutId = 0
 
-	// Floating Dust / Ambient Particle System
-	const particleCount = 180
-	const particleGeo = new THREE.BufferGeometry()
-	const particlePositions = new Float32Array(particleCount * 3)
-	for (let i = 0; i < particleCount; i++) {
-		particlePositions[i * 3 + 0] = (Math.random() - 0.5) * 16
-		particlePositions[i * 3 + 1] = Math.random() * 4.5 + 0.2
-		particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 16
-	}
-	particleGeo.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3))
-	const particleMat = new THREE.PointsMaterial({
-		color: 0xffffff,
-		size: 0.045,
-		transparent: true,
-		opacity: 0.65,
-		blending: THREE.AdditiveBlending,
-	})
-	const dustParticles = new THREE.Points(particleGeo, particleMat)
-	scene.add(dustParticles)
 	let prePlayIdleTime = 0
 
 	const staticDisposables = []
@@ -84,6 +65,7 @@ export function startYourEngines({
 	let currentRoom = null
 	let halfW = 6
 	let halfL = 6
+	let currentRoomDoors = []
 	let doorById = new Map()
 	let doorHitMeshes = []
 	let doorHitById = new Map()
@@ -92,12 +74,27 @@ export function startYourEngines({
 	let interactionLocked = false
 
 	let deferredTextureLoadToken = 0
+	let lastDoorTriggerTime = 0
+	const loadedPhotoTextureCache = new Map()
 
 	function loadTextureAsync(url) {
+		const key = String(url || '').trim()
+		if (!key) return Promise.reject(new Error('Empty url'))
+		if (loadedPhotoTextureCache.has(key)) {
+			return Promise.resolve(loadedPhotoTextureCache.get(key))
+		}
 		const loader = new THREE.TextureLoader()
 		if (typeof loader.setCrossOrigin === 'function') loader.setCrossOrigin('anonymous')
 		return new Promise((resolve, reject) => {
-			loader.load(url, resolve, undefined, reject)
+			loader.load(
+				key,
+				(tex) => {
+					loadedPhotoTextureCache.set(key, tex)
+					resolve(tex)
+				},
+				undefined,
+				reject
+			)
 		})
 	}
 
@@ -105,34 +102,28 @@ export function startYourEngines({
 		const jobs = Array.isArray(room?.deferredTextureLoads) ? room.deferredTextureLoads : []
 		if (jobs.length === 0) return
 
-		const staggerMs = 90
-
 		for (const job of jobs) {
-			if (token !== deferredTextureLoadToken) return
-			if (currentRoom !== room) return
+			if (token !== deferredTextureLoadToken || currentRoom !== room) return
 
 			const url = typeof job?.url === 'string' ? job.url.trim() : ''
 			if (!url) continue
 
+			if (loadedPhotoTextureCache.has(url)) {
+				const tex = loadedPhotoTextureCache.get(url)
+				if (job && typeof job.onLoad === 'function') job.onLoad(tex)
+				continue
+			}
 
 			await new Promise((r) => window.requestAnimationFrame(r))
 			if (token !== deferredTextureLoadToken || currentRoom !== room) return
 
 			try {
 				const tex = await loadTextureAsync(url)
-				if (token !== deferredTextureLoadToken || currentRoom !== room) {
-					if (tex && typeof tex.dispose === 'function') tex.dispose()
-					return
-				}
+				if (token !== deferredTextureLoadToken || currentRoom !== room) return
 				if (job && typeof job.onLoad === 'function') job.onLoad(tex)
-				else if (tex && typeof tex.dispose === 'function') tex.dispose()
 			} catch (err) {
 				if (token !== deferredTextureLoadToken || currentRoom !== room) return
 				if (job && typeof job.onError === 'function') job.onError(err)
-			}
-
-			if (staggerMs > 0) {
-				await new Promise((r) => window.setTimeout(r, staggerMs))
 			}
 		}
 	}
@@ -304,7 +295,10 @@ export function startYourEngines({
 
 	function disposeMany(items) {
 		for (const d of items) {
-			if (d && typeof d.dispose === 'function') d.dispose()
+			if (d && typeof d.dispose === 'function') {
+				if (d.isTexture && Array.from(loadedPhotoTextureCache.values()).includes(d)) continue
+				d.dispose()
+			}
 		}
 	}
 
@@ -316,33 +310,108 @@ export function startYourEngines({
 		return 0
 	}
 
-	function applySpawn(spawn) {
+	function applySpawn(spawn, doors = []) {
 		if (!spawn) return
 
-		if (spawn.type === 'center') {
-			camera.position.set(0, eyeHeight, 0)
-			yaw = typeof spawn.yaw === 'number' ? spawn.yaw : 0
-			pitch = typeof spawn.pitch === 'number' ? spawn.pitch : 0
-			camera.rotation.y = yaw
-			camera.rotation.x = pitch
-			velocity.set(0, 0, 0)
-			grounded = true
-			return
-		}
+		try {
+			if (spawn.type === 'center') {
+				camera.position.set(0, eyeHeight, 0)
+				yaw = typeof spawn.yaw === 'number' ? spawn.yaw : 0
+				pitch = typeof spawn.pitch === 'number' ? spawn.pitch : 0
+				camera.rotation.y = yaw
+				camera.rotation.x = pitch
+				velocity.set(0, 0, 0)
+				grounded = true
+				return
+			}
 
-		if (spawn.type === 'fromWall') {
-			const wall = spawn.wall
-			const margin = 1.5
+			if (spawn.type === 'atDoor') {
+				const doorList = Array.isArray(doors) && doors.length > 0 ? doors : (Array.isArray(currentRoomDoors) ? currentRoomDoors : [])
+				let targetDoor = null
+				if (spawn.doorId) {
+					targetDoor = doorList.find((d) => d && d.id === spawn.doorId)
+				}
+				if (!targetDoor && spawn.category) {
+					const catLower = String(spawn.category).toLowerCase().trim()
+					targetDoor = doorList.find((d) => {
+						if (!d) return false
+						const c = String(d.category || d.articleTitle || '').toLowerCase().trim()
+						return c === catLower || c.includes(catLower) || catLower.includes(c)
+					})
+				}
+				if (!targetDoor && spawn.articleTitle) {
+					const artLower = String(spawn.articleTitle).toLowerCase().trim()
+					targetDoor = doorList.find((d) => {
+						if (!d) return false
+						const c = String(d.articleTitle || d.category || '').toLowerCase().trim()
+						return c === artLower || c.includes(artLower) || artLower.includes(c)
+					})
+				}
 
-			let x = 0
-			let z = 0
-			if (wall === 'west') x = -halfW + margin
-			else if (wall === 'east') x = halfW - margin
-			else if (wall === 'north') z = -halfL + margin
-			else if (wall === 'south') z = halfL - margin
+				if (targetDoor && targetDoor.position && targetDoor.normal) {
+					const margin = 1.5
+					const spawnX = targetDoor.position.x + targetDoor.normal.x * margin
+					const spawnZ = targetDoor.position.z + targetDoor.normal.z * margin
 
-			camera.position.set(x, eyeHeight, z)
-			yaw = yawForFacingWall(wall)
+					let floorY = typeof targetDoor.platformHeight === 'number' ? targetDoor.platformHeight : 0
+					for (const o of roomObstacles) {
+						if (!o || o.type !== 'floor') continue
+						const ox = typeof o.x === 'number' ? o.x : 0
+						const oz = typeof o.z === 'number' ? o.z : 0
+						const w = typeof o.w === 'number' ? o.w : 0
+						const d = typeof o.d === 'number' ? o.d : 0
+						if (Math.abs(spawnX - ox) <= w / 2 && Math.abs(spawnZ - oz) <= d / 2) {
+							if (typeof o.y === 'number' && o.y > floorY) {
+								floorY = o.y
+							}
+						}
+					}
+
+					camera.position.set(spawnX, floorY + eyeHeight, spawnZ)
+					yaw = Math.atan2(-targetDoor.normal.x, -targetDoor.normal.z)
+					pitch = 0
+					camera.rotation.y = yaw
+					camera.rotation.x = pitch
+					velocity.set(0, 0, 0)
+					grounded = true
+					return
+				}
+
+				// Fallback to fromWall south if no door matched
+				const margin = 1.5
+				camera.position.set(0, eyeHeight, halfL - margin)
+				yaw = 0
+				pitch = 0
+				camera.rotation.y = yaw
+				camera.rotation.x = pitch
+				velocity.set(0, 0, 0)
+				grounded = true
+				return
+			}
+
+			if (spawn.type === 'fromWall') {
+				const wall = spawn.wall
+				const margin = 1.5
+
+				let x = 0
+				let z = 0
+				if (wall === 'west') x = -halfW + margin
+				else if (wall === 'east') x = halfW - margin
+				else if (wall === 'north') z = -halfL + margin
+				else if (wall === 'south') z = halfL - margin
+
+				camera.position.set(x, eyeHeight, z)
+				yaw = yawForFacingWall(wall)
+				pitch = 0
+				camera.rotation.y = yaw
+				camera.rotation.x = pitch
+				velocity.set(0, 0, 0)
+				grounded = true
+			}
+		} catch (err) {
+			console.warn('[OurMuseum] applySpawn error:', err)
+			camera.position.set(0, eyeHeight, halfL - 1.5)
+			yaw = 0
 			pitch = 0
 			camera.rotation.y = yaw
 			camera.rotation.x = pitch
@@ -440,6 +509,10 @@ export function startYourEngines({
 		scene.add(currentRoom.group)
 		applyAmbiencePreset()
 
+		try {
+			renderer.compile(currentRoom.group, camera)
+		} catch (_) {}
+
 		deferredTextureLoadToken += 1
 		void runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
 
@@ -447,6 +520,7 @@ export function startYourEngines({
 		halfL = currentRoom.bounds?.halfL ?? halfL
 
 		const doors = Array.isArray(currentRoom.doors) ? currentRoom.doors : []
+		currentRoomDoors = doors
 		doorById = new Map(doors.map((d) => [d.id, d]))
 		doorHitMeshes = Array.isArray(currentRoom.doorHitMeshes) ? currentRoom.doorHitMeshes : []
 		doorHitById = new Map(
@@ -460,7 +534,8 @@ export function startYourEngines({
 		roomObstacles = Array.isArray(currentRoom.obstacles) ? currentRoom.obstacles : []
 		pickableMeshes = Array.isArray(currentRoom.pickableMeshes) ? currentRoom.pickableMeshes : []
 
-		applySpawn(spawn)
+		applySpawn(spawn, doors)
+		interactionLocked = false
 	}
 
 	loadRoom({
@@ -494,7 +569,7 @@ export function startYourEngines({
 		if (hits.length === 0) return false
 
 		const hitPoint = hits[0]?.point
-		const interactMaxDistance = 2.25
+		const interactMaxDistance = 4.5
 		if (hitPoint && typeof hitPoint.distanceTo === 'function') {
 			const d = hitPoint.distanceTo(camera.position)
 			if (d > interactMaxDistance) return false
@@ -641,7 +716,24 @@ export function startYourEngines({
 			}
 		}
 
-		const interactMaxDistance = 2.25
+		// Check if clicked a door (generous 8.0m reach so door interaction is instantaneous & responsive)
+		{
+			const doorId = findDoorId(hits[0].object)
+			if (doorId) {
+				const door = doorById.get(doorId) ?? { id: doorId }
+				if (doorHasTriggerTarget(door)) {
+					const d = hitPoint && typeof hitPoint.distanceTo === 'function' ? hitPoint.distanceTo(camera.position) : 0
+					if (d <= 8.0) {
+						if (typeof onDoorTrigger === 'function') {
+							onDoorTrigger(door)
+						}
+						return
+					}
+				}
+			}
+		}
+
+		const interactMaxDistance = 4.5
 		if (hitPoint && typeof hitPoint.distanceTo === 'function') {
 			const d = hitPoint.distanceTo(camera.position)
 			if (d > interactMaxDistance) return
@@ -699,19 +791,6 @@ export function startYourEngines({
 				}
 				cur = cur.parent
 			}
-		}
-
-		const doorId = findDoorId(hits[0].object)
-		if (!doorId) return
-
-		const door = doorById.get(doorId) ?? { id: doorId }
-
-		if (!doorHasTriggerTarget(door)) return
-
-		if (typeof onDoorTrigger === 'function') {
-			onDoorTrigger(door)
-		} else {
-			console.info(`[OurMuseum] Door clicked: ${doorId}`)
 		}
 	}
 
@@ -877,6 +956,25 @@ export function startYourEngines({
 
 		camera.position.x = clamp(camera.position.x, -maxX, maxX)
 		camera.position.z = clamp(camera.position.z, -maxZ, maxZ)
+
+		// Seamless walk-through door transition when approaching an active door
+		if (!interactionLocked && currentRoomDoors && currentRoomDoors.length > 0 && typeof onDoorTrigger === 'function') {
+			const now = performance.now()
+			if (now - lastDoorTriggerTime > 1500) {
+				const px = camera.position.x
+				const pz = camera.position.z
+				for (const d of currentRoomDoors) {
+					if (!d || !d.position || !doorHasTriggerTarget(d)) continue
+					const dx = px - d.position.x
+					const dz = pz - d.position.z
+					if (Math.hypot(dx, dz) < 0.95) {
+						lastDoorTriggerTime = now
+						onDoorTrigger(d)
+						break
+					}
+				}
+			}
+		}
 	}
 
 	function resize() {
@@ -924,14 +1022,12 @@ export function startYourEngines({
 
 		updatePlayer(dt)
 
-		// Floating embers subtle motion
-		if (dustParticles) {
-			const posArr = dustParticles.geometry.attributes.position.array
-			for (let i = 0; i < particleCount; i++) {
-				posArr[i * 3 + 1] += Math.sin(clock.elapsedTime + i) * 0.002 - 0.0004
-				if (posArr[i * 3 + 1] < 0.2) posArr[i * 3 + 1] = 4.8
+		// Animate dynamic room decorations (flickering fire/candles, petals, ceiling fan, clock pendulum, etc.)
+		if (currentRoom?.animatedDecorations) {
+			const animTime = clock.elapsedTime
+			for (let i = 0; i < currentRoom.animatedDecorations.length; i++) {
+				currentRoom.animatedDecorations[i](animTime, dt)
 			}
-			dustParticles.geometry.attributes.position.needsUpdate = true
 		}
 
 		// Cinematic drift before entering
@@ -955,8 +1051,9 @@ export function startYourEngines({
 	function applyAmbiencePreset() {
 		if (!currentRoom) return
 		renderer.toneMappingExposure = 1.0
-		scene.background.set(0x05030a)
-		particleMat.color.set(0xffffff)
+		if (scene.background && typeof scene.background.set === 'function') {
+			scene.background.set(0x05030a)
+		}
 		currentRoom.group.traverse((o) => {
 			if (o.isLight) {
 				if (o.isAmbientLight) { o.color.set(0xf5f8ff); o.intensity = 1.0 }
@@ -1046,6 +1143,17 @@ export function startYourEngines({
 				...lastLoadedRoomParams,
 				spawn: null,
 			})
+		},
+		setCameraPosition(x, y, z, newYaw = 0, newPitch = 0) {
+			if (typeof x === 'number') camera.position.x = x
+			if (typeof y === 'number') camera.position.y = y
+			if (typeof z === 'number') camera.position.z = z
+			yaw = Number.isFinite(newYaw) ? newYaw : 0
+			pitch = Number.isFinite(newPitch) ? newPitch : 0
+			camera.rotation.y = yaw
+			camera.rotation.x = pitch
+			velocity.set(0, 0, 0)
+			grounded = true
 		},
 		stop() {
 			if (held) releaseHeld()

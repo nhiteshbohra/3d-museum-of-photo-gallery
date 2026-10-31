@@ -1,12 +1,28 @@
 import './style.css'
 import { startYourEngines } from './engine/engine.js'
 import { coupleSalons, coupleCategories } from './data/coupleMuseum.js'
-import { fetchGalleryRoomData, fetchGalleryRoomRelated, fetchWikipediaRandomTitle } from './wiki/wiki.js'
 import { getArtworkSizes, saveArtworkSizes, resetArtworkSizes, DEFAULT_ARTWORK_SIZES } from './config/artworkSizes.js'
+
+const isAdmin = document.body.classList.contains('admin-mode') ||
+	window.location.pathname.toLowerCase().includes('admin') ||
+	new URLSearchParams(window.location.search).has('admin');
+
+if (isAdmin) {
+	document.body.classList.add('admin-mode');
+}
 
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div id="top-bar">
+    ${isAdmin ? `
+    <div class="top-bar-admin-badge" title="Curator Admin Studio Workspace">
+      <span>✦ ADMIN STUDIO ✦</span>
+    </div>
+    <button id="btn-resizer-toggle" class="top-bar-btn" title="Adjust Artwork Sizes & Gaps Live (Press R)">
+      <span>📐 Size</span>
+      <span class="top-bar-key">R</span>
+    </button>
+    ` : ''}
     <button id="btn-audio-toggle" class="top-bar-btn" title="Toggle Romantic Classical Ambience (Press M)">
       <span id="audio-label">Music</span>
       <div id="soundwave-anim" class="soundwave">
@@ -20,10 +36,6 @@ app.innerHTML = `
     <button id="btn-fullscreen-toggle" class="top-bar-btn" title="Toggle Fullscreen (Press F)">
       <span>⛶</span>
       <span class="top-bar-key">F</span>
-    </button>
-    <button id="btn-resizer-toggle" class="top-bar-btn" title="Adjust Artwork Sizes & Gaps Live (Press R)">
-      <span>📐 Size</span>
-      <span class="top-bar-key">R</span>
     </button>
   </div>
 
@@ -199,10 +211,12 @@ const params = new URLSearchParams(window.location.search)
 const initialTitle = params.get('exhibit')
 let engineApi = null
 
+let lastEnteredLobbyCategory = null
+let lastEnteredLobbyDoorId = null
+let currentGalleryTitle = initialTitle || null
+
 const lobby_title = 'Lobby'
 
-let wikiAbortController = null
-let randomAbortController = null
 let activeNavId = 0
 let activeDoorLabelOverride = null
 
@@ -269,157 +283,63 @@ function setUrlAndState(title, { push = false } = {}) {
 	}
 }
 
+function findCoupleSalon(title) {
+	if (!title) return null
+	if (coupleSalons[title]) return coupleSalons[title]
+	const lower = String(title).toLowerCase().trim()
+	for (const key of Object.keys(coupleSalons)) {
+		if (key.toLowerCase().trim() === lower) return coupleSalons[key]
+	}
+	for (const key of Object.keys(coupleSalons)) {
+		if (key.toLowerCase().includes(lower) || lower.includes(key.toLowerCase())) return coupleSalons[key]
+	}
+	return null
+}
+
 function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState = true, loadingDoorId = null } = {}) {
 	if (activeDoorLabelOverride && engineApi && typeof engineApi.setDoorLabelOverride === 'function') {
 		engineApi.setDoorLabelOverride(activeDoorLabelOverride.doorId, '')
 		activeDoorLabelOverride = null
 	}
 
-	if (wikiAbortController) wikiAbortController.abort()
-	wikiAbortController = new AbortController()
 	const navId = (activeNavId += 1)
 
-	setLoading(true)
+	const salon = findCoupleSalon(title) || coupleSalons['Fireside Winter Memories']
+	if (!salon) return
 
-	const doorId = typeof loadingDoorId === 'string' ? loadingDoorId : ''
-	if (doorId && engineApi && typeof engineApi.setDoorLabelOverride === 'function') {
-		engineApi.setDoorLabelOverride(doorId, 'Loading...')
-		activeDoorLabelOverride = { doorId, navId }
+	currentGalleryTitle = salon.title
+	lastEnteredLobbyCategory = salon.title
+	try {
+		window.sessionStorage.setItem('ourmuseum:lastSalon', salon.title)
+	} catch (_) {}
+	pushGalleryTrail(salon.title)
+	const trailForBoard = galleryTrail.slice(-3)
+	if (updateUrlState) {
+		setUrlAndState(salon.title, { push: Boolean(pushHistory) })
 	}
-
-	if (coupleSalons[title]) {
-		const salon = coupleSalons[title]
-		pushGalleryTrail(salon.title)
-		const trailForBoard = galleryTrail.slice(-3)
-		if (updateUrlState) {
-			setUrlAndState(title, { push: Boolean(pushHistory) })
-		}
-		if (engineApi && typeof engineApi.setRoom === 'function') {
-			engineApi.setRoom({
-				roomMode: 'gallery',
-				roomSeedTitle: title,
-				galleryEntryWall: 'south',
-				galleryRelatedTitles: salon.seeAlso,
-				galleryTitle: salon.title,
-				galleryDescription: salon.extract,
-				galleryMainThumbnailUrl: (salon.photos && salon.photos.length > 0) ? salon.photos[0] : null,
-				galleryPhotos: salon.photos,
-				galleryVideoUrl: null,
-				galleryLongExtract: salon.longExtract,
-				galleryTrail: trailForBoard,
-				spawn,
-			})
-			setTimeout(() => {
-				for (let i = 0; i < salon.seeAlso.length; i += 1) {
-					const doorId = `seealso-${i}`
-					const t = salon.seeAlso[i]
-					if (engineApi && typeof engineApi.setDoorMeta === 'function' && typeof engineApi.setDoorLabelOverride === 'function') {
-						engineApi.setDoorMeta(doorId, { articleTitle: t })
-						engineApi.setDoorLabelOverride(doorId, t)
-					}
-				}
-			}, 100)
-		}
-		setLoading(false)
-		return
+	if (engineApi && typeof engineApi.setRoom === 'function') {
+		engineApi.setRoom({
+			roomMode: 'gallery',
+			roomSeedTitle: salon.title,
+			galleryEntryWall: 'south',
+			galleryRelatedTitles: salon.seeAlso,
+			galleryTitle: salon.title,
+			galleryDescription: salon.extract,
+			galleryMainThumbnailUrl: (salon.photos && salon.photos.length > 0) ? salon.photos[0] : null,
+			galleryPhotos: salon.photos,
+			galleryVideoUrl: null,
+			galleryLongExtract: salon.longExtract,
+			galleryTrail: trailForBoard,
+			spawn,
+		})
 	}
-
-	fetchGalleryRoomData(title, { signal: wikiAbortController.signal })
-		.then((data) => {
-			if (navId !== activeNavId) return
-
-			function pickRelatedTitles(items) {
-				const pool = Array.isArray(items)
-					? items
-						.map((p) => (p && typeof p.title === 'string' ? p.title : ''))
-						.map((t) => t.trim())
-						.filter(Boolean)
-					: []
-
-				const seen = new Set()
-				const uniquePool = []
-				for (const t of pool) {
-					const k = t.toLowerCase()
-					if (seen.has(k)) continue
-					seen.add(k)
-					uniquePool.push(t)
-				}
-
-				for (let i = uniquePool.length - 1; i > 0; i -= 1) {
-					const j = Math.floor(Math.random() * (i + 1))
-					const tmp = uniquePool[i]
-					uniquePool[i] = uniquePool[j]
-					uniquePool[j] = tmp
-				}
-
-				return uniquePool.slice(0, 6)
-			}
-
-			const displayTitle = typeof data?.room?.title === 'string' ? data.room.title : title
-			pushGalleryTrail(displayTitle)
-			const trailForBoard = galleryTrail.slice(-3)
-			const relatedTitles = pickRelatedTitles(data?.seeAlso)
-
-			if (updateUrlState) {
-				setUrlAndState(title, { push: Boolean(pushHistory) })
-			}
-
-			if (engineApi && typeof engineApi.setRoom === 'function') {
-				engineApi.setRoom({
-					roomMode: 'gallery',
-					roomSeedTitle: title,
-					galleryEntryWall: 'south',
-					galleryRelatedTitles: relatedTitles,
-					galleryTitle: displayTitle,
-					galleryDescription: typeof data?.room?.extract === 'string' ? data.room.extract : '',
-					galleryMainThumbnailUrl: typeof data?.mainThumbnailUrl === 'string' ? data.mainThumbnailUrl : null,
-					galleryPhotos: Array.isArray(data?.photos) ? data.photos : [],
-					galleryVideoUrl: typeof data?.videoUrl === 'string' ? data.videoUrl : null,
-					galleryLongExtract: typeof data?.longExtract === 'string' ? data.longExtract : '',
-					galleryTrail: trailForBoard,
-					spawn,
-				})
-			}
-
-			fetchGalleryRoomRelated(displayTitle, { signal: wikiAbortController.signal })
-				.then((items) => {
-					if (navId !== activeNavId) return
-
-					const titles = pickRelatedTitles(items)
-					if (!engineApi) return
-					if (typeof engineApi.setDoorMeta !== 'function' || typeof engineApi.setDoorLabelOverride !== 'function') return
-
-					for (let i = 0; i < 6; i += 1) {
-						const doorId = `seealso-${i}`
-						const t = typeof titles[i] === 'string' ? titles[i].trim() : ''
-						if (!t) continue
-						engineApi.setDoorMeta(doorId, { articleTitle: t })
-						engineApi.setDoorLabelOverride(doorId, t)
-					}
-				})
-				.catch((err) => {
-					if (err && err.code === 'aborted') return
-				})
-		})
-		.catch((err) => {
-			if (err && err.code === 'aborted') return
-			console.warn('[OurMuseum] Wiki fetch failed', err)
-		})
-		.finally(() => {
-			if (navId !== activeNavId) return
-			if (activeDoorLabelOverride && activeDoorLabelOverride.navId === navId && engineApi && typeof engineApi.setDoorLabelOverride === 'function') {
-				engineApi.setDoorLabelOverride(activeDoorLabelOverride.doorId, '')
-				activeDoorLabelOverride = null
-			}
-			setLoading(false)
-		})
+	setLoading(false)
+	if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+		engineApi.setInteractionLocked(false)
+	}
 }
 
 function enterlobby({ push = false } = {}) {
-	if (wikiAbortController) {
-		wikiAbortController.abort()
-		wikiAbortController = null
-	}
 	activeNavId += 1
 
 	pushGalleryTrail(lobby_title)
@@ -430,17 +350,48 @@ function enterlobby({ push = false } = {}) {
 	}
 
 	setUrlAndState(null, { push })
+
+	let returnSpawn = null
+	let rememberedCat = null
+	let rememberedDoorId = null
+	try {
+		rememberedCat = window.sessionStorage.getItem('ourmuseum:lastSalon')
+		rememberedDoorId = window.sessionStorage.getItem('ourmuseum:lastDoorId')
+	} catch (_) {}
+
+	const targetCat =
+		lastEnteredLobbyCategory ||
+		(currentGalleryTitle && coupleCategories.find((c) => c.toLowerCase() === currentGalleryTitle.toLowerCase())) ||
+		rememberedCat ||
+		null
+
+	const targetDoorId = lastEnteredLobbyDoorId || rememberedDoorId || null
+
+	if (targetCat || targetDoorId) {
+		returnSpawn = {
+			type: 'atDoor',
+			category: targetCat,
+			doorId: targetDoorId,
+		}
+	} else {
+		returnSpawn = {
+			type: 'fromWall',
+			wall: 'south',
+		}
+	}
+
 	if (engineApi && typeof engineApi.setRoom === 'function') {
 		engineApi.setRoom({
 			roomMode: 'lobby',
 			lobbyCategories: coupleCategories,
-			spawn: {
-				type: 'fromWall',
-				wall: 'south'
-			}
+			spawn: returnSpawn,
 		})
 	}
+	currentGalleryTitle = null
 	setLoading(false)
+	if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+		engineApi.setInteractionLocked(false)
+	}
 }
 
 function goBackInApp() {
@@ -454,31 +405,16 @@ function goBackInApp() {
 }
 
 function requestRandomExhibit() {
-	if (randomAbortController) {
-		randomAbortController.abort()
-		randomAbortController = null
-	}
-
-	setLoading(true)
-	randomAbortController = new AbortController()
-	const signal = randomAbortController.signal
-
-	fetchWikipediaRandomTitle({ signal, allow_disambiguation: false })
-		.then((title) => {
-			if (signal.aborted) return
-			loadAndEnterGallery(title, {
-				pushHistory: true,
-				spawn: { type: 'fromWall', wall: 'south' },
-			})
-		})
-		.catch((err) => {
-			if (err && err.code === 'aborted') return
-			console.warn('[OurMuseum] Random exhibit failed', err)
-			setLoading(false)
-		})
+	const currentIdx = coupleCategories.indexOf(currentGalleryTitle)
+	const pool = coupleCategories.filter((_, idx) => idx !== currentIdx)
+	const randomCat = pool[Math.floor(Math.random() * pool.length)] || coupleCategories[0]
+	loadAndEnterGallery(randomCat, {
+		pushHistory: true,
+		spawn: { type: 'fromWall', wall: 'south' },
+	})
 }
 
-// Photo Lightbox Modal (Click-to-Enlarge Artworks)
+// Photo Lightbox Modal (Click-to-Enlarge Artworks - Pure Artwork View)
 const lightboxEl = document.createElement('div')
 lightboxEl.id = 'photo-lightbox-modal'
 lightboxEl.className = 'photo-lightbox'
@@ -490,17 +426,11 @@ lightboxEl.innerHTML = `
 		<div class="photo-lightbox-frame">
 			<img class="photo-lightbox-img" src="" alt="Exhibition Artwork" />
 		</div>
-		<div class="photo-lightbox-meta">
-			<div class="photo-lightbox-badge">✦ SANCTUARY EXHIBITION ✦</div>
-			<div class="photo-lightbox-title"></div>
-			<div class="photo-lightbox-hint">Click outside or press [ESC] to return to gallery</div>
-		</div>
 	</div>
 `
 document.body.appendChild(lightboxEl)
 
 const lightboxImg = lightboxEl.querySelector('.photo-lightbox-img')
-const lightboxTitle = lightboxEl.querySelector('.photo-lightbox-title')
 const lightboxCloseBtn = lightboxEl.querySelector('.photo-lightbox-close')
 const lightboxBackdrop = lightboxEl.querySelector('.photo-lightbox-backdrop')
 
@@ -509,7 +439,6 @@ let lightboxOpenedAt = 0
 function openPhotoLightbox({ url, title }) {
 	if (!url) return
 	lightboxImg.src = url
-	lightboxTitle.textContent = title || 'Our Museum Masterpiece'
 	lightboxEl.hidden = false
 	lightboxEl.classList.add('active')
 	lightboxOpenedAt = Date.now()
@@ -542,7 +471,7 @@ window.addEventListener('keydown', (e) => {
 	if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) {
 		return
 	}
-	if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') {
+	if (isAdmin && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) {
 		toggleResizerDrawer()
 		return
 	}
@@ -561,9 +490,12 @@ window.addEventListener('keydown', (e) => {
 })
 
 // -------------------------------------------------------------------------
-// LIVE ARTWORK RESIZER DRAWER HUD (Real-time 3D In-Place Rebuild)
+// LIVE ARTWORK RESIZER DRAWER HUD (Admin Studio Workspace Only)
 // -------------------------------------------------------------------------
-const resizerDrawerEl = document.createElement('div')
+let toggleResizerDrawer = () => {}
+
+if (isAdmin) {
+	const resizerDrawerEl = document.createElement('div')
 resizerDrawerEl.id = 'artwork-resizer-drawer'
 resizerDrawerEl.innerHTML = `
 	<div class="resizer-header">
@@ -1008,6 +940,7 @@ document.getElementById('btn-resizer-reset')?.addEventListener('click', () => {
 		engineApi.reloadRoomInPlace()
 	}
 })
+}
 
 engineApi = startYourEngines({
 	canvas,
@@ -1018,7 +951,11 @@ engineApi = startYourEngines({
 	onRandomExhibitRequested: requestRandomExhibit,
 	onPhotoClick: openPhotoLightbox,
 	onGoLobbyRequested() {
-		enterlobby({ push: false })
+		setLoading(false)
+		if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+			engineApi.setInteractionLocked(false)
+		}
+		enterlobby({ push: true })
 	},
 	onPointerLockChange(locked) {
 		if (!hasEntered) {
@@ -1029,36 +966,41 @@ engineApi = startYourEngines({
 		document.body.classList.toggle('locked', locked)
 	},
 	onDoorTrigger(door) {
-		if (door && typeof door.category === 'string' && door.category.length > 0) {
-			loadAndEnterGallery(door.category, {
-				pushHistory: true,
-				spawn: { type: 'fromWall', wall: 'south' },
-				loadingDoorId: typeof door.id === 'string' ? door.id : null,
-			})
-			return
-		}
-
-		if (door && typeof door.articleTitle === 'string' && door.articleTitle.trim().length > 0) {
-			const title = door.articleTitle.trim()
-			loadAndEnterGallery(title, {
-				pushHistory: true,
-				spawn: { type: 'fromWall', wall: 'south' },
-				loadingDoorId: typeof door.id === 'string' ? door.id : null,
-			})
-			return
-		}
-
-		if (door && door.target === 'back') {
-			goBackInApp()
-			return
-		}
-
-		if (door && door.target === 'lobby') {
+		if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
+			setLoading(false)
+			if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+				engineApi.setInteractionLocked(false)
+			}
 			enterlobby({ push: true })
+			return
+		}
+
+		const doorTarget = (typeof door?.category === 'string' && door.category.length > 0)
+			? door.category
+			: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
+
+		if (doorTarget) {
+			lastEnteredLobbyCategory = doorTarget
+			lastEnteredLobbyDoorId = typeof door.id === 'string' ? door.id : null
+			try {
+				window.sessionStorage.setItem('ourmuseum:lastSalon', doorTarget)
+				if (lastEnteredLobbyDoorId) {
+					window.sessionStorage.setItem('ourmuseum:lastDoorId', lastEnteredLobbyDoorId)
+				}
+			} catch (_) {}
+			loadAndEnterGallery(doorTarget, {
+				pushHistory: true,
+				spawn: { type: 'fromWall', wall: 'south' },
+				loadingDoorId: typeof door.id === 'string' ? door.id : null,
+			})
 			return
 		}
 	},
 })
+
+window.__engineApi = engineApi
+window.__loadAndEnterGallery = loadAndEnterGallery
+window.__enterlobby = enterlobby
 
 if (!initialTitle) {
 	pushGalleryTrail(lobby_title)

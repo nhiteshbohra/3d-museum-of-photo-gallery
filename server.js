@@ -76,6 +76,8 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/' || pathname === '') {
     pathname = '/index.html';
+  } else if (pathname === '/admin' || pathname === '/admin/') {
+    pathname = '/admin.html';
   }
 
   // Prioritize modern production bundle from dist/ if it exists

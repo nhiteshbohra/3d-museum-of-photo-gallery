@@ -1,8 +1,14 @@
 import * as THREE from 'three'
 import { clamp, roundTo } from '../../misc/helper.js'
 import lobbyPhotoUrl from '../../assets/lobbyphoto.png'
-import { makeMarbleTexture } from './doors.js'
 import { getArtworkSizes } from '../../config/artworkSizes.js'
+import {
+	createPlushCushionGeometry,
+	addWeltPiping,
+	addTuftButtons,
+	createLuxuryArmchair,
+	decorateLobbyGrandRotunda,
+} from './decorations.js'
 
 export function createRealisticGalleryPlant({
 	x = 0,
@@ -154,7 +160,7 @@ export function createRealisticGalleryBench({
 	const plinthH = 0.06
 	const seatBaseY = 0.36
 
-	// 1. Dark Solid American Walnut / Ebonized Plinth Base
+	// 1. Solid American Walnut Plinth Base with Beveled Edge
 	const plinthGeo = new THREE.BoxGeometry(plinthW, plinthH, plinthD)
 	const plinthMat = new THREE.MeshStandardMaterial(
 		hasBenchTex && benchWoodMap
@@ -166,25 +172,48 @@ export function createRealisticGalleryBench({
 	b.add(plinth)
 	disposables.push(plinthGeo, plinthMat)
 
-	// 2. Segmented Cognac Saddle Leather Cushions (3 luxury tufted pads)
+	// Inset Brushed Brass Accent Border Trim
+	const brassMat = new THREE.MeshStandardMaterial({
+		color: 0xd4af37,
+		metalness: 0.88,
+		roughness: 0.22,
+	})
+	disposables.push(brassMat)
+	const trimGeo = new THREE.BoxGeometry(plinthW + 0.012, 0.014, plinthD + 0.012)
+	const trim = new THREE.Mesh(trimGeo, brassMat)
+	trim.position.set(0, seatBaseY + plinthH / 2 + 0.007, 0)
+	b.add(trim)
+	disposables.push(trimGeo)
+
+	// 2. Ultra-Realistic Sculpted Plush Cognac Leather Cushions (3 segments)
 	const segmentCount = 3
 	const gap = 0.02
 	const totalGaps = (segmentCount - 1) * gap
 	const segW = (plinthW - 0.08 - totalGaps) / segmentCount
 	const segD = plinthD - 0.04
-	const segH = 0.13
+	const segH = 0.15
 
-	const cushionGeo = new THREE.BoxGeometry(segW, segH, segD)
+	const tufts = [
+		[0, -segD * 0.24],
+		[0, segD * 0.24],
+	]
+
+	const cushionGeo = createPlushCushionGeometry({
+		width: segW,
+		height: segH,
+		depth: segD,
+		crown: 0.042,
+		swell: 0.020,
+		tufts,
+		disposables,
+	})
+
 	const leatherMat = new THREE.MeshStandardMaterial({
-		color: 0x7e4922, // Rich warm cognac saddle leather
-		roughness: 0.40,
+		color: 0x824924, // Warm cognac saddle leather
+		roughness: 0.38,
 		metalness: 0.08,
 	})
-	disposables.push(cushionGeo, leatherMat)
-
-	const tuftGeo = new THREE.CylinderGeometry(0.016, 0.016, 0.01, 16)
-	const tuftMat = new THREE.MeshStandardMaterial({ color: 0x4a2810, roughness: 0.6 })
-	disposables.push(tuftGeo, tuftMat)
+	disposables.push(leatherMat)
 
 	for (let i = 0; i < segmentCount; i += 1) {
 		const segX = -plinthW / 2 + 0.04 + segW / 2 + i * (segW + gap)
@@ -192,26 +221,25 @@ export function createRealisticGalleryBench({
 		cushion.position.set(segX, seatBaseY + plinthH / 2 + segH / 2, 0)
 		b.add(cushion)
 
-		const t1 = new THREE.Mesh(tuftGeo, tuftMat)
-		t1.position.set(segX, seatBaseY + plinthH / 2 + segH + 0.002, -segD * 0.22)
-		b.add(t1)
+		// French welt piping cord around each cushion
+		addWeltPiping(b, segW, segD, seatBaseY + plinthH / 2 + segH * 0.82, leatherMat, disposables)
 
-		const t2 = new THREE.Mesh(tuftGeo, tuftMat)
-		t2.position.set(segX, seatBaseY + plinthH / 2 + segH + 0.002, segD * 0.22)
-		b.add(t2)
+		// Sunken upholstery tufting buttons with circular collars
+		addTuftButtons(
+			b,
+			tufts.map(([tx, tz]) => [segX + tx, tz]),
+			seatBaseY + plinthH / 2 + segH + 0.012,
+			brassMat,
+			disposables
+		)
 	}
 
-	// 3. Slender Tapered Cylindrical Brushed Brass Legs + Foot Gliders
+	// 3. Turned Slender Tapered Cylindrical Brushed Brass Legs + Sabots
 	const legH = seatBaseY - plinthH / 2
 	const legGeo = new THREE.CylinderGeometry(0.022, 0.015, legH, 18)
-	const legMat = new THREE.MeshStandardMaterial({
-		color: 0xd4af37,
-		metalness: 0.88,
-		roughness: 0.22,
-	})
-	const footGeo = new THREE.CylinderGeometry(0.026, 0.026, 0.014, 18)
+	const footGeo = new THREE.CylinderGeometry(0.026, 0.026, 0.016, 18)
 	const footMat = new THREE.MeshStandardMaterial({ color: 0x161513, roughness: 0.7 })
-	disposables.push(legGeo, legMat, footGeo, footMat)
+	disposables.push(legGeo, footGeo, footMat)
 
 	const lx = plinthW / 2 - 0.16
 	const lz = plinthD / 2 - 0.14
@@ -222,27 +250,288 @@ export function createRealisticGalleryBench({
 		[lx, lz],
 	]
 	for (const [cx, cz] of legCoords) {
-		const leg = new THREE.Mesh(legGeo, legMat)
+		const leg = new THREE.Mesh(legGeo, brassMat)
 		leg.position.set(cx, legH / 2, cz)
 		b.add(leg)
 
 		const foot = new THREE.Mesh(footGeo, footMat)
-		foot.position.set(cx, 0.007, cz)
+		foot.position.set(cx, 0.008, cz)
 		b.add(foot)
 	}
 
 	const stretchGeo = new THREE.CylinderGeometry(0.009, 0.009, lz * 2, 12)
 	stretchGeo.rotateX(Math.PI / 2)
-	const bar1 = new THREE.Mesh(stretchGeo, legMat)
+	const bar1 = new THREE.Mesh(stretchGeo, brassMat)
 	bar1.position.set(-lx, legH * 0.42, 0)
 	b.add(bar1)
-	const bar2 = new THREE.Mesh(stretchGeo, legMat)
+	const bar2 = new THREE.Mesh(stretchGeo, brassMat)
 	bar2.position.set(lx, legH * 0.42, 0)
 	b.add(bar2)
 	disposables.push(stretchGeo)
 
 	if (obstacles) obstacles.push({ type: 'box', x, z, y, w: plinthW * 1.05, d: plinthD * 1.15 })
 	return b
+}
+
+export function createLobbyMasterpieceTexture(disposables) {
+	if (typeof document === 'undefined') return null
+	const canvas = document.createElement('canvas')
+	canvas.width = 2400
+	canvas.height = 1140
+	const ctx = canvas.getContext('2d')
+	if (!ctx) return null
+
+	// 1. Sky & Twilight Gradient
+	const skyGrad = ctx.createLinearGradient(0, 0, 0, canvas.height * 0.70)
+	skyGrad.addColorStop(0, '#060913')
+	skyGrad.addColorStop(0.35, '#0e1629')
+	skyGrad.addColorStop(0.70, '#1c2844')
+	skyGrad.addColorStop(1, '#3b2f44')
+	ctx.fillStyle = skyGrad
+	ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+	// 2. Twinkling Night Stars
+	ctx.fillStyle = '#ffffff'
+	for (let i = 0; i < 220; i++) {
+		const sx = (Math.sin(i * 1237.9) * 0.5 + 0.5) * canvas.width
+		const sy = (Math.cos(i * 449.3) * 0.5 + 0.5) * canvas.height * 0.58
+		const size = 1.2 + (i % 4) * 0.9
+		ctx.globalAlpha = 0.35 + (i % 5) * 0.16
+		ctx.fillRect(sx, sy, size, size)
+	}
+	ctx.globalAlpha = 1.0
+
+	// 3. Glowing Celestial Full Moon
+	const moonX = canvas.width * 0.78
+	const moonY = canvas.height * 0.28
+	const moonGlow = ctx.createRadialGradient(moonX, moonY, 15, moonX, moonY, 260)
+	moonGlow.addColorStop(0, '#fff6db')
+	moonGlow.addColorStop(0.25, 'rgba(255, 235, 175, 0.45)')
+	moonGlow.addColorStop(0.60, 'rgba(255, 220, 140, 0.12)')
+	moonGlow.addColorStop(1, 'rgba(255, 220, 140, 0)')
+	ctx.fillStyle = moonGlow
+	ctx.fillRect(0, 0, canvas.width, canvas.height)
+
+	ctx.fillStyle = '#fffdf7'
+	ctx.beginPath()
+	ctx.arc(moonX, moonY, 36, 0, Math.PI * 2)
+	ctx.fill()
+
+	// 4. Distant Alpine Mountain Peaks
+	ctx.fillStyle = '#101728'
+	ctx.beginPath()
+	ctx.moveTo(0, canvas.height * 0.68)
+	ctx.lineTo(canvas.width * 0.15, canvas.height * 0.42)
+	ctx.lineTo(canvas.width * 0.32, canvas.height * 0.58)
+	ctx.lineTo(canvas.width * 0.52, canvas.height * 0.36)
+	ctx.lineTo(canvas.width * 0.72, canvas.height * 0.54)
+	ctx.lineTo(canvas.width * 0.88, canvas.height * 0.40)
+	ctx.lineTo(canvas.width, canvas.height * 0.62)
+	ctx.lineTo(canvas.width, canvas.height)
+	ctx.lineTo(0, canvas.height)
+	ctx.closePath()
+	ctx.fill()
+
+	// Snow-capped highlights
+	ctx.strokeStyle = 'rgba(235, 245, 255, 0.55)'
+	ctx.lineWidth = 3
+	ctx.beginPath()
+	ctx.moveTo(canvas.width * 0.12, canvas.height * 0.45)
+	ctx.lineTo(canvas.width * 0.15, canvas.height * 0.42)
+	ctx.lineTo(canvas.width * 0.19, canvas.height * 0.47)
+	ctx.moveTo(canvas.width * 0.48, canvas.height * 0.40)
+	ctx.lineTo(canvas.width * 0.52, canvas.height * 0.36)
+	ctx.lineTo(canvas.width * 0.57, canvas.height * 0.43)
+	ctx.moveTo(canvas.width * 0.85, canvas.height * 0.43)
+	ctx.lineTo(canvas.width * 0.88, canvas.height * 0.40)
+	ctx.lineTo(canvas.width * 0.92, canvas.height * 0.46)
+	ctx.stroke()
+
+	// 5. Closer Mountain Ridge
+	ctx.fillStyle = '#080c14'
+	ctx.beginPath()
+	ctx.moveTo(0, canvas.height * 0.74)
+	ctx.lineTo(canvas.width * 0.24, canvas.height * 0.56)
+	ctx.lineTo(canvas.width * 0.46, canvas.height * 0.66)
+	ctx.lineTo(canvas.width * 0.68, canvas.height * 0.52)
+	ctx.lineTo(canvas.width, canvas.height * 0.70)
+	ctx.lineTo(canvas.width, canvas.height)
+	ctx.lineTo(0, canvas.height)
+	ctx.closePath()
+	ctx.fill()
+
+	// 6. Reflective Lake Water
+	const waterGrad = ctx.createLinearGradient(0, canvas.height * 0.68, 0, canvas.height)
+	waterGrad.addColorStop(0, '#0c1626')
+	waterGrad.addColorStop(0.5, '#070b13')
+	waterGrad.addColorStop(1, '#030508')
+	ctx.fillStyle = waterGrad
+	ctx.fillRect(0, canvas.height * 0.68, canvas.width, canvas.height * 0.32)
+
+	// Shimmering Moon Reflections on Water
+	ctx.strokeStyle = 'rgba(255, 235, 175, 0.32)'
+	ctx.lineWidth = 2
+	for (let r = 0; r < 24; r++) {
+		const ry = canvas.height * 0.71 + r * 14
+		const rw = 30 + Math.sin(r * 2.8) * 75 + r * 6
+		ctx.beginPath()
+		ctx.moveTo(moonX - rw, ry)
+		ctx.lineTo(moonX + rw, ry)
+		ctx.stroke()
+	}
+
+	// 7. Classical 24k Gold Museum Filigree Double Border Frame
+	ctx.strokeStyle = '#c5a059'
+	ctx.lineWidth = 14
+	ctx.strokeRect(26, 26, canvas.width - 52, canvas.height - 52)
+
+	ctx.strokeStyle = 'rgba(255, 215, 0, 0.55)'
+	ctx.lineWidth = 3
+	ctx.strokeRect(44, 44, canvas.width - 88, canvas.height - 88)
+
+	// Gilded Corner Diamonds
+	const drawDiamond = (cx, cy, radius) => {
+		ctx.fillStyle = '#ffd700'
+		ctx.beginPath()
+		ctx.moveTo(cx, cy - radius)
+		ctx.lineTo(cx + radius, cy)
+		ctx.lineTo(cx, cy + radius)
+		ctx.lineTo(cx - radius, cy)
+		ctx.closePath()
+		ctx.fill()
+	}
+	drawDiamond(44, 44, 10)
+	drawDiamond(canvas.width - 44, 44, 10)
+	drawDiamond(44, canvas.height - 44, 10)
+	drawDiamond(canvas.width - 44, canvas.height - 44, 10)
+
+	// 8. Classical Serif Typography
+	ctx.textAlign = 'center'
+	ctx.shadowColor = 'rgba(0, 0, 0, 0.88)'
+	ctx.shadowBlur = 18
+
+	ctx.fillStyle = '#d4af37'
+	ctx.font = '600 24px "Montserrat", sans-serif'
+	ctx.fillText('✦   VIRTUAL  ART  SANCTUARY   ✦', canvas.width / 2, canvas.height * 0.81)
+
+	ctx.fillStyle = '#ffffff'
+	ctx.font = 'bold 56px "Cormorant Garamond", Georgia, serif'
+	ctx.fillText('OUR MUSEUM • GRAND SANCTUARY', canvas.width / 2, canvas.height * 0.88)
+
+	ctx.fillStyle = 'rgba(255, 235, 190, 0.82)'
+	ctx.font = 'italic 26px "Cormorant Garamond", Georgia, serif'
+	ctx.fillText('Where Eternal Memories Are Preserved', canvas.width / 2, canvas.height * 0.94)
+
+	ctx.shadowBlur = 0
+
+	const tex = new THREE.CanvasTexture(canvas)
+	tex.colorSpace = THREE.SRGBColorSpace
+	if (disposables) disposables.push(tex)
+	return { texture: tex, dataUrl: canvas.toDataURL('image/png') }
+}
+
+export function createGrandLobbyWallSconce({
+	x = 0,
+	y = 2.4,
+	z = 0,
+	wallNormalX = 0,
+	wallNormalZ = -1,
+	group,
+	disposables,
+} = {}) {
+	const sconce = new THREE.Group()
+	sconce.name = 'grand-lobby-sconce'
+	sconce.position.set(x, y, z)
+
+	const rotY = Math.atan2(wallNormalX, wallNormalZ)
+	sconce.rotation.y = rotY
+	group.add(sconce)
+
+	const brassMat = new THREE.MeshStandardMaterial({
+		color: 0xd4af37,
+		metalness: 0.88,
+		roughness: 0.22,
+	})
+	const glassMat = new THREE.MeshStandardMaterial({
+		color: 0xfffaf0,
+		roughness: 0.12,
+		metalness: 0.08,
+		transparent: true,
+		opacity: 0.86,
+		emissive: 0xffeed4,
+		emissiveIntensity: 0.65,
+	})
+	const flameMat = new THREE.MeshStandardMaterial({
+		color: 0xffeed6,
+		emissive: 0xffd08a,
+		emissiveIntensity: 2.4,
+		roughness: 0.2,
+	})
+	const crystalMat = new THREE.MeshStandardMaterial({
+		color: 0xf5f8ff,
+		roughness: 0.05,
+		metalness: 0.2,
+		transparent: true,
+		opacity: 0.85,
+	})
+	disposables.push(brassMat, glassMat, flameMat, crystalMat)
+
+	// 1. Architectural Cast Brass Backplate (Escutcheon)
+	const plateGeo = new THREE.CylinderGeometry(0.10, 0.11, 0.024, 32)
+	plateGeo.rotateX(Math.PI / 2)
+	const plate = new THREE.Mesh(plateGeo, brassMat)
+	plate.position.set(0, 0, 0.012)
+	sconce.add(plate)
+
+	// 2. Sculpted Gooseneck Bracket Arm (Swooping outward and upward)
+	const armArcGeo = new THREE.TorusGeometry(0.12, 0.014, 16, 28, Math.PI * 0.75)
+	const arm = new THREE.Mesh(armArcGeo, brassMat)
+	arm.rotation.y = Math.PI / 2
+	arm.rotation.z = -Math.PI * 0.15
+	arm.position.set(0, 0.04, 0.10)
+	sconce.add(arm)
+
+	const armOutZ = 0.22
+	const cupY = 0.12
+
+	// 3. Ornate Stepped Candle Cup & Fluted Gallery
+	const cupGeo = new THREE.CylinderGeometry(0.046, 0.034, 0.040, 24)
+	const cup = new THREE.Mesh(cupGeo, brassMat)
+	cup.position.set(0, cupY, armOutZ)
+	sconce.add(cup)
+
+	const collarGeo = new THREE.TorusGeometry(0.048, 0.008, 12, 24)
+	collarGeo.rotateX(Math.PI / 2)
+	const collar = new THREE.Mesh(collarGeo, brassMat)
+	collar.position.set(0, cupY + 0.020, armOutZ)
+	sconce.add(collar)
+
+	// 4. Hand-Blown Fluted Frosted Glass Hurricane Chimney
+	const chimneyGeo = new THREE.CylinderGeometry(0.055, 0.040, 0.20, 24, 1, true)
+	const chimney = new THREE.Mesh(chimneyGeo, glassMat)
+	chimney.position.set(0, cupY + 0.12, armOutZ)
+	sconce.add(chimney)
+
+	// 5. Luminous Warm Flame Core
+	const flameGeo = new THREE.ConeGeometry(0.016, 0.065, 16)
+	const flame = new THREE.Mesh(flameGeo, flameMat)
+	flame.position.set(0, cupY + 0.08, armOutZ)
+	sconce.add(flame)
+
+	// 6. Crystal Teardrop Pendant (Hanging below the bracket)
+	const crystalGeo = new THREE.ConeGeometry(0.016, 0.050, 6)
+	crystalGeo.rotateX(Math.PI)
+	const crystal = new THREE.Mesh(crystalGeo, crystalMat)
+	crystal.position.set(0, -0.06, armOutZ * 0.70)
+	sconce.add(crystal)
+
+	// 7. Warm Atmospheric Cast PointLight
+	const light = new THREE.PointLight(0xffecd0, 1.35, 7.0, 1.8)
+	light.position.set(0, cupY + 0.14, armOutZ + 0.05)
+	sconce.add(light)
+
+	disposables.push(plateGeo, armArcGeo, cupGeo, collarGeo, chimneyGeo, flameGeo, crystalGeo, light)
+	return sconce
 }
 
 export function buildLobbyRoom(ctx, lobby) {
@@ -553,7 +842,7 @@ export function buildLobbyRoom(ctx, lobby) {
 				h: doorH,
 				y: -0.1,
 				u,
-				meta: { category: eastCategory },
+				meta: { category: eastCategory, articleTitle: eastCategory, platformHeight },
 			})
 		}
 
@@ -566,7 +855,7 @@ export function buildLobbyRoom(ctx, lobby) {
 				h: doorH,
 				y: -0.1,
 				u,
-				meta: { category: westCategory },
+				meta: { category: westCategory, articleTitle: westCategory, platformHeight },
 			})
 		}
 	}
@@ -676,196 +965,51 @@ export function buildLobbyRoom(ctx, lobby) {
 		const matteGeo = new THREE.PlaneGeometry(frameW * 0.92, frameH * 0.92)
 		const matte = new THREE.Mesh(matteGeo, matteMat)
 		matte.position.set(0, 0, frameDepth / 2 + 0.002)
-		matte.rotation.y = Math.PI
 		frameGroup.add(matte)
 		disposables.push(matteGeo)
 
-		const photoTexture = new THREE.TextureLoader().load(lobbyPhotoUrl)
+		// High-Resolution Original Grand Sanctuary Masterpiece Artwork (Vector-sharp, zero mirroring)
+		const lobbyArt = createLobbyMasterpieceTexture(disposables)
+		const photoTexture = lobbyArt ? lobbyArt.texture : new THREE.TextureLoader().load(lobbyPhotoUrl)
+		const photoDataUrl = lobbyArt ? lobbyArt.dataUrl : lobbyPhotoUrl
 		photoTexture.colorSpace = THREE.SRGBColorSpace
 
-		const photoGeo = new THREE.PlaneGeometry(frameW + frameThickness * 2, frameH + frameThickness * 2)
+		const fullFrameW = frameW + frameThickness * 2
+		const fullFrameH = frameH + frameThickness * 2
+		const iw = photoTexture?.image?.width
+		const ih = photoTexture?.image?.height
+		if (typeof iw === 'number' && typeof ih === 'number' && iw > 0 && ih > 0) {
+			const imageAspect = iw / ih
+			const frameAspect = fullFrameW / fullFrameH
+			if (imageAspect > frameAspect) {
+				const s = frameAspect / imageAspect
+				photoTexture.repeat.set(s, 1)
+				photoTexture.offset.set((1 - s) / 2, 0)
+			} else {
+				const s = imageAspect / frameAspect
+				photoTexture.repeat.set(1, s)
+				photoTexture.offset.set(0, (1 - s) / 2)
+			}
+			photoTexture.needsUpdate = true
+		}
+
+		const photoGeo = new THREE.PlaneGeometry(fullFrameW, fullFrameH)
 		const photoMat = new THREE.MeshBasicMaterial({
 			map: photoTexture,
-			side: THREE.DoubleSide
+			side: THREE.FrontSide
 		})
 		const photo = new THREE.Mesh(photoGeo, photoMat)
 		photo.position.set(0, 0, frameDepth / 2 + 0.01)
-		photo.rotation.y = Math.PI
 		photo.userData = {
 			pickable: true,
 			isPhoto: true,
 			pickableType: 'wall-photo',
-			photoUrl: lobbyPhotoUrl,
+			photoUrl: photoDataUrl,
 			photoTitle: 'Grand Sanctuary Masterpiece'
 		}
 		pickableMeshes.push(photo)
 		frameGroup.add(photo)
-		disposables.push(photoGeo, photoMat, photoTexture)
-	}
-
-	// Center Lounge Suite (Round marble/brass table + two luxury cognac leather armchairs/sofas)
-	{
-		const loungeGroup = new THREE.Group()
-		loungeGroup.name = 'lobby-center-lounge'
-		loungeGroup.position.set(0, 0, 0.3)
-		group.add(loungeGroup)
-
-		const brassMat = new THREE.MeshStandardMaterial({
-			color: 0xd4af37,
-			roughness: 0.22,
-			metalness: 0.88,
-		})
-		const walnutMat = new THREE.MeshStandardMaterial({
-			color: 0x221a14,
-			roughness: 0.65,
-			metalness: 0.05,
-		})
-		const leatherMat = new THREE.MeshStandardMaterial({
-			color: 0x7e4922, // Rich warm cognac saddle leather
-			roughness: 0.40,
-			metalness: 0.08,
-		})
-		const velvetMat = new THREE.MeshStandardMaterial({
-			color: 0xf0e6d2, // Champagne ivory lumbar pillow
-			roughness: 0.75,
-			metalness: 0.02,
-		})
-		disposables.push(brassMat, walnutMat, leatherMat, velvetMat)
-
-		// 1. Classical Round Pedestal Table (Center of Grand Lobby)
-		const tableGroup = new THREE.Group()
-		tableGroup.position.set(0, 0, 0)
-		loungeGroup.add(tableGroup)
-
-		// Calacatta / Carrara White Marble Tabletop
-		const marbleTex = makeMarbleTexture({ size: 512, seed: 0x4d617262 })
-		const marbleMat = new THREE.MeshStandardMaterial({
-			color: 0xffffff,
-			map: marbleTex,
-			roughness: 0.24,
-			metalness: 0.08,
-		})
-		disposables.push(marbleTex, marbleMat)
-
-		const tableH = 0.58
-		const tableRadius = 0.64
-		const topGeo = new THREE.CylinderGeometry(tableRadius, tableRadius, 0.045, 48)
-		const topMesh = new THREE.Mesh(topGeo, marbleMat)
-		topMesh.position.set(0, tableH, 0)
-		tableGroup.add(topMesh)
-
-		// Beveled Brass Table Rim / Apron
-		const rimGeo = new THREE.CylinderGeometry(tableRadius + 0.015, tableRadius + 0.015, 0.025, 48)
-		const rimMesh = new THREE.Mesh(rimGeo, brassMat)
-		rimMesh.position.set(0, tableH - 0.025, 0)
-		tableGroup.add(rimMesh)
-
-		// Fluted Architectural Brass Pedestal Column
-		const pedestalGeo = new THREE.CylinderGeometry(0.10, 0.20, tableH - 0.08, 32)
-		const pedestalMesh = new THREE.Mesh(pedestalGeo, brassMat)
-		pedestalMesh.position.set(0, (tableH - 0.08) / 2 + 0.04, 0)
-		tableGroup.add(pedestalMesh)
-
-		// Heavy Stepped Brass Disc Floor Base
-		const baseGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.04, 36)
-		const baseMesh = new THREE.Mesh(baseGeo, brassMat)
-		baseMesh.position.set(0, 0.02, 0)
-		tableGroup.add(baseMesh)
-		disposables.push(topGeo, rimGeo, pedestalGeo, baseGeo)
-
-		// Centerpiece: Sculpted Marble Floral Bowl & Leather Guestbook
-		const bowlGeo = new THREE.CylinderGeometry(0.14, 0.08, 0.07, 24)
-		const bowlMat = new THREE.MeshStandardMaterial({ color: 0xd4af37, roughness: 0.25, metalness: 0.85 })
-		const bowl = new THREE.Mesh(bowlGeo, bowlMat)
-		bowl.position.set(0, tableH + 0.055, 0)
-		tableGroup.add(bowl)
-
-		const blossomGeo = new THREE.SphereGeometry(0.11, 16, 16)
-		const blossomMat = new THREE.MeshStandardMaterial({ color: 0xfdf6ee, roughness: 0.65 })
-		const blossoms = new THREE.Mesh(blossomGeo, blossomMat)
-		blossoms.position.set(0, tableH + 0.12, 0)
-		blossoms.scale.set(1, 0.75, 1)
-		tableGroup.add(blossoms)
-
-		const bookGeo = new THREE.BoxGeometry(0.20, 0.025, 0.15)
-		const bookMat = new THREE.MeshStandardMaterial({ color: 0x54181a, roughness: 0.55 }) // Burgundy leather
-		const book = new THREE.Mesh(bookGeo, bookMat)
-		book.position.set(0.26, tableH + 0.035, -0.10)
-		book.rotation.y = 0.35
-		tableGroup.add(book)
-		disposables.push(bowlGeo, bowlMat, blossomGeo, blossomMat, bookGeo, bookMat)
-
-		obstacles.push({ type: 'cylinder', x: 0, z: 0.3, radius: 0.72 })
-
-		// 2. Two Luxury Lounge Armchairs / Sofas
-		function createLoungeArmchair(x, rotationY, name) {
-			const chair = new THREE.Group()
-			chair.name = name
-			chair.position.set(x, 0, 0)
-			chair.rotation.y = rotationY
-			loungeGroup.add(chair)
-
-			const chairW = 0.90
-			const chairD = 0.82
-
-			// Solid American Walnut Plinth Base
-			const plinthGeo = new THREE.BoxGeometry(chairW, 0.06, chairD)
-			const plinth = new THREE.Mesh(plinthGeo, walnutMat)
-			plinth.position.set(0, 0.18, 0)
-			chair.add(plinth)
-
-			// Plush Tufted Cognac Leather Seat Cushion
-			const seatGeo = new THREE.BoxGeometry(chairW - 0.06, 0.16, chairD - 0.06)
-			const seat = new THREE.Mesh(seatGeo, leatherMat)
-			seat.position.set(0, 0.28, 0)
-			chair.add(seat)
-
-			// Curved Tub Backrest & Side Armrests
-			const backGeo = new THREE.BoxGeometry(chairW, 0.40, 0.16)
-			const back = new THREE.Mesh(backGeo, leatherMat)
-			back.position.set(0, 0.48, -(chairD / 2 - 0.08))
-			chair.add(back)
-
-			const armGeo = new THREE.BoxGeometry(0.14, 0.30, chairD - 0.12)
-			const leftArm = new THREE.Mesh(armGeo, leatherMat)
-			leftArm.position.set(-(chairW / 2 - 0.07), 0.40, 0.04)
-			chair.add(leftArm)
-
-			const rightArm = new THREE.Mesh(armGeo, leatherMat)
-			rightArm.position.set(chairW / 2 - 0.07, 0.40, 0.04)
-			chair.add(rightArm)
-
-			// Champagne Lumbar Pillow
-			const pillowGeo = new THREE.BoxGeometry(0.44, 0.20, 0.09)
-			const pillow = new THREE.Mesh(pillowGeo, velvetMat)
-			pillow.position.set(0, 0.38, -(chairD / 2 - 0.18))
-			chair.add(pillow)
-
-			// 4 Tapered Cylindrical Brushed Brass Legs
-			const legGeo = new THREE.CylinderGeometry(0.020, 0.015, 0.18, 16)
-			const gliderGeo = new THREE.CylinderGeometry(0.024, 0.024, 0.015, 16)
-			const legPositions = [
-				[-chairW * 0.40, -chairD * 0.38],
-				[chairW * 0.40, -chairD * 0.38],
-				[-chairW * 0.40, chairD * 0.38],
-				[chairW * 0.40, chairD * 0.38],
-			]
-			for (const [lx, lz] of legPositions) {
-				const leg = new THREE.Mesh(legGeo, brassMat)
-				leg.position.set(lx, 0.09, lz)
-				chair.add(leg)
-
-				const glider = new THREE.Mesh(gliderGeo, brassMat)
-				glider.position.set(lx, 0.008, lz)
-				chair.add(glider)
-			}
-
-			disposables.push(plinthGeo, seatGeo, backGeo, armGeo, pillowGeo, legGeo, gliderGeo)
-			obstacles.push({ type: 'cylinder', x, z: 0.3, radius: 0.55 })
-		}
-
-		createLoungeArmchair(-1.35, Math.PI / 2, 'armchair-west')
-		createLoungeArmchair(1.35, -Math.PI / 2, 'armchair-east')
+		disposables.push(photoGeo, photoMat)
 	}
 
 	// Architectural Corner Planter Distribution (Strictly corners only, zero plants in paths or blocking doors)
@@ -886,6 +1030,94 @@ export function buildLobbyRoom(ctx, lobby) {
 		addPlantAt(innerWestX + 0.75, innerSouthZ - 0.75, platformHeight, group, 'plant-corner-sw-stage')
 		addPlantAt(innerEastX - 0.75, innerNorthZ + 0.75, platformHeight, group, 'plant-corner-ne-stage')
 		addPlantAt(innerEastX - 0.75, innerSouthZ - 0.75, platformHeight, group, 'plant-corner-se-stage')
+	}
+
+	// Architectural Grand Museum Wall Sconces (Symmetrically distributed, strictly ZERO overlap)
+	{
+		const innerNorthZ = -halfL + wallThickness / 2
+		const innerSouthZ = halfL - wallThickness / 2
+		const innerEastX = halfW - wallThickness / 2
+		const innerWestX = -halfW + wallThickness / 2
+
+		// 1. South Wall: Flanking the Grand Sanctuary Masterpiece (Clearance > 1.5m from frame & benches)
+		createGrandLobbyWallSconce({
+			x: -4.50,
+			y: 2.75,
+			z: innerSouthZ - 0.02,
+			wallNormalX: 0,
+			wallNormalZ: -1,
+			group,
+			disposables,
+		})
+		createGrandLobbyWallSconce({
+			x: 4.50,
+			y: 2.75,
+			z: innerSouthZ - 0.02,
+			wallNormalX: 0,
+			wallNormalZ: -1,
+			group,
+			disposables,
+		})
+
+		// 2. North Wall: Flanking the Grand Directory Monument (Clearance > 2.0m from directory stanchions)
+		createGrandLobbyWallSconce({
+			x: -4.50,
+			y: 2.75,
+			z: innerNorthZ + 0.02,
+			wallNormalX: 0,
+			wallNormalZ: 1,
+			group,
+			disposables,
+		})
+		createGrandLobbyWallSconce({
+			x: 4.50,
+			y: 2.75,
+			z: innerNorthZ + 0.02,
+			wallNormalX: 0,
+			wallNormalZ: 1,
+			group,
+			disposables,
+		})
+
+		// 3. East Raised Platform Promenade Wall (Elevated Wooden Walkway, Clearance > 2.2m from all salon doors)
+		createGrandLobbyWallSconce({
+			x: innerEastX - 0.02,
+			y: platformHeight + 2.05,
+			z: -5.20,
+			wallNormalX: -1,
+			wallNormalZ: 0,
+			group,
+			disposables,
+		})
+		createGrandLobbyWallSconce({
+			x: innerEastX - 0.02,
+			y: platformHeight + 2.05,
+			z: 5.20,
+			wallNormalX: -1,
+			wallNormalZ: 0,
+			group,
+			disposables,
+		})
+
+		// 4. West Raised Platform Promenade Wall (Elevated Wooden Walkway, Clearance > 2.2m from all salon doors)
+		createGrandLobbyWallSconce({
+			x: innerWestX + 0.02,
+			y: platformHeight + 2.05,
+			z: -5.20,
+			wallNormalX: 1,
+			wallNormalZ: 0,
+			group,
+			disposables,
+		})
+		createGrandLobbyWallSconce({
+			x: innerWestX + 0.02,
+			y: platformHeight + 2.05,
+			z: 5.20,
+			wallNormalX: 1,
+			wallNormalZ: 0,
+			group,
+			disposables,
+		})
 	}
 
 	// Add collision for elevated platforms and stairs
@@ -1171,6 +1403,14 @@ export function buildLobbyRoom(ctx, lobby) {
 			name: 'railing-west-stair-south',
 		})
 	}
+
+	decorateLobbyGrandRotunda({
+		group,
+		disposables,
+		halfW,
+		halfL,
+		height,
+	})
 
 	group.add(markers)
 

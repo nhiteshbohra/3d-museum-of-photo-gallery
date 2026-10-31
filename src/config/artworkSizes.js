@@ -14,11 +14,11 @@
 		y: 2.05,
 	},
 
-	// 2. North Wall - Masterpiece Artwork (Centered above bench)
+	// 2. North Wall - Masterpiece Artwork (Centered above bench / fireplace)
 	northMasterpiece: {
-		width: 4.50,
-		height: 3.00,
-		y: 2.40,
+		width: 4.20,
+		height: 2.40,
+		y: 2.55,
 	},
 
 	// 3. South Wall - Flanking Artworks (Left & Right of gate)
@@ -62,11 +62,11 @@ export const DEFAULT_ARTWORK_SIZES = {
 		y: 2.05,
 	},
 
-	// 2. North Wall - Masterpiece Artwork (Centered above bench)
+	// 2. North Wall - Masterpiece Artwork (Centered above bench / fireplace)
 	northMasterpiece: {
-		width: 4.50,
-		height: 3.00,
-		y: 2.40,
+		width: 4.20,
+		height: 2.40,
+		y: 2.55,
 	},
 
 	// 3. South Wall - Flanking Artworks (Left & Right of gate)
