@@ -18,6 +18,14 @@ app.innerHTML = `
     <div class="top-bar-admin-badge" title="Curator Admin Studio Workspace">
       <span>✦ ADMIN STUDIO ✦</span>
     </div>
+    <button id="btn-studio-toggle" class="top-bar-btn" title="Open Placement Studio (Press B)">
+      <span>🏛 Build</span>
+      <span class="top-bar-key">B</span>
+    </button>
+    <button id="btn-map-toggle" class="top-bar-btn" title="Toggle Top-Down Map View (Press T)">
+      <span>🗺 Map</span>
+      <span class="top-bar-key">T</span>
+    </button>
     <button id="btn-resizer-toggle" class="top-bar-btn" title="Adjust Artwork Sizes & Gaps Live (Press R)">
       <span>📐 Size</span>
       <span class="top-bar-key">R</span>
@@ -42,6 +50,7 @@ app.innerHTML = `
   <div id="scene-container">
   	<canvas id="scene" aria-label="3D scene"></canvas>
   </div>
+  <div id="room-curtain" aria-hidden="true"></div>
 
   <div id="overlay" aria-label="Welcome">
     <div id="ticket-card">
@@ -88,6 +97,41 @@ app.innerHTML = `
 const canvas = document.querySelector('#scene')
 const overlayEl = document.querySelector('#overlay')
 const crosshairEl = document.querySelector('#crosshair')
+const curtainEl = document.querySelector('#room-curtain')
+
+async function withFadeTransition(actionFn) {
+	if (curtainEl) {
+		curtainEl.classList.add('active')
+		await new Promise((resolve) => setTimeout(resolve, 150))
+	}
+	try {
+		await actionFn()
+	} finally {
+		if (curtainEl) {
+			await new Promise((resolve) => requestAnimationFrame(resolve))
+			curtainEl.classList.remove('active')
+		}
+	}
+}
+
+const preloadedDoorKeys = new Set()
+
+function preloadDoorPhotos(door) {
+	if (!door) return
+	const target = (typeof door?.category === 'string' && door.category.length > 0)
+		? door.category
+		: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
+	if (!target) return
+	if (preloadedDoorKeys.has(target)) return
+	preloadedDoorKeys.add(target)
+
+	const salon = findCoupleSalon(target)
+	if (!salon || !Array.isArray(salon.photos)) return
+
+	if (engineApi && typeof engineApi.preloadTextures === 'function') {
+		engineApi.preloadTextures(salon.photos)
+	}
+}
 
 function requestPlay() {
 	canvas.requestPointerLock()
@@ -188,7 +232,7 @@ document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuse
 
 // Resume pointer lock on canvas click if already entered and unlocked
 canvas.addEventListener('click', () => {
-	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden) {
+	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden && !document.body.classList.contains('studio-build-mode')) {
 		requestPlay()
 	}
 })
@@ -296,7 +340,7 @@ function findCoupleSalon(title) {
 	return null
 }
 
-function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState = true, loadingDoorId = null } = {}) {
+async function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState = true, loadingDoorId = null } = {}) {
 	if (activeDoorLabelOverride && engineApi && typeof engineApi.setDoorLabelOverride === 'function') {
 		engineApi.setDoorLabelOverride(activeDoorLabelOverride.doorId, '')
 		activeDoorLabelOverride = null
@@ -317,8 +361,11 @@ function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState
 	if (updateUrlState) {
 		setUrlAndState(salon.title, { push: Boolean(pushHistory) })
 	}
+	if (window.__doorProfile) {
+		window.__doorProfile.t_setRoom_call = performance.now()
+	}
 	if (engineApi && typeof engineApi.setRoom === 'function') {
-		engineApi.setRoom({
+		await engineApi.setRoom({
 			roomMode: 'gallery',
 			roomSeedTitle: salon.title,
 			galleryEntryWall: 'south',
@@ -339,7 +386,7 @@ function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUrlState
 	}
 }
 
-function enterlobby({ push = false } = {}) {
+async function enterlobby({ push = false } = {}) {
 	activeNavId += 1
 
 	pushGalleryTrail(lobby_title)
@@ -380,8 +427,11 @@ function enterlobby({ push = false } = {}) {
 		}
 	}
 
+	if (window.__doorProfile) {
+		window.__doorProfile.t_setRoom_call = performance.now()
+	}
 	if (engineApi && typeof engineApi.setRoom === 'function') {
-		engineApi.setRoom({
+		await engineApi.setRoom({
 			roomMode: 'lobby',
 			lobbyCategories: coupleCategories,
 			spawn: returnSpawn,
@@ -965,42 +1015,75 @@ engineApi = startYourEngines({
 		}
 		document.body.classList.toggle('locked', locked)
 	},
+	onDoorHover: preloadDoorPhotos,
+	onDoorProximity: preloadDoorPhotos,
 	onDoorTrigger(door) {
-		if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
-			setLoading(false)
-			if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
-				engineApi.setInteractionLocked(false)
-			}
-			enterlobby({ push: true })
-			return
+		window.__doorProfile = {
+			t_door_trigger: performance.now(),
+			target: door?.category || door?.articleTitle || door?.target || door?.id,
+			texUploadCount: 0,
+			texUploadMs: 0,
+			shaderCompileCount: 0,
+			shaderCompileMs: 0,
+			programLinkCount: 0,
+			programLinkMs: 0,
 		}
 
-		const doorTarget = (typeof door?.category === 'string' && door.category.length > 0)
-			? door.category
-			: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
-
-		if (doorTarget) {
-			lastEnteredLobbyCategory = doorTarget
-			lastEnteredLobbyDoorId = typeof door.id === 'string' ? door.id : null
-			try {
-				window.sessionStorage.setItem('ourmuseum:lastSalon', doorTarget)
-				if (lastEnteredLobbyDoorId) {
-					window.sessionStorage.setItem('ourmuseum:lastDoorId', lastEnteredLobbyDoorId)
+		withFadeTransition(async () => {
+			if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
+				setLoading(false)
+				if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+					engineApi.setInteractionLocked(false)
 				}
-			} catch (_) {}
-			loadAndEnterGallery(doorTarget, {
-				pushHistory: true,
-				spawn: { type: 'fromWall', wall: 'south' },
-				loadingDoorId: typeof door.id === 'string' ? door.id : null,
-			})
-			return
-		}
+				await enterlobby({ push: true })
+				return
+			}
+
+			const doorTarget = (typeof door?.category === 'string' && door.category.length > 0)
+				? door.category
+				: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
+
+			if (doorTarget) {
+				lastEnteredLobbyCategory = doorTarget
+				lastEnteredLobbyDoorId = typeof door.id === 'string' ? door.id : null
+				try {
+					window.sessionStorage.setItem('ourmuseum:lastSalon', doorTarget)
+					if (lastEnteredLobbyDoorId) {
+						window.sessionStorage.setItem('ourmuseum:lastDoorId', lastEnteredLobbyDoorId)
+					}
+				} catch (_) {}
+				await loadAndEnterGallery(doorTarget, {
+					pushHistory: true,
+					spawn: { type: 'fromWall', wall: 'south' },
+					loadingDoorId: typeof door.id === 'string' ? door.id : null,
+				})
+				return
+			}
+		})
 	},
 })
 
 window.__engineApi = engineApi
 window.__loadAndEnterGallery = loadAndEnterGallery
 window.__enterlobby = enterlobby
+
+if (isAdmin) {
+	import('./admin/placementStudio.js')
+		.then(({ initPlacementStudio }) => {
+			initPlacementStudio(engineApi, engineApi.scene, engineApi.camera, engineApi.renderer, canvas)
+			document.getElementById('btn-studio-toggle')?.addEventListener('click', (e) => {
+				e.stopPropagation()
+				window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', bubbles: true }))
+			})
+			document.getElementById('btn-map-toggle')?.addEventListener('click', (e) => {
+				e.stopPropagation()
+				window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true }))
+			})
+		})
+		.catch((err) => {
+			console.error('[Admin] Failed to initialize Placement Studio:', err)
+		})
+}
 
 if (!initialTitle) {
 	pushGalleryTrail(lobby_title)

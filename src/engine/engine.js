@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { buildRoom } from '../game/room.js'
+import { buildRoom, deriveRoomKey } from '../game/room.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
 import { hashStringToUint32, mulberry32, randRange, roundTo, setBodyClickableCursor } from '../misc/helper.js'
 
@@ -9,6 +9,8 @@ export function startYourEngines({
 	onPointerLockChange,
 	onHeading,
 	onDoorTrigger,
+	onDoorHover,
+	onDoorProximity,
 	onRandomExhibitRequested,
 	onGoLobbyRequested,
 	onPhotoClick,
@@ -26,6 +28,36 @@ export function startYourEngines({
 }) {
 	const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2))
+
+	const gl = renderer.getContext()
+	if (gl) {
+		const track = (name, orig) => {
+			return function (...args) {
+				if (window.__doorProfile && !window.__doorProfile.t_first_frame_rendered) {
+					const t0 = performance.now()
+					const res = orig.apply(this, args)
+					const dt = performance.now() - t0
+					const keyCount = name + 'Count'
+					const keyMs = name + 'Ms'
+					window.__doorProfile[keyCount] = (window.__doorProfile[keyCount] || 0) + 1
+					window.__doorProfile[keyMs] = (window.__doorProfile[keyMs] || 0) + dt
+					return res
+				}
+				return orig.apply(this, args)
+			}
+		}
+
+		gl.texImage2D = track('texImage2D', gl.texImage2D)
+		if (gl.texSubImage2D) gl.texSubImage2D = track('texSubImage2D', gl.texSubImage2D)
+		if (gl.texStorage2D) gl.texStorage2D = track('texStorage2D', gl.texStorage2D)
+		gl.compileShader = track('compileShader', gl.compileShader)
+		gl.linkProgram = track('linkProgram', gl.linkProgram)
+		gl.getShaderParameter = track('getShaderParameter', gl.getShaderParameter)
+		gl.getProgramParameter = track('getProgramParameter', gl.getProgramParameter)
+		gl.bufferData = track('bufferData', gl.bufferData)
+		gl.drawElements = track('drawElements', gl.drawElements)
+		gl.drawArrays = track('drawArrays', gl.drawArrays)
+	}
 
 	if ('outputColorSpace' in renderer) {
 		renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -422,7 +454,7 @@ export function startYourEngines({
 
 	let lastLoadedRoomParams = null
 
-	function loadRoom({
+	async function loadRoom({
 		mode,
 		seedTitle,
 		categories,
@@ -476,12 +508,19 @@ export function startYourEngines({
 			roomLength = roundTo(randRange(rand, 14, 16), 0.25) // south-north
 		}
 
+		const roomKey = mode === 'lobby' ? 'lobby' : deriveRoomKey({ mode, title: nextGalleryTitle })
+
+		if (window.__doorProfile) {
+			window.__doorProfile.t_buildRoom_start = performance.now()
+		}
+
 		const nextRoom = buildRoom({
 			width: roomWidth,
 			length: roomLength,
 			height: roomHeight,
 			wallThickness,
 			mode,
+			roomKey,
 			lobby: {
 				categories,
 			},
@@ -498,20 +537,44 @@ export function startYourEngines({
 			},
 		})
 
-		if (currentRoom) {
+		if (window.__doorProfile) {
+			window.__doorProfile.t_buildRoom_end = performance.now()
+		}
 
+		if (currentRoom) {
 			if (held) releaseHeld()
+			if (window.__doorProfile) window.__doorProfile.t_dispose_start = performance.now()
 			scene.remove(currentRoom.group)
 			disposeMany(currentRoom.disposables)
+			if (window.__doorProfile) window.__doorProfile.t_dispose_end = performance.now()
 		}
 
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
 		applyAmbiencePreset()
 
+		currentRoom.group.traverse((obj) => {
+			if (obj.isMesh) {
+				let t0 = 0
+				obj.onBeforeRender = () => { t0 = performance.now() }
+				obj.onAfterRender = () => {
+					const dt = performance.now() - t0
+					if (dt > 2.0) {
+						console.log(`[SLOW MESH] ${obj.name || obj.geometry?.type || 'mesh'}: ${dt.toFixed(2)}ms (mat: ${obj.material?.type}, geo: ${obj.geometry?.type})`)
+					}
+				}
+			}
+		})
+
+		if (window.__doorProfile) window.__doorProfile.t_compile_start = performance.now()
 		try {
-			renderer.compile(currentRoom.group, camera)
+			if (typeof renderer.compileAsync === 'function') {
+				await renderer.compileAsync(scene, camera)
+			} else {
+				renderer.compile(scene, camera)
+			}
 		} catch (_) {}
+		if (window.__doorProfile) window.__doorProfile.t_compile_end = performance.now()
 
 		deferredTextureLoadToken += 1
 		void runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
@@ -536,6 +599,22 @@ export function startYourEngines({
 
 		applySpawn(spawn, doors)
 		interactionLocked = false
+		if (window.__doorProfile) {
+			window.__doorProfile.t_setRoom_end = performance.now()
+		}
+
+		// Notify Placement Studio of room context change
+		try {
+			window.dispatchEvent(new CustomEvent('museum:roombuilt', {
+				detail: {
+					roomKey,
+					slots: Array.isArray(currentRoom.slots) ? currentRoom.slots : [],
+					doors,
+					obstacles: roomObstacles,
+					bounds: currentRoom.bounds || { halfW, halfL },
+				},
+			}))
+		} catch (_) {}
 	}
 
 	loadRoom({
@@ -569,7 +648,7 @@ export function startYourEngines({
 		if (hits.length === 0) return false
 
 		const hitPoint = hits[0]?.point
-		const interactMaxDistance = 4.5
+		const interactMaxDistance = 6.0
 		if (hitPoint && typeof hitPoint.distanceTo === 'function') {
 			const d = hitPoint.distanceTo(camera.position)
 			if (d > interactMaxDistance) return false
@@ -579,6 +658,9 @@ export function startYourEngines({
 		if (doorId) {
 			const door = doorById.get(doorId)
 			if (!doorHasTriggerTarget(door)) return false
+			if (typeof onDoorHover === 'function') {
+				onDoorHover(door)
+			}
 		}
 		return true
 	}
@@ -716,14 +798,17 @@ export function startYourEngines({
 			}
 		}
 
-		// Check if clicked a door (generous 8.0m reach so door interaction is instantaneous & responsive)
+		// Check if clicked a door (harmonized 6.0m reach with instant response on first click)
 		{
 			const doorId = findDoorId(hits[0].object)
 			if (doorId) {
 				const door = doorById.get(doorId) ?? { id: doorId }
 				if (doorHasTriggerTarget(door)) {
 					const d = hitPoint && typeof hitPoint.distanceTo === 'function' ? hitPoint.distanceTo(camera.position) : 0
-					if (d <= 8.0) {
+					if (d <= 6.0) {
+						if (!locked && canvas && typeof canvas.requestPointerLock === 'function') {
+							try { canvas.requestPointerLock() } catch (_) {}
+						}
 						if (typeof onDoorTrigger === 'function') {
 							onDoorTrigger(door)
 						}
@@ -733,7 +818,7 @@ export function startYourEngines({
 			}
 		}
 
-		const interactMaxDistance = 4.5
+		const interactMaxDistance = 6.0
 		if (hitPoint && typeof hitPoint.distanceTo === 'function') {
 			const d = hitPoint.distanceTo(camera.position)
 			if (d > interactMaxDistance) return
@@ -967,7 +1052,11 @@ export function startYourEngines({
 					if (!d || !d.position || !doorHasTriggerTarget(d)) continue
 					const dx = px - d.position.x
 					const dz = pz - d.position.z
-					if (Math.hypot(dx, dz) < 0.95) {
+					const dist = Math.hypot(dx, dz)
+					if (dist < 4.0 && typeof onDoorProximity === 'function') {
+						onDoorProximity(d)
+					}
+					if (dist < 0.50) {
 						lastDoorTriggerTime = now
 						onDoorTrigger(d)
 						break
@@ -977,6 +1066,8 @@ export function startYourEngines({
 		}
 	}
 
+	let activeCamera = camera
+
 	function resize() {
 		const width = canvas.clientWidth
 		const height = canvas.clientHeight
@@ -984,8 +1075,18 @@ export function startYourEngines({
 		if (width <= 0 || height <= 0) return
 
 		renderer.setSize(width, height, false)
-		camera.aspect = width / height
+		const aspect = width / height
+		camera.aspect = aspect
 		camera.updateProjectionMatrix()
+
+		if (activeCamera && activeCamera.isOrthographicCamera) {
+			const size = activeCamera.userData?.frustumHalfSize || 8
+			activeCamera.left = -size * aspect
+			activeCamera.right = size * aspect
+			activeCamera.top = size
+			activeCamera.bottom = -size
+			activeCamera.updateProjectionMatrix()
+		}
 	}
 
 	const clock = new THREE.Clock()
@@ -1040,7 +1141,22 @@ export function startYourEngines({
 		setBodyClickableCursor(computeIsAimingAtClickable())
 
 		resize()
-		renderer.render(scene, camera)
+		if (window.__doorProfile && window.__doorProfile.t_setRoom_end && !window.__doorProfile.t_first_frame_rendered) {
+			const t_frame_start = performance.now()
+			window.__doorProfile.t_first_frame_start = t_frame_start
+			const t_render_start = performance.now()
+			renderer.render(scene, activeCamera || camera)
+			const t_render_end = performance.now()
+			const glCtx = renderer.getContext()
+			if (glCtx) glCtx.finish()
+			const t_gl_finish = performance.now()
+			window.__doorProfile.t_first_render_start = t_render_start
+			window.__doorProfile.t_first_render_end = t_render_end
+			window.__doorProfile.t_first_frame_rendered = t_gl_finish
+			console.log('[DOOR_PROFILE_RESULT]', JSON.stringify(window.__doorProfile))
+		} else {
+			renderer.render(scene, activeCamera || camera)
+		}
 		rafId = window.requestAnimationFrame(frame)
 	}
 
@@ -1091,7 +1207,7 @@ export function startYourEngines({
 			if (t) ctrl.setOverride(t)
 			else ctrl.clearOverride()
 		},
-		setRoom({
+		async setRoom({
 			roomMode: nextMode,
 			roomSeedTitle: nextSeedTitle,
 			lobbyCategories: nextCategories,
@@ -1117,7 +1233,7 @@ export function startYourEngines({
 			const hasGalleryLongExtract = Object.prototype.hasOwnProperty.call(arguments.length ? arguments[0] ?? {} : {}, 'galleryLongExtract')
 			const hasGalleryTrail = Object.prototype.hasOwnProperty.call(arguments.length ? arguments[0] ?? {} : {}, 'galleryTrail')
 
-			loadRoom({
+			return await loadRoom({
 				mode: typeof nextMode === 'string' ? nextMode : roomMode,
 				seedTitle: typeof nextSeedTitle === 'string' ? nextSeedTitle : roomSeedTitle,
 				categories: Array.isArray(nextCategories) ? nextCategories : lobbyCategories,
@@ -1137,12 +1253,40 @@ export function startYourEngines({
 				spawn,
 			})
 		},
+		preloadTextures(urls) {
+			if (!Array.isArray(urls)) return
+			for (const url of urls) {
+				const key = typeof url === 'string' ? url.trim() : ''
+				if (key && !loadedPhotoTextureCache.has(key)) {
+					loadTextureAsync(key).catch(() => {})
+				}
+			}
+		},
 		reloadRoomInPlace() {
 			if (!lastLoadedRoomParams) return
 			loadRoom({
 				...lastLoadedRoomParams,
 				spawn: null,
 			})
+		},
+		getRoomKey() {
+			return currentRoom?.roomKey || 'lobby'
+		},
+		getCurrentRoom() {
+			return currentRoom
+		},
+		scene,
+		camera,
+		renderer,
+		setActiveCamera(cam) {
+			activeCamera = cam || camera
+			resize()
+		},
+		getActiveCamera() {
+			return activeCamera || camera
+		},
+		triggerResize() {
+			resize()
 		},
 		setCameraPosition(x, y, z, newYaw = 0, newPitch = 0) {
 			if (typeof x === 'number') camera.position.x = x

@@ -2,12 +2,26 @@ import * as THREE from 'three'
 import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl } from '../misc/helper.js'
 import { buildLobbyRoom, createRealisticGalleryPlant, createRealisticGalleryBench } from './room/lobby.js'
 import { applyRoomDecorations } from './room/decorations.js'
+import { applyPlacedItems } from './room/placedItems.js'
 import { addDoor as addDoorToRoom } from './room/doors.js'
 import { addSlot as addSlotToRoom } from './room/slots.js'
 import { getSharedRoomMaterialTextures } from './room/textures.js'
 import { getArtworkSizes } from '../config/artworkSizes.js'
 
-export function buildRoom({ width, length, height, wallThickness = 0.2, mode = 'gallery', lobby = {}, gallery = {} }) {
+export function deriveRoomKey({ mode = 'gallery', title = '' } = {}) {
+	if (mode === 'lobby') return 'lobby'
+	const t = String(title || '').toLowerCase()
+	if (t.includes('fireside') || t.includes('winter')) return 'fireside'
+	if (t.includes('music') || t.includes('melod')) return 'music'
+	if (t.includes('library') || t.includes('reading')) return 'library'
+	if (t.includes('paris') || t.includes('masterpiece') || t.includes('romance')) return 'paris'
+	if (t.includes('orangery') || t.includes('glass')) return 'orangery'
+	if (t.includes('secret') || t.includes('alcove') || t.includes('promise')) return 'alcove'
+	return 'gallery'
+}
+
+export function buildRoom({ width, length, height, wallThickness = 0.2, mode = 'gallery', roomKey, lobby = {}, gallery = {} }) {
+	const currentRoomKey = roomKey || deriveRoomKey({ mode, title: gallery?.title })
 	const group = new THREE.Group()
 	group.name = 'room'
 
@@ -622,7 +636,16 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 	if (mode === 'lobby') {
 		const lobbyRoom = buildLobbyRoom(roomCtx, lobby)
-		return { ...lobbyRoom, deferredTextureLoads }
+		applyPlacedItems('lobby', {
+			group: lobbyRoom.group,
+			disposables: lobbyRoom.disposables,
+			obstacles: lobbyRoom.obstacles,
+			animatedDecorations: lobbyRoom.animatedDecorations,
+			slots: lobbyRoom.slots,
+			doors: lobbyRoom.doors,
+			bounds: lobbyRoom.bounds,
+		})
+		return { ...lobbyRoom, deferredTextureLoads, roomKey: 'lobby' }
 	}
 
 	const photoFrameBackTex = makePhotoFrameBackTexture({ size: 1024 })
@@ -1712,6 +1735,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		// Apply curated, non-blocking realistic decorations & artefacts for this salon
 		applyRoomDecorations({
 			title: gallery.title || '',
+			roomKey: currentRoomKey,
 			group,
 			disposables,
 			obstacles,
@@ -1719,6 +1743,21 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			halfL,
 			height,
 			animatedDecorations,
+		})
+
+		// Apply customized placed items from museumLayout.json
+		applyPlacedItems(currentRoomKey, {
+			group,
+			disposables,
+			obstacles,
+			animatedDecorations,
+			slots,
+			doors,
+			bounds: {
+				halfW,
+				halfL,
+				height,
+			},
 		})
 	}
 
@@ -1734,6 +1773,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		pickableMeshes,
 		obstacles,
 		animatedDecorations,
+		roomKey: currentRoomKey,
 		bounds: {
 			halfW,
 			halfL,

@@ -1,17 +1,31 @@
-# Ignore the following files and directories
-project-log
-tests
-docs
-node_modules
-.agents
-skills-lock.json
-dist
-photos
+# ── Build & Dependencies ──────────────────────────────────────
+node_modules/
+dist/
 
+# ── User Photos (large binary assets, stored locally only) ────
+photos/
+public/photos/
 
-screenshots
+# ── Avatar & 3D Model Assets (Phase 2, binary GLB files) ──────
+assets/
+
+# ── Archive (avatar staging for Phase 2) ──────────────────────
+archive/
+3d model
+
+# ── Dev / QA Tools ────────────────────────────────────────────
+screenshots/
 inspect_museum_artefacts.py
+*.zip
+
+# ── Docs & Internal Logs ──────────────────────────────────────
+docs/
+tests/
+project-log/
+skills-lock.json
+.agents/
+
+# ── Markdown docs (kept in repo via PROJECT_INSTRUCTIONS etc.) ─
+# *.md  ← intentionally NOT ignoring .md so PROJECT_INSTRUCTIONS
+#          DEAD_CODE_AUDIT and MUSEUM_ARTEFACTS_CATALOG are tracked
 *.md
-
-
-F:\projects\3dmuseum\3dmuseum-codebase.zip

@@ -1276,6 +1276,7 @@ export function decorateLobbyGrandRotunda({ group, disposables, halfW, halfL, he
 // ─────────────────────────────────────────────────────────────────────────────
 export function applyRoomDecorations({
 	title = '',
+	roomKey = '',
 	group,
 	disposables,
 	obstacles = [],
@@ -1284,18 +1285,19 @@ export function applyRoomDecorations({
 	height,
 	animatedDecorations = [],
 } = {}) {
+	const k = String(roomKey || '').toLowerCase()
 	const t = String(title || '').toLowerCase()
-	if (t.includes('fireside') || t.includes('winter')) {
+	if (k === 'fireside' || t.includes('fireside') || t.includes('winter')) {
 		decorateFiresideWinterRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (t.includes('music') || t.includes('melod')) {
+	} else if (k === 'music' || t.includes('music') || t.includes('melod')) {
 		decorateMusicMelodiesRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (t.includes('library') || t.includes('reading')) {
+	} else if (k === 'library' || t.includes('library') || t.includes('reading')) {
 		decorateLibraryReadingRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (t.includes('paris') || t.includes('masterpiece') || t.includes('romance')) {
+	} else if (k === 'paris' || t.includes('paris') || t.includes('masterpiece') || t.includes('romance')) {
 		decorateParisMasterpieceRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (t.includes('orangery') || t.includes('glass')) {
+	} else if (k === 'orangery' || t.includes('orangery') || t.includes('glass')) {
 		decorateGlassOrangeryRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (t.includes('secret') || t.includes('alcove') || t.includes('promise')) {
+	} else if (k === 'alcove' || t.includes('secret') || t.includes('alcove') || t.includes('promise')) {
 		decorateSecretAlcoveRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
 	} else {
 		createCrownMoulding({ halfW, halfL, height, group, disposables })
