@@ -7,6 +7,7 @@ import { addDoor as addDoorToRoom } from './room/doors.js'
 import { addSlot as addSlotToRoom } from './room/slots.js'
 import { getSharedRoomMaterialTextures } from './room/textures.js'
 import { getArtworkSizes } from '../config/artworkSizes.js'
+import { getStaticCache } from './room/staticCache.js'
 
 export function deriveRoomKey({ mode = 'gallery', title = '' } = {}) {
 	if (mode === 'lobby') return 'lobby'
@@ -648,8 +649,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		return { ...lobbyRoom, deferredTextureLoads, roomKey: 'lobby' }
 	}
 
-	const photoFrameBackTex = makePhotoFrameBackTexture({ size: 1024 })
-	disposables.push(photoFrameBackTex)
+	const photoFrameBackTex = getStaticCache().photoFrameBackTex
 
 	const entryDoorW = 1.25
 	const entryDoorH = 2.25 * 1.1
@@ -699,59 +699,15 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		buttonGroup.add(core)
 		disposables.push(coreGeo, coreMat)
 
-		// 3. Circular high-resolution typography plaque
-		const canvas = document.createElement('canvas')
-		canvas.width = 512
-		canvas.height = 512
-		const ctx2 = canvas.getContext('2d')
-		if (ctx2) {
-			ctx2.clearRect(0, 0, canvas.width, canvas.height)
-
-			// Gilded outer concentric rings
-			ctx2.strokeStyle = '#d4af37'
-			ctx2.lineWidth = 6
-			ctx2.beginPath()
-			ctx2.arc(256, 256, 240, 0, Math.PI * 2)
-			ctx2.stroke()
-
-			ctx2.lineWidth = 2
-			ctx2.beginPath()
-			ctx2.arc(256, 256, 226, 0, Math.PI * 2)
-			ctx2.stroke()
-
-			ctx2.textAlign = 'center'
-			ctx2.textBaseline = 'middle'
-
-			// Compass icon / icon mark
-			ctx2.font = '36px "Montserrat", sans-serif'
-			ctx2.fillStyle = '#e8c872'
-			ctx2.fillText('✦  ✦  ✦', 256, 135)
-
-			// Elegant serif title
-			ctx2.font = '700 56px "Cormorant Garamond", Georgia, serif'
-			ctx2.fillStyle = '#ffffff'
-			ctx2.fillText('RETURN TO', 256, 225)
-
-			ctx2.font = '900 66px "Cormorant Garamond", Georgia, serif'
-			ctx2.fillStyle = '#e8c872'
-			ctx2.fillText('LOBBY', 256, 305)
-
-			ctx2.font = '600 24px "Montserrat", sans-serif'
-			ctx2.fillStyle = 'rgba(255,255,255,0.78)'
-			ctx2.fillText('GRAND ROTUNDA', 256, 380)
-		}
-
-		const labelTex = new THREE.CanvasTexture(canvas)
-		labelTex.colorSpace = THREE.SRGBColorSpace
-		configureGalleryTexture(labelTex)
-		labelTex.needsUpdate = true
+		// 3. Circular high-resolution typography plaque (shared static texture)
+		const labelTex = getStaticCache().lobbyMedallionTex
 
 		const labelGeo = new THREE.CircleGeometry(medallionR * 0.84, 48)
 		const labelMat = new THREE.MeshBasicMaterial({ map: labelTex, transparent: true })
 		const label = new THREE.Mesh(labelGeo, labelMat)
 		label.position.set(0, medallionCenterY, 0.033)
 		buttonGroup.add(label)
-		disposables.push(labelTex, labelGeo, labelMat)
+		disposables.push(labelGeo, labelMat)
 
 		// 4. Circular Raycast Hit Mesh
 		const hitGeo = new THREE.CircleGeometry(medallionR * 1.15, 32)
@@ -901,17 +857,13 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				},
 				onError(err) {
 					console.warn('[OurMuseum] Failed to load front column photo', frontPhotoUrl, err)
-					const tex = makeNoPhotoTexture({ size: 1024 })
-					imgMat.map = tex
+					imgMat.map = getStaticCache().noPhotoTex
 					imgMat.needsUpdate = true
-					disposables.push(tex)
 				},
 			})
 		} else {
-			const tex = makeNoPhotoTexture({ size: 1024 })
-			imgMat.map = tex
+			imgMat.map = getStaticCache().noPhotoTex
 			imgMat.needsUpdate = true
-			disposables.push(tex)
 		}
 
 		// Centered Highlight Artwork on BACK FACE of partition wall (North-facing)
@@ -970,22 +922,47 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				},
 				onError(err) {
 					console.warn('[OurMuseum] Failed to load back column photo', backPhotoUrl, err)
-					const tex = makeNoPhotoTexture({ size: 1024 })
-					imgMatNorth.map = tex
+					imgMatNorth.map = getStaticCache().noPhotoTex
 					imgMatNorth.needsUpdate = true
-					disposables.push(tex)
 				},
 			})
 		} else {
-			const tex = makeNoPhotoTexture({ size: 1024 })
-			imgMatNorth.map = tex
+			imgMatNorth.map = getStaticCache().noPhotoTex
 			imgMatNorth.needsUpdate = true
-			disposables.push(tex)
 		}
 	}
 
 	{
 		const relatedTitles = Array.isArray(gallery.relatedTitles) ? gallery.relatedTitles.filter(Boolean) : []
+		const allCategories = Array.isArray(lobby?.categories) && lobby.categories.length > 0
+			? lobby.categories
+			: ['Fireside Winter Memories', 'Music & Classical Melodies', 'The Library & Reading Nook', 'Masterpiece Paris Romance', 'The Glass Orangery', 'The Secret Promise Alcove']
+		const currentTitle = String(gallery?.title || '').toLowerCase().trim()
+
+		// Build guaranteed valid salon destinations for all doors
+		const otherSalons = allCategories.filter(
+			(cat) => cat && cat.toLowerCase().trim() !== currentTitle
+		)
+
+		const assignedDestinations = []
+		// 1. Add specific related titles first
+		for (const t of relatedTitles) {
+			if (t && t.toLowerCase().trim() !== currentTitle && !assignedDestinations.includes(t)) {
+				assignedDestinations.push(t)
+			}
+		}
+		// 2. Add other salons from categories
+		for (const t of otherSalons) {
+			if (!assignedDestinations.includes(t)) {
+				assignedDestinations.push(t)
+			}
+		}
+		// 3. Guarantee every base door (all 6 doors including the 2 North wall gates) has a valid destination
+		while (assignedDestinations.length < 6) {
+			const fallback = otherSalons[assignedDestinations.length % otherSalons.length] || 'Fireside Winter Memories'
+			assignedDestinations.push(fallback)
+		}
+
 		const doorH = 2.25 * 1.1
 		const cornerMargin = 1.6
 		const cornerUSouth = Math.max(-halfL + 1.0, halfL - cornerMargin)
@@ -1004,14 +981,14 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 		for (let i = 0; i < baseDoors.length; i++) {
 			const spec = baseDoors[i]
-			const title = relatedTitles[i] ? String(relatedTitles[i]) : ''
+			const title = assignedDestinations[i]
 			addDoor({
 				id: spec.id,
 				wall: spec.wall,
 				w: 1.1,
 				h: doorH,
 				u: spec.u,
-				meta: title ? { articleTitle: title, category: title, label: title } : { label: '...' },
+				meta: { articleTitle: title, category: title, target: title, label: title },
 			})
 		}
 
@@ -1029,12 +1006,12 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				const u = uStart + i * (doorW + gapU)
 				const title = String(remaining[i])
 				addDoor({
-					id: `seealso-${i + 6}`,
+					id: 'seealso-' + (i + 6),
 					wall,
 					w: doorW,
 					h: doorH,
 					u,
-					meta: { articleTitle: title, category: title, label: title },
+					meta: { articleTitle: title, category: title, target: title, label: title },
 				})
 			}
 		}
@@ -1404,14 +1381,14 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			}
 
 
-			applyTexture(makeNoPhotoTexture({ size: 1024, title: placeholderTitle }))
+			applyTexture(getStaticCache().noPhotoTex)
 			if (url) {
 				deferredTextureLoads.push({
 					url,
 					onLoad: (tex) => applyTexture(tex),
 					onError: (err) => {
 						console.warn('[OurMuseum] Failed to load wall photo', url, err)
-						applyTexture(makeNoPhotoTexture({ size: 1024, title: placeholderTitle }))
+						applyTexture(getStaticCache().noPhotoTex)
 					},
 				})
 			}
@@ -1680,7 +1657,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			group.add(mesh)
 			disposables.push(geo, mat)
 
-			const { tex, nextLine } = makeWallTextTexture({ size: 2048, title, text, aspect: baseW / baseH, startLine, withTitle, twoColumn })
+			const { tex, nextLine } = makeWallTextTexture({ size: 1024, title, text, aspect: baseW / baseH, startLine, withTitle, twoColumn })
 			mat.map = tex
 			mat.color.setHex(0xffffff)
 			mat.needsUpdate = true

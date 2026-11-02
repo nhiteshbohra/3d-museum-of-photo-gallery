@@ -8,10 +8,10 @@
 	// 1. East Wall - 5 Sequential Artworks
 	eastWall: {
 		count: 5,
-		width: 1.70,
+		width: 1.50,
 		height: 1.55,
-		gap: 0.30,
-		y: 2.05,
+		gap: 0.45,
+		y: 2.30,
 	},
 
 	// 2. North Wall - Masterpiece Artwork (Centered above bench / fireplace)
@@ -56,10 +56,10 @@ export const DEFAULT_ARTWORK_SIZES = {
 	// 1. East Wall - 5 Sequential Artworks
 	eastWall: {
 		count: 5,
-		width: 1.70,
+		width: 1.50,
 		height: 1.55,
-		gap: 0.30,
-		y: 2.05,
+		gap: 0.45,
+		y: 2.30,
 	},
 
 	// 2. North Wall - Masterpiece Artwork (Centered above bench / fireplace)
@@ -99,7 +99,7 @@ export const DEFAULT_ARTWORK_SIZES = {
 	},
 }
 
-const STORAGE_KEY = 'ourmuseum:artworkSizes:v2'
+const STORAGE_KEY = 'ourmuseum:artworkSizes:v3'
 
 /**
  * Returns active artwork sizes, merging local modifications with defaults.

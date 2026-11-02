@@ -115,6 +115,70 @@ async function withFadeTransition(actionFn) {
 }
 
 const preloadedDoorKeys = new Set()
+let prebuildQueue = []
+let idlePrebuildScheduled = false
+
+function queuePrebuildSalons(salonsToQueue) {
+	if (!Array.isArray(salonsToQueue)) return
+	for (const title of salonsToQueue) {
+		if (title && !prebuildQueue.includes(title)) {
+			prebuildQueue.push(title)
+		}
+	}
+	scheduleNextPrebuildSlice()
+}
+
+function scheduleNextPrebuildSlice() {
+	if (idlePrebuildScheduled || prebuildQueue.length === 0) return
+	idlePrebuildScheduled = true
+
+	const requestIdle = window.requestIdleCallback || ((cb) => setTimeout(() => cb({ timeRemaining: () => 15 }), 60))
+
+	requestIdle(async () => {
+		idlePrebuildScheduled = false
+		if (prebuildQueue.length === 0) return
+
+		const title = prebuildQueue.shift()
+		const salon = findCoupleSalon(title)
+		if (!salon) {
+			scheduleNextPrebuildSlice()
+			return
+		}
+
+		if (engineApi && typeof engineApi.hasCachedRoom === 'function') {
+			const key = 'gallery:' + salon.title.toLowerCase().trim()
+			if (engineApi.hasCachedRoom(key)) {
+				scheduleNextPrebuildSlice()
+				return
+			}
+		}
+
+		if (engineApi && typeof engineApi.prebuildRoom === 'function') {
+			try {
+				await engineApi.prebuildRoom({
+					mode: 'gallery',
+					seedTitle: salon.title,
+					galleryEntryWall: 'south',
+					galleryRelatedTitles: salon.seeAlso,
+					galleryTitle: salon.title,
+					galleryDescription: salon.extract,
+					galleryMainThumbnailUrl: (salon.photos && salon.photos.length > 0) ? salon.photos[0] : null,
+					galleryPhotos: salon.photos,
+					galleryVideoUrl: null,
+					galleryLongExtract: salon.longExtract,
+					galleryTrail: [salon.title],
+				})
+			} catch (err) {
+				console.warn('[Prebuild] Slice failed for salon', title, err)
+			}
+		}
+
+		// Small delay before next slice so the main loop has zero stutter
+		if (prebuildQueue.length > 0) {
+			setTimeout(scheduleNextPrebuildSlice, 120)
+		}
+	}, { timeout: 2500 })
+}
 
 function preloadDoorPhotos(door) {
 	if (!door) return
@@ -126,10 +190,16 @@ function preloadDoorPhotos(door) {
 	preloadedDoorKeys.add(target)
 
 	const salon = findCoupleSalon(target)
-	if (!salon || !Array.isArray(salon.photos)) return
+	if (!salon) return
 
-	if (engineApi && typeof engineApi.preloadTextures === 'function') {
+	if (Array.isArray(salon.photos) && engineApi && typeof engineApi.preloadTextures === 'function') {
 		engineApi.preloadTextures(salon.photos)
+	}
+
+	// Prioritize prebuilding this salon right now if not yet cached
+	if (!prebuildQueue.includes(salon.title)) {
+		prebuildQueue.unshift(salon.title)
+		scheduleNextPrebuildSlice()
 	}
 }
 
@@ -226,6 +296,7 @@ function enterMuseum() {
 	if (!isAudioPlaying) {
 		toggleAmbientAudio()
 	}
+	queuePrebuildSalons(coupleCategories)
 }
 
 document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuseum)
@@ -361,9 +432,6 @@ async function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUr
 	if (updateUrlState) {
 		setUrlAndState(salon.title, { push: Boolean(pushHistory) })
 	}
-	if (window.__doorProfile) {
-		window.__doorProfile.t_setRoom_call = performance.now()
-	}
 	if (engineApi && typeof engineApi.setRoom === 'function') {
 		await engineApi.setRoom({
 			roomMode: 'gallery',
@@ -383,6 +451,9 @@ async function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUr
 	setLoading(false)
 	if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
 		engineApi.setInteractionLocked(false)
+	}
+	if (salon && Array.isArray(salon.seeAlso)) {
+		queuePrebuildSalons(salon.seeAlso)
 	}
 }
 
@@ -427,9 +498,6 @@ async function enterlobby({ push = false } = {}) {
 		}
 	}
 
-	if (window.__doorProfile) {
-		window.__doorProfile.t_setRoom_call = performance.now()
-	}
 	if (engineApi && typeof engineApi.setRoom === 'function') {
 		await engineApi.setRoom({
 			roomMode: 'lobby',
@@ -442,6 +510,7 @@ async function enterlobby({ push = false } = {}) {
 	if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
 		engineApi.setInteractionLocked(false)
 	}
+	queuePrebuildSalons(coupleCategories)
 }
 
 function goBackInApp() {
@@ -1018,17 +1087,6 @@ engineApi = startYourEngines({
 	onDoorHover: preloadDoorPhotos,
 	onDoorProximity: preloadDoorPhotos,
 	onDoorTrigger(door) {
-		window.__doorProfile = {
-			t_door_trigger: performance.now(),
-			target: door?.category || door?.articleTitle || door?.target || door?.id,
-			texUploadCount: 0,
-			texUploadMs: 0,
-			shaderCompileCount: 0,
-			shaderCompileMs: 0,
-			programLinkCount: 0,
-			programLinkMs: 0,
-		}
-
 		withFadeTransition(async () => {
 			if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
 				setLoading(false)
@@ -1119,4 +1177,6 @@ if (initialTitle) {
 		updateUrlState: false,
 		spawn: { type: 'fromWall', wall: 'south' },
 	})
+} else {
+	queuePrebuildSalons(coupleCategories)
 }

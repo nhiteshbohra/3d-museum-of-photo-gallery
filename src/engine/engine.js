@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { buildRoom, deriveRoomKey } from '../game/room.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
+import { disposeStaticCache } from '../game/room/staticCache.js'
 import { hashStringToUint32, mulberry32, randRange, roundTo, setBodyClickableCursor } from '../misc/helper.js'
 
 export function startYourEngines({
@@ -28,36 +29,6 @@ export function startYourEngines({
 }) {
 	const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
 	renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2))
-
-	const gl = renderer.getContext()
-	if (gl) {
-		const track = (name, orig) => {
-			return function (...args) {
-				if (window.__doorProfile && !window.__doorProfile.t_first_frame_rendered) {
-					const t0 = performance.now()
-					const res = orig.apply(this, args)
-					const dt = performance.now() - t0
-					const keyCount = name + 'Count'
-					const keyMs = name + 'Ms'
-					window.__doorProfile[keyCount] = (window.__doorProfile[keyCount] || 0) + 1
-					window.__doorProfile[keyMs] = (window.__doorProfile[keyMs] || 0) + dt
-					return res
-				}
-				return orig.apply(this, args)
-			}
-		}
-
-		gl.texImage2D = track('texImage2D', gl.texImage2D)
-		if (gl.texSubImage2D) gl.texSubImage2D = track('texSubImage2D', gl.texSubImage2D)
-		if (gl.texStorage2D) gl.texStorage2D = track('texStorage2D', gl.texStorage2D)
-		gl.compileShader = track('compileShader', gl.compileShader)
-		gl.linkProgram = track('linkProgram', gl.linkProgram)
-		gl.getShaderParameter = track('getShaderParameter', gl.getShaderParameter)
-		gl.getProgramParameter = track('getProgramParameter', gl.getProgramParameter)
-		gl.bufferData = track('bufferData', gl.bufferData)
-		gl.drawElements = track('drawElements', gl.drawElements)
-		gl.drawArrays = track('drawArrays', gl.drawArrays)
-	}
 
 	if ('outputColorSpace' in renderer) {
 		renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -454,22 +425,38 @@ export function startYourEngines({
 
 	let lastLoadedRoomParams = null
 
-	async function loadRoom({
-		mode,
-		seedTitle,
-		categories,
-		galleryEntryWall,
-		galleryRelatedTitles: relatedTitles,
-		galleryTitle: nextGalleryTitle,
-		galleryDescription: nextGalleryDescription,
-		galleryMainThumbnailUrl: nextGalleryMainThumbnailUrl,
-		galleryPhotos: nextGalleryPhotos,
-		galleryVideoUrl: nextGalleryVideoUrl,
-		galleryLongExtract: nextGalleryLongExtract,
-		galleryTrail: nextGalleryTrail,
-		spawn,
-	}) {
-		lastLoadedRoomParams = {
+	// Room LRU Cache (max 3 cached rooms)
+	const MAX_CACHED_ROOMS = 3
+	const roomCache = new Map()
+	const prebuildingPromises = new Map()
+
+	function getRoomCacheKey(params) {
+		if (!params || params.mode === 'lobby') return 'lobby'
+		const t = params.galleryTitle || params.seedTitle || ''
+		return 'gallery:' + String(t).toLowerCase().trim()
+	}
+
+	function evictExcessRooms() {
+		while (roomCache.size > MAX_CACHED_ROOMS) {
+			let oldestKey = null
+			for (const [k, r] of roomCache.entries()) {
+				if (r !== currentRoom) {
+					oldestKey = k
+					break
+				}
+			}
+			if (!oldestKey) break
+			const evicted = roomCache.get(oldestKey)
+			roomCache.delete(oldestKey)
+			if (evicted) {
+				scene.remove(evicted.group)
+				disposeMany(evicted.disposables)
+			}
+		}
+	}
+
+	function buildRoomInstance(params) {
+		const {
 			mode,
 			seedTitle,
 			categories,
@@ -482,10 +469,9 @@ export function startYourEngines({
 			galleryVideoUrl: nextGalleryVideoUrl,
 			galleryLongExtract: nextGalleryLongExtract,
 			galleryTrail: nextGalleryTrail,
-		}
+		} = params
 
 		const wallThickness = 0.2
-
 		let roomWidth = 21
 		let roomLength = 18
 		let roomHeight = 4
@@ -493,26 +479,19 @@ export function startYourEngines({
 		if (mode === 'lobby') {
 			const catCount = Array.isArray(categories) ? categories.length : 0
 			const doorsPerSide = Math.max(1, Math.ceil(catCount / 2))
-
 			const doorW = 1.25
 			const gapU = 1.1
 			const extraEachSide = 2.0
-
 			const spanNeeded = doorsPerSide * doorW + Math.max(0, doorsPerSide - 1) * gapU
 			roomLength = roundTo(spanNeeded + extraEachSide * 3, 0.25)
 		} else {
 			const seed = hashStringToUint32(String(seedTitle))
 			const rand = mulberry32(seed)
-
 			roomWidth = roundTo(randRange(rand, 12, 18), 0.25) // west-east
 			roomLength = roundTo(randRange(rand, 14, 16), 0.25) // south-north
 		}
 
 		const roomKey = mode === 'lobby' ? 'lobby' : deriveRoomKey({ mode, title: nextGalleryTitle })
-
-		if (window.__doorProfile) {
-			window.__doorProfile.t_buildRoom_start = performance.now()
-		}
 
 		const nextRoom = buildRoom({
 			width: roomWidth,
@@ -536,37 +515,99 @@ export function startYourEngines({
 				trail: Array.isArray(nextGalleryTrail) ? nextGalleryTrail : [],
 			},
 		})
+		nextRoom.roomKey = roomKey
+		return nextRoom
+	}
 
-		if (window.__doorProfile) {
-			window.__doorProfile.t_buildRoom_end = performance.now()
+	async function prebuildRoom(params) {
+		const key = getRoomCacheKey(params)
+		if (roomCache.has(key)) return roomCache.get(key)
+		if (prebuildingPromises.has(key)) return await prebuildingPromises.get(key)
+
+		const p = (async () => {
+			try {
+				const room = buildRoomInstance(params)
+				roomCache.set(key, room)
+				evictExcessRooms()
+				try {
+					if (typeof renderer.compileAsync === 'function') {
+						await renderer.compileAsync(room.group, camera)
+					}
+				} catch (_) {}
+				return room
+			} finally {
+				prebuildingPromises.delete(key)
+			}
+		})()
+
+		prebuildingPromises.set(key, p)
+		return await p
+	}
+
+	async function loadRoom({
+		mode,
+		seedTitle,
+		categories,
+		galleryEntryWall,
+		galleryRelatedTitles: relatedTitles,
+		galleryTitle: nextGalleryTitle,
+		galleryDescription: nextGalleryDescription,
+		galleryMainThumbnailUrl: nextGalleryMainThumbnailUrl,
+		galleryPhotos: nextGalleryPhotos,
+		galleryVideoUrl: nextGalleryVideoUrl,
+		galleryLongExtract: nextGalleryLongExtract,
+		galleryTrail: nextGalleryTrail,
+		spawn,
+	}) {
+		const params = {
+			mode,
+			seedTitle,
+			categories,
+			galleryEntryWall,
+			galleryRelatedTitles: relatedTitles,
+			galleryTitle: nextGalleryTitle,
+			galleryDescription: nextGalleryDescription,
+			galleryMainThumbnailUrl: nextGalleryMainThumbnailUrl,
+			galleryPhotos: nextGalleryPhotos,
+			galleryVideoUrl: nextGalleryVideoUrl,
+			galleryLongExtract: nextGalleryLongExtract,
+			galleryTrail: nextGalleryTrail,
+		}
+		lastLoadedRoomParams = params
+
+		const cacheKey = getRoomCacheKey(params)
+		let nextRoom = roomCache.get(cacheKey)
+
+		if (nextRoom) {
+			// Room was prebuilt or cached in LRU!
+			roomCache.delete(cacheKey)
+			roomCache.set(cacheKey, nextRoom)
+		} else if (prebuildingPromises.has(cacheKey)) {
+			nextRoom = await prebuildingPromises.get(cacheKey)
+			roomCache.delete(cacheKey)
+			roomCache.set(cacheKey, nextRoom)
+		} else {
+			nextRoom = buildRoomInstance(params)
+			roomCache.set(cacheKey, nextRoom)
+			evictExcessRooms()
 		}
 
 		if (currentRoom) {
 			if (held) releaseHeld()
-			if (window.__doorProfile) window.__doorProfile.t_dispose_start = performance.now()
 			scene.remove(currentRoom.group)
-			disposeMany(currentRoom.disposables)
-			if (window.__doorProfile) window.__doorProfile.t_dispose_end = performance.now()
+			let isCached = false
+			for (const r of roomCache.values()) {
+				if (r === currentRoom) { isCached = true; break }
+			}
+			if (!isCached) {
+				disposeMany(currentRoom.disposables)
+			}
 		}
 
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
 		applyAmbiencePreset()
 
-		currentRoom.group.traverse((obj) => {
-			if (obj.isMesh) {
-				let t0 = 0
-				obj.onBeforeRender = () => { t0 = performance.now() }
-				obj.onAfterRender = () => {
-					const dt = performance.now() - t0
-					if (dt > 2.0) {
-						console.log(`[SLOW MESH] ${obj.name || obj.geometry?.type || 'mesh'}: ${dt.toFixed(2)}ms (mat: ${obj.material?.type}, geo: ${obj.geometry?.type})`)
-					}
-				}
-			}
-		})
-
-		if (window.__doorProfile) window.__doorProfile.t_compile_start = performance.now()
 		try {
 			if (typeof renderer.compileAsync === 'function') {
 				await renderer.compileAsync(scene, camera)
@@ -574,7 +615,6 @@ export function startYourEngines({
 				renderer.compile(scene, camera)
 			}
 		} catch (_) {}
-		if (window.__doorProfile) window.__doorProfile.t_compile_end = performance.now()
 
 		deferredTextureLoadToken += 1
 		void runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
@@ -599,9 +639,6 @@ export function startYourEngines({
 
 		applySpawn(spawn, doors)
 		interactionLocked = false
-		if (window.__doorProfile) {
-			window.__doorProfile.t_setRoom_end = performance.now()
-		}
 
 		// Notify Placement Studio of room context change
 		try {
@@ -1141,22 +1178,7 @@ export function startYourEngines({
 		setBodyClickableCursor(computeIsAimingAtClickable())
 
 		resize()
-		if (window.__doorProfile && window.__doorProfile.t_setRoom_end && !window.__doorProfile.t_first_frame_rendered) {
-			const t_frame_start = performance.now()
-			window.__doorProfile.t_first_frame_start = t_frame_start
-			const t_render_start = performance.now()
-			renderer.render(scene, activeCamera || camera)
-			const t_render_end = performance.now()
-			const glCtx = renderer.getContext()
-			if (glCtx) glCtx.finish()
-			const t_gl_finish = performance.now()
-			window.__doorProfile.t_first_render_start = t_render_start
-			window.__doorProfile.t_first_render_end = t_render_end
-			window.__doorProfile.t_first_frame_rendered = t_gl_finish
-			console.log('[DOOR_PROFILE_RESULT]', JSON.stringify(window.__doorProfile))
-		} else {
-			renderer.render(scene, activeCamera || camera)
-		}
+		renderer.render(scene, activeCamera || camera)
 		rafId = window.requestAnimationFrame(frame)
 	}
 
@@ -1262,8 +1284,16 @@ export function startYourEngines({
 				}
 			}
 		},
+		prebuildRoom(params) {
+			return prebuildRoom(params)
+		},
+		hasCachedRoom(key) {
+			return roomCache.has(key)
+		},
 		reloadRoomInPlace() {
 			if (!lastLoadedRoomParams) return
+			const k = getRoomCacheKey(lastLoadedRoomParams)
+			roomCache.delete(k)
 			loadRoom({
 				...lastLoadedRoomParams,
 				spawn: null,
@@ -1313,6 +1343,14 @@ export function startYourEngines({
 
 			if (flashlightTimeoutId) window.clearTimeout(flashlightTimeoutId)
 
+			for (const [k, r] of roomCache.entries()) {
+				if (r && r !== currentRoom) {
+					scene.remove(r.group)
+					disposeMany(r.disposables)
+				}
+			}
+			roomCache.clear()
+
 			if (currentRoom) {
 				scene.remove(currentRoom.group)
 				disposeMany(currentRoom.disposables)
@@ -1320,6 +1358,7 @@ export function startYourEngines({
 			}
 
 			disposeMany(staticDisposables)
+			disposeStaticCache()
 			renderer.dispose()
 		},
 	}

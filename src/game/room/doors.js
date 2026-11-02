@@ -258,7 +258,7 @@ export function addDoor(ctx, opts = {}) {
 		// Brass beveled plaque backing frame
 		const plaqueBackGeo = new THREE.BoxGeometry(plaqueW + 0.04, plaqueH + 0.04, 0.014)
 		const plaqueBack = new THREE.Mesh(plaqueBackGeo, brassMat)
-		plaqueBack.position.set(0, plaqueCenterY, 0.008)
+		plaqueBack.position.set(0, plaqueCenterY, 0.020)
 		doorFrameGroup.add(plaqueBack)
 		disposables.push(plaqueBackGeo)
 
@@ -270,7 +270,7 @@ export function addDoor(ctx, opts = {}) {
 			metalness: 0.80,
 		})
 		const plaque = new THREE.Mesh(plaqueGeo, plaqueMat)
-		plaque.position.set(0, plaqueCenterY, 0.014)
+		plaque.position.set(0, plaqueCenterY, 0.026)
 		doorFrameGroup.add(plaque)
 		disposables.push(plaqueGeo, plaqueMat)
 
@@ -295,7 +295,7 @@ export function addDoor(ctx, opts = {}) {
 		const textGeo = new THREE.PlaneGeometry(plaqueW * 0.98, plaqueH * 0.98)
 		const textMat = new THREE.MeshBasicMaterial({ map: tex, transparent: true })
 		const text = new THREE.Mesh(textGeo, textMat)
-		text.position.set(0, plaqueCenterY, 0.016)
+		text.position.set(0, plaqueCenterY, 0.028)
 		doorFrameGroup.add(text)
 		disposables.push(textGeo, textMat)
 	}

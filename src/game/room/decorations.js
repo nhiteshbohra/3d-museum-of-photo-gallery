@@ -10,6 +10,7 @@
  */
 import * as THREE from 'three'
 import { createRealisticGalleryPlant } from './lobby.js'
+import { getStaticCache } from './staticCache.js'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. CORE GEOMETRY & MATERIAL HELPERS
@@ -37,22 +38,9 @@ export function addMesh(group, geo, mat) {
 	return m
 }
 
-// Reusable standard luxury materials
-export function getLuxuryMats(disposables) {
-	return {
-		brass: mkMat({ color: 0xd4af37, metalness: 0.88, roughness: 0.22 }, disposables),
-		darkBronze: mkMat({ color: 0x1f1914, metalness: 0.65, roughness: 0.38 }, disposables),
-		walnut: mkMat({ color: 0x221a14, roughness: 0.65, metalness: 0.04 }, disposables),
-		mahogany: mkMat({ color: 0x36160d, roughness: 0.60, metalness: 0.04 }, disposables),
-		cognacLeather: mkMat({ color: 0x7c4522, roughness: 0.40, metalness: 0.06 }, disposables),
-		burgundyLeather: mkMat({ color: 0x4f1719, roughness: 0.42, metalness: 0.06 }, disposables),
-		champagneVelvet: mkMat({ color: 0xf3ebd8, roughness: 0.70, metalness: 0.02 }, disposables),
-		emeraldVelvet: mkMat({ color: 0x143c24, roughness: 0.68, metalness: 0.02 }, disposables),
-		calacattaMarble: mkMat({ color: 0xf8f6f0, roughness: 0.24, metalness: 0.06 }, disposables),
-		neroMarble: mkMat({ color: 0x121316, roughness: 0.25, metalness: 0.10 }, disposables),
-		castIron: mkMat({ color: 0x1c1c1d, roughness: 0.70, metalness: 0.70 }, disposables),
-		terracotta: mkMat({ color: 0xb7522c, roughness: 0.84, metalness: 0.0 }, disposables),
-	}
+// Reusable standard luxury materials — shared from static cache, NOT per-room disposables
+export function getLuxuryMats(_disposables) {
+	return getStaticCache().luxuryMats
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
