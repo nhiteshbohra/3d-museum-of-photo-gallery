@@ -1,50 +1,21 @@
 /**
- * Our Museum 3D — Master Artifact Registry
- * 
- * Central catalog of all procedural and approved 3D model artifacts.
- * Each artifact definition declares:
+ * Our Museum 3D — Model Artifact Registry
+ *
+ * Central catalog of the approved GLB 3D model artifacts (normalised in
+ * Step 1, see public/models/ready/models.manifest.json). Each artifact has:
  *  - id, name, category, pri (Priority 1/2/3)
- *  - contact: 'floor' | 'wall' | 'ceiling' | 'surface'
- *  - footprint: { shape: 'cylinder'|'box', radius?, w?, d?, height }
- *  - clearance: constraints for green/red ghost validator
- *  - lightCount: real dynamic point/spot lights consumed (max 8/room)
- *  - variants: supported material/finish options
- *  - build(ctx): procedural or GLB mesh constructor
+ *  - kind: 'glb' — the artifact is a 3D model loaded from `path`
+ *  - contact: 'floor' | 'wall' | 'ceiling'
+ *  - footprint: { shape: 'cylinder'|'box', radius?, w?, d?, height } used by
+ *    the Placement Studio validator and for collision
+ *  - defaultScale: scale factor that maps the model's native units to real
+ *    metres, so a placed model renders at its real-world size
+ *  - path: path to the ready .glb model
+ *
+ * The procedural artifact builders were removed (see git history) in favour of
+ * these real 3D models.
  */
 import * as THREE from 'three'
-import { pushDisp, mkGeo, mkMat, getLuxuryMats } from './decorations.js'
-
-// Import Priority 1 Artifact Builders
-import {
-	buildTorchereArtDeco,
-	buildBankerLamp,
-	buildAlabasterLamp,
-	buildCandelabraSconce,
-} from './artifacts/lighting.js'
-
-import {
-	buildGalleryBench,
-	buildCurvedBanquette,
-	buildOttomanPlanter,
-	buildPoufPair,
-	buildMarbleSideTable,
-} from './artifacts/seating.js'
-
-import {
-	buildAntiqueMirror,
-	buildWainscotPanelling,
-} from './artifacts/walldecor.js'
-
-import {
-	buildOctagonalVitrine,
-	buildLetterDisplayTable,
-	buildMarquinaPedestal,
-} from './artifacts/vitrines.js'
-
-import {
-	buildFicusLyrata,
-	buildBoxwoodTopiaryPair,
-} from './artifacts/plants.js'
 
 const registry = new Map()
 
@@ -59,6 +30,9 @@ export function registerArtifact(def) {
 		category: def.category || 'misc',
 		contact: def.contact || 'floor',
 		pri: def.pri || 1,
+		kind: def.kind || 'glb',
+		path: def.path || null,
+		defaultScale: def.defaultScale || 1,
 		footprint: def.footprint || { shape: 'cylinder', radius: 0.3, height: 1.0 },
 		clearance: {
 			minDoorDistance: 2.0,
@@ -68,7 +42,7 @@ export function registerArtifact(def) {
 		},
 		lightCount: def.lightCount || 0,
 		variants: Array.isArray(def.variants) && def.variants.length > 0 ? def.variants : ['default'],
-		build: typeof def.build === 'function' ? def.build : () => new THREE.Group(),
+		build: typeof def.build === 'function' ? def.build : null,
 		...def,
 	})
 }
@@ -90,213 +64,140 @@ export function getArtifactsByCategory(category) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PRIORITY 1 ARTIFACT DEFINITIONS (L1–L4, F1–F5, W1–W2, V1–V3, P1–P2)
+// GLB MODEL ARTIFACT DEFINITIONS (from public/models/ready/models.manifest.json)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// L1: Art Deco Fluted Glass Torchère
+// Furniture
 registerArtifact({
-	id: 'torchere_art_deco',
-	name: 'Art Deco Fluted Glass Torchère',
-	category: 'lighting',
+	id: 'model_bookcase',
+	name: 'Bookcase (3D model)',
+	category: 'furniture',
 	contact: 'floor',
 	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.20, height: 2.05 },
-	lightCount: 1,
-	variants: ['brass-frosted', 'bronze'],
-	build: buildTorchereArtDeco,
+	path: 'models/ready/furniture/furniture_bookcase.glb',
+	defaultScale: 0.01254,
+	footprint: { shape: 'box', w: 1.2, d: 0.55, height: 2.0 },
 })
 
-// L2: Brass Banker's Table Lamp
 registerArtifact({
-	id: 'banker_lamp',
-	name: "Brass Banker's Table Lamp",
-	category: 'lighting',
-	contact: 'surface',
+	id: 'model_chinese_commode',
+	name: 'Chinese Commode (3D model)',
+	category: 'furniture',
+	contact: 'floor',
 	pri: 1,
-	footprint: { shape: 'box', w: 0.35, d: 0.28, height: 0.45 },
-	lightCount: 1,
-	variants: ['brass-emerald', 'brass-white'],
-	build: buildBankerLamp,
+	path: 'models/ready/furniture/furniture_chinese_commode.glb',
+	defaultScale: 0.4456,
+	footprint: { shape: 'box', w: 1.05, d: 0.55, height: 0.9 },
 })
 
-// L3: Carved Alabaster Accent Lamp
 registerArtifact({
-	id: 'alabaster_lamp',
-	name: 'Carved Alabaster Accent Lamp',
-	category: 'lighting',
-	contact: 'surface',
+	id: 'model_couch_large',
+	name: 'Couch Large (3D model)',
+	category: 'furniture',
+	contact: 'floor',
 	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.15, height: 0.40 },
-	lightCount: 1,
-	variants: ['fluted', 'smooth'],
-	build: buildAlabasterLamp,
+	path: 'models/ready/furniture/furniture_couch_large.glb',
+	defaultScale: 0.4036,
+	footprint: { shape: 'box', w: 2.1, d: 1.0, height: 0.85 },
 })
 
-// L4: Triple-Arm Candelabra Wall Sconce
 registerArtifact({
-	id: 'candelabra_sconce',
-	name: 'Triple-Arm Candelabra Wall Sconce',
+	id: 'model_couch_wide',
+	name: 'Couch Wide (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_couch_wide.glb',
+	defaultScale: 1.6569,
+	footprint: { shape: 'box', w: 2.4, d: 1.0, height: 0.85 },
+})
+
+registerArtifact({
+	id: 'model_delica_couch',
+	name: 'Delica Couch (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_delica_couch.glb',
+	defaultScale: 0.577,
+	footprint: { shape: 'box', w: 2.0, d: 0.95, height: 0.85 },
+})
+
+registerArtifact({
+	id: 'model_gothiccabinet',
+	name: 'Gothic Cabinet (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_gothiccabinet.glb',
+	defaultScale: 0.9318,
+	footprint: { shape: 'box', w: 1.2, d: 0.65, height: 2.2 },
+})
+
+// Lighting
+registerArtifact({
+	id: 'model_chandelier_01',
+	name: 'Chandelier 01 (3D model)',
+	category: 'lighting',
+	contact: 'ceiling',
+	pri: 1,
+	path: 'models/ready/lighting/lighting_chandelier_01.glb',
+	defaultScale: 1.0025,
+	footprint: { shape: 'cylinder', radius: 0.75, height: 0.8 },
+})
+
+registerArtifact({
+	id: 'model_chandelier_03',
+	name: 'Chandelier 03 (3D model)',
+	category: 'lighting',
+	contact: 'ceiling',
+	pri: 1,
+	path: 'models/ready/lighting/lighting_chandelier_03.glb',
+	defaultScale: 0.9606,
+	footprint: { shape: 'cylinder', radius: 0.8, height: 1.0 },
+})
+
+registerArtifact({
+	id: 'model_chandelier_osgona',
+	name: 'Osgona Chandelier (3D model)',
+	category: 'lighting',
+	contact: 'ceiling',
+	pri: 1,
+	path: 'models/ready/lighting/lighting_chandelier_osgona.glb',
+	defaultScale: 0.0006224,
+	footprint: { shape: 'cylinder', radius: 0.9, height: 1.1 },
+})
+
+registerArtifact({
+	id: 'model_chandelier_unitario',
+	name: 'Unitario Chandelier (3D model)',
+	category: 'lighting',
+	contact: 'ceiling',
+	pri: 1,
+	path: 'models/ready/lighting/lighting_chandelier_unitario.glb',
+	defaultScale: 0.001929,
+	footprint: { shape: 'cylinder', radius: 0.7, height: 0.9 },
+})
+
+registerArtifact({
+	id: 'model_wall_light_antique',
+	name: 'Antique Wall Light (3D model)',
 	category: 'lighting',
 	contact: 'wall',
 	pri: 1,
-	footprint: { shape: 'box', w: 0.55, d: 0.25, height: 0.45 },
-	lightCount: 1,
-	variants: ['brass', 'bronze'],
-	build: buildCandelabraSconce,
+	path: 'models/ready/lighting/lighting_wall_light_antique.glb',
+	defaultScale: 0.225,
+	footprint: { shape: 'box', w: 0.5, d: 0.35, height: 0.45 },
 })
 
-// F1: Gallery Viewing Bench
+// Plants
 registerArtifact({
-	id: 'gallery_bench',
-	name: 'Gallery Viewing Bench',
-	category: 'seating',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'box', w: 1.60, d: 0.48, height: 0.48 },
-	lightCount: 0,
-	variants: ['cognac', 'burgundy', 'champagne'],
-	build: buildGalleryBench,
-})
-
-// F2: Curved Velvet Banquette
-registerArtifact({
-	id: 'curved_banquette',
-	name: 'Curved Velvet Banquette',
-	category: 'seating',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'cylinder', radius: 1.45, height: 0.85 },
-	lightCount: 0,
-	variants: ['burgundy', 'forest-green', 'champagne'],
-	build: buildCurvedBanquette,
-})
-
-// F3: Tufted Ottoman with Planter Well
-registerArtifact({
-	id: 'ottoman_planter',
-	name: 'Tufted Ottoman with Planter Well',
-	category: 'seating',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.85, height: 1.80 },
-	lightCount: 0,
-	variants: ['burgundy', 'cognac'],
-	build: buildOttomanPlanter,
-})
-
-// F4: Round Velvet Pouf Pair
-registerArtifact({
-	id: 'pouf_pair',
-	name: 'Round Velvet Pouf Pair',
-	category: 'seating',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'box', w: 1.10, d: 0.50, height: 0.42 },
-	lightCount: 0,
-	variants: ['champagne', 'burgundy', 'cognac'],
-	build: buildPoufPair,
-})
-
-// F5: Round Calacatta Marble Side Table
-registerArtifact({
-	id: 'marble_side_table',
-	name: 'Round Calacatta Marble Side Table',
-	category: 'seating',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.28, height: 0.55 },
-	lightCount: 0,
-	variants: ['calacatta', 'nero'],
-	build: buildMarbleSideTable,
-})
-
-// W1: Beveled Gilt Antique Mirror
-registerArtifact({
-	id: 'antique_mirror',
-	name: 'Beveled Gilt Antique Mirror',
-	category: 'walldecor',
-	contact: 'wall',
-	pri: 1,
-	footprint: { shape: 'box', w: 0.90, d: 0.08, height: 1.80 },
-	lightCount: 0,
-	variants: ['gilt-gold', 'dark-bronze'],
-	build: buildAntiqueMirror,
-})
-
-// W2: Gallery Wainscot Panelling Module
-registerArtifact({
-	id: 'wainscot_panelling',
-	name: 'Gallery Wainscot Panelling Module',
-	category: 'walldecor',
-	contact: 'wall',
-	pri: 1,
-	footprint: { shape: 'box', w: 2.40, d: 0.05, height: 1.05 },
-	lightCount: 0,
-	variants: ['walnut', 'painted-cream'],
-	build: buildWainscotPanelling,
-})
-
-// V1: Octagonal Brass & Glass Vitrine
-registerArtifact({
-	id: 'octagonal_vitrine',
-	name: 'Octagonal Brass & Glass Vitrine',
-	category: 'vitrines',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.42, height: 1.55 },
-	lightCount: 1,
-	variants: ['brass', 'bronze'],
-	build: buildOctagonalVitrine,
-})
-
-// V2: Slanted Archival Letter Display Table
-registerArtifact({
-	id: 'letter_display_table',
-	name: 'Slanted Archival Letter Display Table',
-	category: 'vitrines',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'box', w: 1.00, d: 0.60, height: 0.95 },
-	lightCount: 0,
-	variants: ['walnut-brass', 'oak-bronze'],
-	build: buildLetterDisplayTable,
-})
-
-// V3: Nero Marquina Pedestal + Bronze Sculpture
-registerArtifact({
-	id: 'marquina_pedestal',
-	name: 'Nero Marquina Pedestal + Bronze Sculpture',
-	category: 'vitrines',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'box', w: 0.42, d: 0.42, height: 1.55 },
-	lightCount: 0,
-	variants: ['nero', 'calacatta'],
-	build: buildMarquinaPedestal,
-})
-
-// P1: Ficus Lyrata in Fluted Ceramic Pot
-registerArtifact({
-	id: 'ficus_lyrata',
-	name: 'Ficus Lyrata in Fluted Ceramic Pot',
+	id: 'model_potted_plant_04',
+	name: 'Potted Plant (3D model)',
 	category: 'plants',
 	contact: 'floor',
 	pri: 1,
-	footprint: { shape: 'cylinder', radius: 0.45, height: 2.20 },
-	lightCount: 0,
-	variants: ['terracotta', 'white-ceramic', 'black-fluted'],
-	build: buildFicusLyrata,
-})
-
-// P2: Boxwood Topiary Sphere Pair
-registerArtifact({
-	id: 'boxwood_topiary_pair',
-	name: 'Boxwood Topiary Sphere Pair',
-	category: 'plants',
-	contact: 'floor',
-	pri: 1,
-	footprint: { shape: 'box', w: 1.60, d: 0.50, height: 1.10 },
-	lightCount: 0,
-	variants: ['fluted-stone', 'bronze'],
-	build: buildBoxwoodTopiaryPair,
+	path: 'models/ready/plants/plants_potted_plant_04.glb',
+	defaultScale: 5.618,
+	footprint: { shape: 'cylinder', radius: 0.45, height: 1.5 },
 })

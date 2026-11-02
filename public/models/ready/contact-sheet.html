@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>3D Museum — Model Contact Sheet</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: system-ui, sans-serif;
+    background: #0e1116; color: #e6e6e6;
+    padding: 24px;
+  }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: #8b94a3; font-size: 13px; margin-bottom: 20px; }
+  .grid {
+    display: grid; gap: 18px;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  }
+  .card {
+    background: #171c24; border: 1px solid #252d3a;
+    border-radius: 12px; overflow: hidden;
+    display: flex; flex-direction: column;
+  }
+  .viewport { width: 100%; height: 220px; background: radial-gradient(circle at 50% 35%, #1c232e, #0b0f14); }
+  .meta { padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+  .name { font-weight: 700; font-size: 14px; margin-bottom: 6px; color: #fff; }
+  .meta .row { display: flex; justify-content: space-between; }
+  .meta .row span:first-child { color: #8b94a3; }
+  .lic { margin-top: 8px; padding: 3px 8px; border-radius: 20px; font-size: 12px; display: inline-block; }
+  .lic.ccby { background: #1d3a2a; color: #7fdca0; }
+  .lic.unknown { background: #3a2a1d; color: #e0b17f; }
+  .err { color: #ff8f8f; padding: 10px; font-size: 12px; }
+  canvas { display: block; }
+  .status { text-align: center; padding: 12px; color: #8b94a3; font-size: 14px; }
+</style>
+</head>
+<body>
+  <h1>3D Museum — Model Contact Sheet</h1>
+  <div class="sub">Self-rotating turntable · one card per ready model</div>
+  <div class="grid" id="grid"></div>
+  <div class="status" id="status">Loading…</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+  import * as THREE from 'three';
+  import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+  import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+  import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+  const grid = document.getElementById('grid');
+  const statusEl = document.getElementById('status');
+
+  // Read the manifest relative to this page.
+  const manifestUrl = 'models.manifest.json';
+
+  async function loadManifest() {
+    const res = await fetch(manifestUrl);
+    if (!res.ok) throw new Error('Could not load ' + manifestUrl + ' (' + res.status + ')');
+    return res.json();
+  }
+
+  function fmtBytes(b) {
+    if (b >= 1048576) return (b / 1048576).toFixed(2) + ' MB';
+    if (b >= 1024) return (b / 1024).toFixed(0) + ' KB';
+    return b + ' B';
+  }
+
+  function makeCard(entry) {
+    const card = document.createElement('div');
+    card.className = 'card';
+
+    const viewport = document.createElement('div');
+    viewport.className = 'viewport';
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = entry.name;
+
+    const sizeRow = document.createElement('div');
+    sizeRow.className = 'row';
+    sizeRow.innerHTML = '<span>Size</span><span>' + fmtBytes(entry.sizeBytes) + '</span>';
+
+    const triRow = document.createElement('div');
+    triRow.className = 'row';
+    triRow.innerHTML = '<span>Triangles</span><span>' + entry.triangles.toLocaleString() + '</span>';
+
+    const heightRow = document.createElement('div');
+    heightRow.className = 'row';
+    heightRow.innerHTML = '<span>Height</span><span>' +
+      (entry.realHeightMetres != null ? entry.realHeightMetres + ' m' : 'NEEDS_SIZE') + '</span>';
+
+    const lic = document.createElement('span');
+    lic.className = 'lic ' + (entry.licence && entry.licence.startsWith('CC-BY') ? 'ccby' : 'unknown');
+    lic.textContent = entry.licence || 'UNKNOWN';
+
+    meta.append(name, sizeRow, triRow, heightRow, lic);
+    card.append(viewport, meta);
+    grid.append(card);
+
+    initViewer(viewport, entry.path ? entry.path : entry.category + '/' + entry.category + '_' + entry.name + '.glb', entry);
+  }
+
+  function initViewer(viewport, modelPath, entry) {
+    const scene = new THREE.Scene();
+    scene.background = null;
+    const camera = new THREE.PerspectiveCamera(45, viewport.clientWidth / viewport.clientHeight, 0.01, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(viewport.clientWidth, viewport.clientHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    viewport.appendChild(renderer.domElement);
+
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x20242b, 1.0));
+    const dir = new THREE.DirectionalLight(0xffffff, 1.4);
+    dir.position.set(3, 5, 4);
+    scene.add(dir);
+    const dir2 = new THREE.DirectionalLight(0xffffff, 0.6);
+    dir2.position.set(-3, 2, -3);
+    scene.add(dir2);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enablePan = false;
+    controls.enableZoom = false;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 2.5;
+
+    let modelGroup = null;
+
+    const draco = new DRACOLoader();
+    draco.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.6/');
+    const loader = new GLTFLoader();
+    loader.setDRACOLoader(draco);
+    loader.load(modelPath, (gltf) => {
+      modelGroup = gltf.scene;
+      scene.add(modelGroup);
+      const box = new THREE.Box3().setFromObject(modelGroup);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const dist = maxDim * 2.2;
+      camera.position.set(dist * 0.8, dist * 0.5, dist);
+      camera.lookAt(0, 0, 0);
+      // centre the model in the viewport
+      modelGroup.position.sub(center);
+      controls.target.set(0, 0, 0);
+      controls.update();
+      if (entry.status === 'NEEDS_SIZE') {
+        // no scaling; just show raw units
+      }
+    }, undefined, (err) => {
+      viewport.innerHTML = '<div class="err">Failed to load: ' + modelPath + '</div>';
+      console.error(err);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    function onResize() {
+      const w = viewport.clientWidth, h = viewport.clientHeight;
+      if (w === 0 || h === 0) return;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+    }
+    window.addEventListener('resize', onResize);
+    new ResizeObserver(onResize).observe(viewport);
+  }
+
+  (async () => {
+    try {
+      const manifest = await loadManifest();
+      statusEl.textContent = '';
+      for (const entry of manifest.models) {
+        makeCard({ ...entry, path: entry.category + '/' + entry.category + '_' + entry.name + '.glb' });
+      }
+    } catch (e) {
+      statusEl.textContent = 'Error: ' + e.message;
+      console.error(e);
+    }
+  })();
+  </script>
+</body>
+</html>

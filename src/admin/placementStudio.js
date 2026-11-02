@@ -21,6 +21,9 @@
 
 import * as THREE from 'three'
 import { getAllArtifacts, getArtifact, getArtifactsByCategory } from '../game/room/artifactRegistry.js'
+import { spawnGlbItem } from '../game/room/placedItems.js'
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 import { pushDisp, mkGeo, mkMat } from '../game/room/decorations.js'
 import {
 	exportLayout,
@@ -29,6 +32,8 @@ import {
 	loadDraft,
 	clearDraft,
 	generateItemId,
+	saveMuseumLayout,
+	convertStudioRoomsToMuseum,
 } from './layoutIO.js'
 import {
 	initPlacementTopView,
@@ -51,12 +56,11 @@ const NUDGE_SMALL = 0.01              // m — Shift+arrow nudge
 const ROTATE_LARGE = 15               // degrees
 const ROTATE_SMALL = 1                // degrees (Shift+wheel)
 const GHOST_FLOOR_Y = 0.001           // slight offset above floor to prevent z-fighting
-const CATEGORIES = ['lighting', 'seating', 'walldecor', 'vitrines', 'plants']
+// Only categories with registered GLB 3D models are shown in the Build catalog.
+const CATEGORIES = ['furniture', 'lighting', 'plants']
 const CATEGORY_LABELS = {
+	furniture: 'Furniture',
 	lighting: 'Lighting',
-	seating: 'Seating',
-	walldecor: 'Wall Decor',
-	vitrines: 'Vitrines & Sculpture',
 	plants: 'Plants',
 }
 
@@ -440,41 +444,82 @@ function _buildGhost(artifactId) {
 
 	ghostGroup = new THREE.Group()
 	ghostGroup.name = 'studio-ghost'
+	ghostGroup.userData.artifactDef = def
 
-	// Build ghost using the artifact's build function
-	try {
-		ghostDisposables = []
-		const ctx = _makeGhostBuildCtx(def, ghostGroup, ghostDisposables)
-		def.build(ctx)
-	} catch (err) {
-		console.warn('[Studio] Ghost build error for', artifactId, err)
-	}
-
-	// Make all ghost meshes semi-transparent
-	ghostGroup.traverse((obj) => {
-		if (obj.isMesh) {
-			// Clone material to avoid modifying the real one
-			if (Array.isArray(obj.material)) {
-				obj.material = obj.material.map((m) => {
-					const c = m.clone()
-					c.transparent = true
-					c.opacity = 0.48
-					c.depthWrite = false
-					return c
-				})
-			} else if (obj.material) {
-				obj.material = obj.material.clone()
-				obj.material.transparent = true
-				obj.material.opacity = 0.48
-				obj.material.depthWrite = false
-			}
+	if (def.kind === 'glb') {
+		// 3D model ghost: load the GLB into the ghost group (async)
+		_loadGlbIntoGhost(def)
+	} else {
+		// Procedural artifact ghost (legacy builders)
+		try {
+			ghostDisposables = []
+			const ctx = _makeGhostBuildCtx(def, ghostGroup, ghostDisposables)
+			def.build(ctx)
+		} catch (err) {
+			console.warn('[Studio] Ghost build error for', artifactId, err)
 		}
-		// Disable lights in ghost — they aren't real
-		if (obj.isLight) obj.visible = false
-	})
+	}
 
 	_scene.add(ghostGroup)
 	_validateGhost()
+}
+
+let _glbGhostLoads = new Map()
+
+async function _loadGlbIntoGhost(def) {
+	const path = def.path
+	if (!path) return
+
+	const load = _glbGhostLoads.get(path) || (async () => {
+		const loader = new GLTFLoader()
+		loader.setDRACOLoader(_sharedDracoLoader())
+		return loader.loadAsync(path)
+	})()
+	_glbGhostLoads.set(path, load)
+
+	try {
+		const gltf = await load
+		if (!ghostGroup || ghostGroup.userData.artifactDef?.id !== def.id) return
+
+		const model = gltf.scene.clone()
+		// Scale the model to its real-world size (native units -> metres)
+		model.scale.setScalar(def.defaultScale || 1)
+
+		// Make ghost transparent
+		model.traverse((obj) => {
+			if (obj.isMesh) {
+				if (Array.isArray(obj.material)) {
+					obj.material = obj.material.map((m) => {
+						const c = m.clone()
+						c.transparent = true
+						c.opacity = 0.48
+						c.depthWrite = false
+						return c
+					})
+				} else if (obj.material) {
+					obj.material = obj.material.clone()
+					obj.material.transparent = true
+					obj.material.opacity = 0.48
+					obj.material.depthWrite = false
+				}
+			}
+			if (obj.isLight) obj.visible = false
+		})
+
+		ghostGroup.add(model)
+		_validateGhost()
+	} catch (err) {
+		console.warn('[Studio] Ghost glb load error for', def.id, err)
+	}
+}
+
+let _sharedDracoInstance = null
+function _sharedDracoLoader() {
+	if (!_sharedDracoInstance) {
+		_sharedDracoInstance = new DRACOLoader()
+		_sharedDracoInstance.setDecoderPath('models/ready/draco/')
+	}
+	return _sharedDracoInstance
 }
 
 function _makeGhostBuildCtx(def, group, disposables) {
@@ -763,6 +808,39 @@ function _spawnPlacedItem(item, roomKey) {
 	group.userData.studioItemId = item.id
 	group.userData.studioRoomKey = roomKey
 
+	group.position.set(item.x || 0, item.y || 0, item.z || 0)
+	group.rotation.y = item.rotY || 0
+
+	if (def.kind === 'glb') {
+		// 3D model: spawn via the shared GLB spawner (async, cached load).
+		const obstacles = currentRoomCtx?.obstacles || []
+		const obsCountBefore = obstacles.length
+		const disposables = []
+
+		const glbItem = {
+			...item,
+			type: 'glb',
+			path: def.path,
+			scale: (item.scale ?? 1) * (def.defaultScale || 1),
+		}
+
+		spawnGlbItem(glbItem, roomKey, { group, disposables, obstacles })
+			.then((root) => {
+				if (root) {
+					item._sceneGroup = group
+					item._disposables = disposables
+					item._addedObstacles = obstacles.slice(obsCountBefore)
+				}
+			})
+			.catch((err) => {
+				console.warn('[Studio] Error loading glb placed item', item.id, err)
+			})
+
+		_scene.add(group)
+		item._sceneGroup = group
+		return
+	}
+
 	try {
 		const disposables = []
 		const obstacles = currentRoomCtx?.obstacles || []
@@ -785,8 +863,6 @@ function _spawnPlacedItem(item, roomKey) {
 		console.warn('[Studio] Error building placed item', item.id, err)
 	}
 
-	group.position.set(item.x || 0, item.y || 0, item.z || 0)
-	group.rotation.y = item.rotY || 0
 	group.scale.setScalar(Math.max(SCALE_MIN, Math.min(SCALE_MAX, item.scale ?? 1.0)))
 
 	_scene.add(group)
@@ -1032,6 +1108,7 @@ function _saveDraftNow() {
 			})
 		}
 		saveDraft(rooms)
+		saveMuseumLayout(convertStudioRoomsToMuseum(rooms))
 	}, 300)
 }
 

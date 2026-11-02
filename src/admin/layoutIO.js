@@ -25,7 +25,7 @@
  * }
  */
 
-import { getAllArtifacts, hasArtifact } from '../game/room/artifactRegistry.js'
+import { getAllArtifacts, hasArtifact, getArtifact } from '../game/room/artifactRegistry.js'
 
 const DRAFT_KEY = 'ourmuseum:layoutDraft:v1'
 const SCHEMA_VERSION = 1
@@ -294,5 +294,98 @@ export function generateItemId() {
 		id += chars[Math.floor(Math.random() * chars.length)]
 	}
 	return id
+}
+
+// ─── Museum live layout (auto-save from Studio) ────────────────────────────────
+//
+// The Place Studio edits items in its own schema (type = artifact id, scale =
+// relative factor 0.85–1.2). The museum (`placedItems.js`) consumes the layout
+// schema (type: "glb", absolute path, absolute scale = relative × defaultScale).
+// These helpers convert the Studio rooms into museum layout rooms and persist
+// them under a dedicated key so the museum picks up the latest arrangement
+// automatically (no manual file edits / export needed).
+//
+// The museum layout key is a *runtime* override layered over the static
+// src/data/museumLayout.json import. To bake an arrangement permanently into
+// the repo, still use Export → download museum-layout.json and replace that file.
+
+const MUSEUM_KEY = 'ourmuseum:layoutMuseum:v1'
+
+/**
+ * Convert Placement Studio rooms (artifact-id schema) into museum layout rooms
+ * (glb schema) so the museum spawner can render them at real-world scale.
+ * @param {Object} rooms - Studio rooms map (from placedItems / _saveDraftNow)
+ * @returns {Object} Museum-ready rooms map
+ */
+export function convertStudioRoomsToMuseum(rooms) {
+	const out = {}
+	for (const [roomKey, items] of Object.entries(rooms || {})) {
+		const converted = []
+		for (const item of items) {
+			if (!item || typeof item !== 'object') continue
+			const def = typeof item.type === 'string' ? getArtifact(item.type) : null
+			if (!def || def.kind !== 'glb' || !def.path) continue
+			converted.push({
+				id: item.id,
+				type: 'glb',
+				path: def.path,
+				x: item.x ?? 0,
+				y: item.y ?? 0,
+				z: item.z ?? 0,
+				rotY: item.rotY ?? 0,
+				scale: (item.scale ?? 1) * (def.defaultScale || 1),
+				variant: 'default',
+				contact: item.contact || def.contact || 'floor',
+				locked: !!item.locked,
+			})
+		}
+		out[roomKey] = converted
+	}
+	return out
+}
+
+/**
+ * Persist the museum-ready rooms to localStorage. Called from the Studio on
+ * every change (add / move / remove) so the museum reflects the latest
+ * arrangement automatically.
+ */
+export function saveMuseumLayout(rooms) {
+	try {
+		const payload = {
+			version: SCHEMA_VERSION,
+			savedAt: new Date().toISOString(),
+			rooms,
+		}
+		window.localStorage.setItem(MUSEUM_KEY, JSON.stringify(payload))
+	} catch (err) {
+		console.warn('[LayoutIO] Could not save museum layout:', err)
+	}
+}
+
+/**
+ * Load the museum live layout override, or null if none saved.
+ * @returns {{ rooms: Object, savedAt: ?string } | null}
+ */
+export function loadMuseumLayout() {
+	try {
+		const raw = window.localStorage.getItem(MUSEUM_KEY)
+		if (!raw) return null
+		const parsed = JSON.parse(raw)
+		if (!parsed || parsed.version !== SCHEMA_VERSION || !parsed.rooms) return null
+		return { rooms: parsed.rooms, savedAt: parsed.savedAt || null }
+	} catch {
+		return null
+	}
+}
+
+/**
+ * Forget the museum live layout override (back to the static JSON import).
+ */
+export function clearMuseumLayout() {
+	try {
+		window.localStorage.removeItem(MUSEUM_KEY)
+	} catch {
+		// ignore
+	}
 }
 

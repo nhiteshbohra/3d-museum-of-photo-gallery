@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { buildRoom, deriveRoomKey } from '../game/room.js'
+import { updateLodSwitchers } from '../game/room/placedItems.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
 import { disposeStaticCache } from '../game/room/staticCache.js'
 import { hashStringToUint32, mulberry32, randRange, roundTo, setBodyClickableCursor } from '../misc/helper.js'
@@ -1176,6 +1177,9 @@ export function startYourEngines({
 		}
 
 		setBodyClickableCursor(computeIsAimingAtClickable())
+
+		// Advance distance-based LOD switching for placed GLB models.
+		updateLodSwitchers(camera.position)
 
 		resize()
 		renderer.render(scene, activeCamera || camera)

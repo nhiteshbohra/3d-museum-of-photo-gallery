@@ -7,16 +7,17 @@ photos/
 public/photos/
 
 # ── Avatar & 3D Model Assets (Phase 2, binary GLB files) ──────
-assets/
+/assets/
 
 # ── Archive (avatar staging for Phase 2) ──────────────────────
 archive/
-3d model
+/3d model/
 
 # ── Dev / QA Tools ────────────────────────────────────────────
-screenshots/
+/screenshots/
 inspect_museum_artefacts.py
 *.zip
+/work/
 
 # ── Docs & Internal Logs ──────────────────────────────────────
 docs/
@@ -25,7 +26,13 @@ project-log/
 skills-lock.json
 .agents/
 
-# ── Markdown docs (kept in repo via PROJECT_INSTRUCTIONS etc.) ─
-# *.md  ← intentionally NOT ignoring .md so PROJECT_INSTRUCTIONS
-#          DEAD_CODE_AUDIT and MUSEUM_ARTEFACTS_CATALOG are tracked
+# ── Misc / OS / IDE artifacts ──────────────────────────────────
+.DS_Store
+Thumbs.db
+*.log
+.vscode/
+npm-debug.log*
+.eslintcache
 *.md
+# ── Markdown docs ──────────────────────────────────────────────
+# Markdown source documents (PROJECT_INSTRUCTIONS.md, etc.) ARE tracked.

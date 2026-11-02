@@ -1,0 +1,150 @@
+{
+  "generated": "2025-08-25",
+  "count": 12,
+  "models": [
+    {
+      "name": "bookcase",
+      "originalFile": "bookself/book_self.zip (Book Self)",
+      "category": "furniture",
+      "licence": "CC-BY-4.0",
+      "author": "mssconstance15",
+      "source": "https://sketchfab.com/3d-models/book-self-319ec67c98e447eebda0039b143274c5",
+      "sizeBytes": 491920,
+      "triangles": 6752,
+      "realHeightMetres": 2.0,
+      "status": "READY"
+    },
+    {
+      "name": "chinese_commode",
+      "originalFile": "table/chinese_commode_4k.gltf.zip",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 620816,
+      "triangles": 6775,
+      "realHeightMetres": 0.9,
+      "status": "READY"
+    },
+    {
+      "name": "couch_large",
+      "originalFile": "3d model/Couch/couch_large.glb (standalone)",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 7436,
+      "triangles": 1460,
+      "realHeightMetres": 0.85,
+      "status": "READY"
+    },
+    {
+      "name": "couch_wide",
+      "originalFile": "3d model/Couch/couch_wide.glb (standalone)",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 4740,
+      "triangles": 716,
+      "realHeightMetres": 0.85,
+      "status": "READY"
+    },
+    {
+      "name": "delica_couch",
+      "originalFile": "Couch/delica_couch.zip (Delica Couch)",
+      "category": "furniture",
+      "licence": "CC-BY-4.0",
+      "author": "Visthétique",
+      "source": "https://sketchfab.com/3d-models/delica-couch-be956580a9b5457aa811c73701a49419",
+      "sizeBytes": 173668,
+      "triangles": 7939,
+      "realHeightMetres": 0.85,
+      "status": "READY"
+    },
+    {
+      "name": "gothiccabinet",
+      "originalFile": "cabinate/GothicCabinet_01_4k.gltf.zip",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 725676,
+      "triangles": 12170,
+      "realHeightMetres": 2.2,
+      "status": "READY"
+    },
+    {
+      "name": "chandelier_01",
+      "originalFile": "light/chandelier/Chandelier_01_4k.gltf.zip",
+      "category": "lighting",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 650100,
+      "triangles": 26860,
+      "realHeightMetres": 0.8,
+      "status": "READY"
+    },
+    {
+      "name": "chandelier_03",
+      "originalFile": "light/chandelier/Chandelier_03_4k.gltf.zip",
+      "category": "lighting",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 217812,
+      "triangles": 29191,
+      "realHeightMetres": 1.0,
+      "status": "READY"
+    },
+    {
+      "name": "chandelier_osgona",
+      "originalFile": "light/chandelier/700511_classic_osgona_chandelier.zip (700511 Classic Osgona chandelier)",
+      "category": "lighting",
+      "licence": "CC-BY-4.0",
+      "author": "LIGHTSTAR GROUP",
+      "source": "https://sketchfab.com/3d-models/700511-classic-osgona-chandelier-9a49936474e546d1a61e536e12cf7e49",
+      "sizeBytes": 445168,
+      "triangles": 46829,
+      "realHeightMetres": 1.1,
+      "status": "READY"
+    },
+    {
+      "name": "chandelier_unitario",
+      "originalFile": "light/chandelier/763010_unitario_lightstar_chandelier.zip (763010 Unitario Lightstar chandelier)",
+      "category": "lighting",
+      "licence": "CC-BY-4.0",
+      "author": "LIGHTSTAR GROUP",
+      "source": "https://sketchfab.com/3d-models/763010-unitario-lightstar-chandelier-331466bbf06f4f7baf50be52bbd26fa9",
+      "sizeBytes": 29412,
+      "triangles": 4074,
+      "realHeightMetres": 0.9,
+      "status": "READY"
+    },
+    {
+      "name": "wall_light_antique",
+      "originalFile": "light/wall light/antique_wall_light.zip (Antique Wall Light)",
+      "category": "lighting",
+      "licence": "CC-BY-4.0",
+      "author": "Rakshaan",
+      "source": "https://sketchfab.com/3d-models/antique-wall-light-ba2bc42641f34e07aeb36a5c99f4e654",
+      "sizeBytes": 457408,
+      "triangles": 19031,
+      "realHeightMetres": 0.45,
+      "status": "READY"
+    },
+    {
+      "name": "potted_plant_04",
+      "originalFile": "plants/potted_plant_04_4k.gltf.zip",
+      "category": "plants",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 601184,
+      "triangles": 8929,
+      "realHeightMetres": 1.5,
+      "status": "READY"
+    }
+  ]
+}
