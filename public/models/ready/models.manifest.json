@@ -1,6 +1,6 @@
 {
   "generated": "2025-08-25",
-  "count": 12,
+  "count": 18,
   "models": [
     {
       "name": "bookcase",
@@ -144,6 +144,72 @@
       "sizeBytes": 601184,
       "triangles": 8929,
       "realHeightMetres": 1.5,
+      "status": "READY"
+    },
+    {
+      "name": "sofa_1_3dx",
+      "originalFile": "3d models/sofa_1__3dx/scene.gltf",
+      "category": "furniture",
+      "licence": "CC-BY-4.0",
+      "author": "Snowism",
+      "source": "https://sketchfab.com/3d-models/sofa-1-3dx-6e0045e2b6a142658d561797d9f63669",
+      "sizeBytes": 1439136,
+      "realHeightMetres": 0.85,
+      "status": "READY"
+    },
+    {
+      "name": "curved_sofa_set_white",
+      "originalFile": "3d models/curved_sofa_set_-_white/scene.gltf",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 8363984,
+      "realHeightMetres": 0.85,
+      "status": "READY"
+    },
+    {
+      "name": "bench_ussr",
+      "originalFile": "3d models/bench_3_ussr_game_ready (1).glb",
+      "category": "furniture",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 4732552,
+      "realHeightMetres": 0.9,
+      "status": "READY"
+    },
+    {
+      "name": "monstera",
+      "originalFile": "3d models/monstera_plant/monstera_colored.glb",
+      "category": "plants",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 3664292,
+      "realHeightMetres": 1.5,
+      "status": "READY"
+    },
+    {
+      "name": "potted_plant_01",
+      "originalFile": "3d models/potted_plant_01_4k.gltf/potted_plant_01_4k.gltf",
+      "category": "plants",
+      "licence": "UNKNOWN",
+      "author": null,
+      "source": null,
+      "sizeBytes": 5345188,
+      "realHeightMetres": 1.4,
+      "status": "READY"
+    },
+    {
+      "name": "chandelier_marmara",
+      "originalFile": "3d models/801__marmara__lightstar/scene.gltf",
+      "category": "lighting",
+      "licence": "CC-BY-4.0",
+      "author": "LIGHTSTAR GROUP",
+      "source": "https://sketchfab.com/3d-models/801-marmara-lightstar",
+      "sizeBytes": 7866000,
+      "realHeightMetres": 1.1,
       "status": "READY"
     }
   ]

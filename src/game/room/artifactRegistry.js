@@ -201,3 +201,79 @@ registerArtifact({
 	defaultScale: 5.618,
 	footprint: { shape: 'cylinder', radius: 0.45, height: 1.5 },
 })
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ADDITIONAL MODELS (imported from the '3d models/' source folder)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Furniture — Sofa 1 | 3DX (Snowism, CC-BY-4.0)
+registerArtifact({
+	id: 'model_sofa_1_3dx',
+	name: 'Sofa 1 (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_sofa_1_3dx/scene.gltf',
+	defaultScale: 0.018,
+	footprint: { shape: 'box', w: 2.3, d: 1.0, height: 0.85 },
+})
+
+// Furniture — Curved Sofa Set (white)
+registerArtifact({
+	id: 'model_curved_sofa_set_white',
+	name: 'Curved Sofa Set White (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_curved_sofa_set_white/scene.gltf',
+	defaultScale: 0.010,
+	footprint: { shape: 'box', w: 3.2, d: 1.6, height: 0.85 },
+})
+
+// Furniture — Bench 3 USSR (game ready)
+registerArtifact({
+	id: 'model_bench_ussr',
+	name: 'Bench USSR (3D model)',
+	category: 'furniture',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/furniture/furniture_bench_ussr.glb',
+	defaultScale: 0.9,
+	footprint: { shape: 'box', w: 2.0, d: 0.6, height: 0.9 },
+})
+
+// Plants — Monstera
+registerArtifact({
+	id: 'model_monstera',
+	name: 'Monstera Plant (3D model)',
+	category: 'plants',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/plants/plants_monstera.glb',
+	defaultScale: 1.0,
+	footprint: { shape: 'cylinder', radius: 0.5, height: 1.5 },
+})
+
+// Plants — Potted Plant 01 (4k)
+registerArtifact({
+	id: 'model_potted_plant_01',
+	name: 'Potted Plant 01 (3D model)',
+	category: 'plants',
+	contact: 'floor',
+	pri: 1,
+	path: 'models/ready/plants/plants_potted_plant_01_4k/potted_plant_01_4k.gltf',
+	defaultScale: 0.8,
+	footprint: { shape: 'cylinder', radius: 0.4, height: 1.4 },
+})
+
+// Lighting — Marmara Lightstar chandelier (LIGHTSTAR GROUP)
+registerArtifact({
+	id: 'model_chandelier_marmara',
+	name: 'Marmara Lightstar Chandelier (3D model)',
+	category: 'lighting',
+	contact: 'ceiling',
+	pri: 1,
+	path: 'models/ready/lighting/lighting_marmara_lightstar/scene.gltf',
+	defaultScale: 0.004,
+	footprint: { shape: 'cylinder', radius: 0.9, height: 1.1 },
+})

@@ -21,8 +21,42 @@ export function deriveRoomKey({ mode = 'gallery', title = '' } = {}) {
 	return 'gallery'
 }
 
+const ROOM_PHOTO_FOLDERS = {
+	lobby: '00_grand_lobby',
+	fireside: '01_fireside_winter_memories',
+	music: '02_music_classical_melodies',
+	library: '03_library_reading_nook',
+	paris: '04_masterpiece_paris_romance',
+	orangery: '05_the_glass_orangery',
+	alcove: '06_secret_promise_alcove',
+}
+
+const PHOTO_SLOT_FILE = [
+	'01_partition_front_highlight',
+	'02_partition_back_highlight',
+	'03_north_wall_masterpiece',
+	'04_south_wall_gate_left',
+	'05_south_wall_gate_right',
+	'06_east_wall_artwork_1',
+	'07_east_wall_artwork_2',
+	'08_east_wall_artwork_3',
+	'09_east_wall_artwork_4',
+	'10_east_wall_artwork_5',
+]
+
 export function buildRoom({ width, length, height, wallThickness = 0.2, mode = 'gallery', roomKey, lobby = {}, gallery = {} }) {
 	const currentRoomKey = roomKey || deriveRoomKey({ mode, title: gallery?.title })
+
+	// Prefer a real uploaded photo file for a slot; fall back to whatever the
+	// gallery data supplied (string URL) or null (placeholder). Missing files
+	// gracefully fall through to the placeholder via the texture onError path.
+	function localPhotoPath(photoIdx) {
+		const folder = ROOM_PHOTO_FOLDERS[currentRoomKey]
+		if (!folder) return null
+		const file = PHOTO_SLOT_FILE[photoIdx]
+		if (!file) return null
+		return `/photos/${folder}/${file}.png`
+	}
 	const group = new THREE.Group()
 	group.name = 'room'
 
@@ -127,10 +161,6 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const upperCeilingHeight = height + 1.6
 		const platformWidth = 4.0
 		const centerWidth = width - 2 * platformWidth
-
-		const y1 = height - 0.25
-		addCeilingDownlight(0, y1, -length * 0.25)
-		addCeilingDownlight(0, y1, length * 0.25)
 
 		const y2 = upperCeilingHeight - 0.25
 		const xEast = centerWidth / 2 + platformWidth / 2
@@ -1672,19 +1702,19 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			// North wall masterpiece (photo index 2)
 			const northSlot = slotById('north-photo-0')
 			if (northSlot) {
-				const northUrl = photos[2] || photos[0] || null
+				const northUrl = localPhotoPath(2) || photos[2] || photos[0] || null
 				placePhotoInSlot(northSlot, northUrl, { placeholderTitle: 'Masterpiece', photoTitle: galleryTitle ? `${galleryTitle} • Masterpiece` : 'North Masterpiece' })
 			}
 
 			// South wall flanking gate (photo indices 3 and 4)
 			const southSlot0 = slotById('south-photo-0')
 			if (southSlot0) {
-				const s0Url = photos[3] || photos[1] || null
+				const s0Url = localPhotoPath(3) || photos[3] || photos[1] || null
 				placePhotoInSlot(southSlot0, s0Url, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • South Wing I` : 'South Wing I' })
 			}
 			const southSlot1 = slotById('south-photo-1')
 			if (southSlot1) {
-				const s1Url = photos[4] || photos[2] || null
+				const s1Url = localPhotoPath(4) || photos[4] || photos[2] || null
 				placePhotoInSlot(southSlot1, s1Url, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • South Wing II` : 'South Wing II' })
 			}
 
@@ -1694,7 +1724,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				const slot = slotById(`east-photo-${i}`)
 				if (slot) {
 					const photoIdx = 5 + i
-					const photoUrl = photos[photoIdx] || photos[i % photos.length] || null
+					const photoUrl = localPhotoPath(photoIdx) || photos[photoIdx] || photos[i % photos.length] || null
 					placePhotoInSlot(slot, photoUrl, { placeholderTitle: 'Gallery Art', photoTitle: galleryTitle ? `${galleryTitle} • Artwork #${i + 1}` : `Artwork #${i + 1}` })
 				}
 			}

@@ -13,19 +13,10 @@
 import * as THREE from 'three'
 import museumLayout from '../../data/museumLayout.json'
 import { getArtifact } from './artifactRegistry.js'
-import { loadMuseumLayout } from '../../admin/layoutIO.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 
 let activeLayout = museumLayout
-
-// Runtime override: if the Placement Studio has auto-saved an arrangement, the
-// museum uses it instead of the static import. This makes Studio edits persist
-// automatically across museum sessions (see layoutIO saveMuseumLayout).
-const museumOverride = loadMuseumLayout()
-if (museumOverride && museumOverride.rooms) {
-	activeLayout = museumOverride.rooms
-}
 
 export function setRuntimeLayout(layout) {
 	if (layout && typeof layout === 'object' && layout.rooms) {
@@ -43,6 +34,28 @@ export function getPlacedItemsForRoom(roomKey) {
 	return Array.isArray(items) ? items : []
 }
 
+/**
+ * Read the plant configuration from museumLayout.json.
+ *
+ * {
+ *   plantsConfig: {
+ *     defaultScale: number,      // base size multiplier for every plant
+ *     sinkY: number,             // metres the plant base sinks into the floor
+ *     overrides: [               // per-plant adjustments by name
+ *       { name, scale, sinkY, x, y, z }
+ *     ]
+ *   }
+ * }
+ */
+export function getPlantsConfig() {
+	const cfg = activeLayout?.plantsConfig || {}
+	return {
+		defaultScale: Number.isFinite(cfg.defaultScale) ? cfg.defaultScale : 1.5,
+		sinkY: Number.isFinite(cfg.sinkY) ? cfg.sinkY : 0.001,
+		overrides: Array.isArray(cfg.overrides) ? cfg.overrides : [],
+	}
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // GLB MODEL SUPPORT (type: "glb")
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,6 +65,7 @@ const gltfCache = new Map()
 
 /** Pending GLB spawn promises, so callers/tests can await room load completion. */
 const pendingGlbSpawns = new Set()
+const failedGlbSpawns = []
 
 /**
  * Active LOD switchers for spawned GLB models. Each entry is a function
@@ -117,19 +131,72 @@ function deepCloneScene(scene) {
 	return { root, disposables: cloned }
 }
 
-/** Compute a floor obstacle footprint from a model's world-space bounding box. */
-function boxObstacleFor(obj) {
-	const box = new THREE.Box3().setFromObject(obj)
-	const size = box.getSize(new THREE.Vector3())
-	const center = box.getCenter(new THREE.Vector3())
-	return {
-		type: 'box',
-		x: center.x,
-		y: 0,
-		z: center.z,
-		w: Math.max(size.x, 0.05),
-		d: Math.max(size.z, 0.05),
+/** Static walking footprints; flat ground decoration must not block approach. */
+export function modelObstaclesFor(obj) {
+	obj.updateWorldMatrix(true, true)
+	const bounds = new THREE.Box3().setFromObject(obj)
+	if (bounds.isEmpty()) return []
+	const bottom = bounds.min.y + 0.08
+	const top = bounds.min.y + 1.7
+	// ponytail: static 15 cm footprints, rebuilt on spawn. Moving/animated props
+	// need refreshed footprints; finer contact would need a physics collider.
+	const cellSize = 0.15
+	const rows = new Map()
+	const triangle = new THREE.Triangle()
+	const vertices = [triangle.a, triangle.b, triangle.c]
+	const cell = new THREE.Box3()
+	obj.traverseVisible((mesh) => {
+		if (!mesh.isMesh) return
+		const positions = mesh.geometry.getAttribute('position')
+		if (!positions) return
+		const index = mesh.geometry.index
+		const count = index ? index.count : positions.count
+		for (let i = 0; i + 2 < count; i += 3) {
+			for (let j = 0; j < 3; j++) {
+				mesh.getVertexPosition(index ? index.getX(i + j) : i + j, vertices[j])
+				vertices[j].applyMatrix4(mesh.matrixWorld)
+			}
+			const { a, b, c } = triangle
+			if (Math.max(a.y, b.y, c.y) <= bottom || Math.min(a.y, b.y, c.y) > top) continue
+			const minX = Math.floor(Math.min(a.x, b.x, c.x) / cellSize)
+			const maxX = Math.floor(Math.max(a.x, b.x, c.x) / cellSize)
+			const minZ = Math.floor(Math.min(a.z, b.z, c.z) / cellSize)
+			const maxZ = Math.floor(Math.max(a.z, b.z, c.z) / cellSize)
+			for (let z = minZ; z <= maxZ; z++) {
+				for (let x = minX; x <= maxX; x++) {
+					if (rows.get(z)?.has(x)) continue
+					cell.min.set(x * cellSize, bottom, z * cellSize)
+					cell.max.set((x + 1) * cellSize, top, (z + 1) * cellSize)
+					if (!cell.intersectsTriangle(triangle)) continue
+					if (!rows.has(z)) rows.set(z, new Set())
+					rows.get(z).add(x)
+				}
+			}
+		}
+	})
+	const obstacles = []
+	const previousRuns = new Map()
+	for (const z of [...rows.keys()].sort((a, b) => a - b)) {
+		const xs = [...rows.get(z)].sort((a, b) => a - b)
+		for (let i = 0; i < xs.length; i++) {
+			const start = xs[i]
+			while (i + 1 < xs.length && xs[i + 1] === xs[i] + 1) i++
+			const end = xs[i] + 1
+			const key = `${start}:${end}`
+			const previous = previousRuns.get(key)
+			if (previous?.lastZ === z - 1) {
+				previous.box.d += cellSize
+				previous.box.z += cellSize / 2
+				previous.lastZ = z
+			} else {
+				const box = { type: 'box', x: (start + end) * cellSize / 2, y: 0,
+					z: (z + 0.5) * cellSize, w: (end - start) * cellSize, d: cellSize }
+				obstacles.push(box)
+				previousRuns.set(key, { box, lastZ: z })
+			}
+		}
 	}
+	return obstacles
 }
 
 function parseTransform(itm) {
@@ -148,7 +215,17 @@ function parseTransform(itm) {
  * Adds the model to the room group, deep-clones its resources for disposal,
  * and registers a floor collision obstacle when the item sits on the floor.
  */
-export async function spawnGlbItem(itm, roomKey, ctx = {}) {
+export function spawnGlbItem(itm, roomKey, ctx = {}) {
+	const promise = spawnGlbItemAsync(itm, roomKey, ctx)
+	pendingGlbSpawns.add(promise)
+	promise.then(
+		() => pendingGlbSpawns.delete(promise),
+		(error) => { pendingGlbSpawns.delete(promise); failedGlbSpawns.push(error) }
+	)
+	return promise
+}
+
+async function spawnGlbItemAsync(itm, roomKey, ctx = {}) {
 	const {
 		group,
 		disposables = [],
@@ -157,8 +234,7 @@ export async function spawnGlbItem(itm, roomKey, ctx = {}) {
 
 	const path = typeof itm.path === 'string' ? itm.path : null
 	if (!path) {
-		console.error(`[PlacedItems] glb item in "${roomKey}" is missing a "path"`)
-		return null
+		throw new Error(`[PlacedItems] glb item in "${roomKey}" is missing a "path"`)
 	}
 
 	const gltf = await getGltf(path)
@@ -168,6 +244,27 @@ export async function spawnGlbItem(itm, roomKey, ctx = {}) {
 	root.position.set(t.x, t.y, t.z)
 	root.rotation.y = t.rotY
 	if (t.scale !== 1) root.scale.setScalar(t.scale)
+
+	// Opt-in bounds placement: exported origins need not touch the model's base.
+	if (Number.isFinite(itm.targetHeight) && itm.targetHeight > 0) {
+		const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3())
+		if (size.y > 0) root.scale.multiplyScalar(itm.targetHeight / size.y)
+	}
+	if (itm.alignToSurface) {
+		const box = new THREE.Box3().setFromObject(root)
+		if (!box.isEmpty()) {
+			const center = box.getCenter(new THREE.Vector3())
+			root.position.x += t.x - center.x
+			root.position.z += t.z - center.z
+			root.position.y += t.y - (itm.contact === 'ceiling' ? box.max.y : box.min.y)
+		}
+	}
+
+	// Sink the model into the ground/ceiling after surface alignment.
+	// Positive values push it down into the floor (e.g. 0.001 = 1mm).
+	if (Number.isFinite(itm.sinkY) && itm.sinkY !== 0) {
+		root.position.y -= itm.sinkY
+	}
 
 	// Optional decimated "lod/" counterpart. When the camera moves beyond
 	// `lodDistance` metres, the full-res model is hidden and the light lod is
@@ -216,16 +313,15 @@ export async function spawnGlbItem(itm, roomKey, ctx = {}) {
 
 		// Reflect the current camera state immediately once attached.
 		activeLodSwitchers.push(switcher)
+		// Measure full-detail geometry before the distance switch can hide it.
+		const contact = itm.contact || 'floor'
+		if (contact === 'floor' && obstacles && Array.isArray(obstacles)) {
+			obstacles.push(...modelObstaclesFor(root))
+		}
 		const origin = ctx.cameraPos
 		if (origin) switcher(origin)
 
 		disposables.push(...clonedResources, ...lodCloned)
-
-		// Floor items block the player regardless of which LOD is visible.
-		const contact = itm.contact || 'floor'
-		if (contact === 'floor' && obstacles && Array.isArray(obstacles)) {
-			obstacles.push(boxObstacleFor(root))
-		}
 
 		return root
 	}
@@ -253,7 +349,7 @@ export async function spawnGlbItem(itm, roomKey, ctx = {}) {
 	// Floor items block the player.
 	const contact = itm.contact || 'floor'
 	if (contact === 'floor' && obstacles && Array.isArray(obstacles)) {
-		obstacles.push(boxObstacleFor(root))
+		obstacles.push(...modelObstaclesFor(root))
 	}
 
 	return root
@@ -286,9 +382,9 @@ export function applyPlacedItems(roomKey, ctx = {}) {
 
 		// GLB model items load asynchronously (shared cache, deep-cloned disposal).
 		if (itm.type === 'glb') {
-			const spawnPromise = spawnGlbItem(itm, roomKey, ctx)
-			pendingGlbSpawns.add(spawnPromise)
-			spawnPromise.finally(() => pendingGlbSpawns.delete(spawnPromise))
+			spawnGlbItem(itm, roomKey, ctx).catch((error) => {
+				console.error(`[PlacedItems] Failed to load "${itm.path}":`, error)
+			})
 			continue
 		}
 
@@ -340,8 +436,8 @@ export function applyPlacedItems(roomKey, ctx = {}) {
  * QA checks so every loaded model is present.
  */
 export async function whenPlacedItemsLoaded() {
-	if (pendingGlbSpawns.size === 0) return
-	await Promise.allSettled(Array.from(pendingGlbSpawns))
+	while (pendingGlbSpawns.size) await Promise.allSettled(Array.from(pendingGlbSpawns))
+	if (failedGlbSpawns.length) throw new AggregateError(failedGlbSpawns, 'Required museum models could not load')
 }
 
 /**

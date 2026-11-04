@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { clamp, roundTo } from '../../misc/helper.js'
 import lobbyPhotoUrl from '../../assets/lobbyphoto.png'
 import { getArtworkSizes } from '../../config/artworkSizes.js'
+import { spawnGlbItem, getPlantsConfig } from './placedItems.js'
 import {
 	createPlushCushionGeometry,
 	addWeltPiping,
@@ -18,121 +19,48 @@ export function createRealisticGalleryPlant({
 	disposables = [],
 	obstacles = [],
 	name = 'gallery-plant',
+	scale,
+	sinkY,
 } = {}) {
+	// Resolve plant settings from museumLayout.json (plantsConfig).
+	// - Explicit call site parameters win.
+	// - Per-plant overrides (by name) come next.
+	// - Global defaults (defaultScale / sinkY) are the fallback.
+	const cfg = getPlantsConfig()
+	const override = cfg.overrides.find((o) => o && o.name === name) || {}
+	const finalScale =
+		scale !== undefined ? scale : override.scale !== undefined ? override.scale : cfg.defaultScale
+	const finalSinkY =
+		sinkY !== undefined ? sinkY : override.sinkY !== undefined ? override.sinkY : cfg.sinkY
+
 	const plant = new THREE.Group()
 	plant.name = name
-	plant.position.set(x, y, z)
+	// Sink the model into the ground so its base sits flush with the floor
+	// (no visible gap between the pot and the ground surface).
+	plant.position.set(x, y - finalSinkY, z)
 	if (targetGroup) targetGroup.add(plant)
 
-	// 1. Architectural Fluted Ceramic Planter
-	const potTopR = 0.32
-	const potBotR = 0.24
-	const potH = 0.58
-	const potGeo = new THREE.CylinderGeometry(potTopR, potBotR, potH, 32, 1)
-	const potMat = new THREE.MeshStandardMaterial({
-		color: 0xf5f3ee, // Parisian matte off-white stoneware
-		roughness: 0.38,
-		metalness: 0.05,
-	})
-	const pot = new THREE.Mesh(potGeo, potMat)
-	pot.position.set(0, potH / 2, 0)
-	plant.add(pot)
-
-	const lipGeo = new THREE.CylinderGeometry(potTopR * 1.04, potTopR, 0.04, 32)
-	const lip = new THREE.Mesh(lipGeo, potMat)
-	lip.position.set(0, potH - 0.02, 0)
-	plant.add(lip)
-
-	const baseRingGeo = new THREE.CylinderGeometry(potBotR * 1.05, potBotR * 1.05, 0.035, 32)
-	const brassMat = new THREE.MeshStandardMaterial({
-		color: 0xd4af37,
-		metalness: 0.88,
-		roughness: 0.22,
-	})
-	const baseRing = new THREE.Mesh(baseRingGeo, brassMat)
-	baseRing.position.set(0, 0.018, 0)
-	plant.add(baseRing)
-
-	// 2. Rich Dark Potting Soil
-	const soilGeo = new THREE.CylinderGeometry(potTopR * 0.94, potTopR * 0.94, 0.05, 24)
-	const soilMat = new THREE.MeshStandardMaterial({ color: 0x181410, roughness: 0.96 })
-	const soil = new THREE.Mesh(soilGeo, soilMat)
-	soil.position.set(0, potH - 0.02, 0)
-	plant.add(soil)
-
-	// 3. Multi-Stem Branching Woody Stems
-	const stemMat = new THREE.MeshStandardMaterial({ color: 0x4a3726, roughness: 0.88 })
-	const stemConfigs = [
-		{ h: 0.85, leanX: 0.08, leanZ: -0.06 },
-		{ h: 1.15, leanX: -0.09, leanZ: 0.07 },
-		{ h: 1.35, leanX: 0.05, leanZ: 0.09 },
-	]
-	for (const s of stemConfigs) {
-		const stemGeo = new THREE.CylinderGeometry(0.016, 0.028, s.h, 12)
-		const stem = new THREE.Mesh(stemGeo, stemMat)
-		stem.position.set(s.leanX * 0.5, potH + s.h / 2 - 0.03, s.leanZ * 0.5)
-		stem.rotation.z = -s.leanX * 0.4
-		stem.rotation.x = s.leanZ * 0.4
-		plant.add(stem)
-		disposables.push(stemGeo)
-	}
-
-	// 4. Sculpted 3D Broad Tropical Leaves (Curved Waxy Foliage)
-	const leafL = 0.52
-	const leafW = 0.24
-	const leafGeo = new THREE.PlaneGeometry(leafL, leafW, 8, 4)
-	const pos = leafGeo.attributes.position
-	for (let i = 0; i < pos.count; i += 1) {
-		const lx = pos.getX(i)
-		const ly = pos.getY(i)
-		const u = (lx + leafL / 2) / leafL
-		const v = ly / (leafW / 2)
-
-		const arch = Math.sin(u * Math.PI) * 0.07 - Math.pow(u, 1.8) * 0.12
-		const fold = Math.abs(v) * 0.025
-		pos.setZ(i, arch + fold)
-		const taper = Math.sin(Math.pow(u, 0.7) * Math.PI)
-		pos.setY(i, ly * Math.max(0.18, taper))
-	}
-	pos.needsUpdate = true
-	leafGeo.computeVertexNormals()
-	leafGeo.translate(leafL / 2, 0, 0)
-
-	const leafMat = new THREE.MeshStandardMaterial({
-		color: 0x1b4a2c,
-		roughness: 0.28,
-		metalness: 0.04,
-		side: THREE.DoubleSide,
+	// This plant is now the real Monstera 3D model (plants_monstera.glb)
+	// loaded via the shared GLB spawner, replacing all procedural foliage.
+	spawnGlbItem(
+		{
+			type: 'glb',
+			path: 'models/ready/plants/plants_monstera.glb',
+			x: 0,
+			y: 0,
+			z: 0,
+			rotationY: 0,
+			scale: finalScale,
+			targetHeight: 1.5 * finalScale,
+			alignToSurface: true,
+			contact: 'floor',
+		},
+		'lobby',
+		{ group: plant, disposables, obstacles }
+	).catch((err) => {
+		console.warn(`[lobby] Monstera model load failed for "${name}":`, err)
 	})
 
-	const leafGroup = new THREE.Group()
-	leafGroup.position.set(0, potH, 0)
-	plant.add(leafGroup)
-
-	const totalLeaves = 20
-	for (let i = 0; i < totalLeaves; i += 1) {
-		const leafMesh = new THREE.Mesh(leafGeo, leafMat)
-		const fraction = i / totalLeaves
-		const stemHeight = 0.25 + fraction * 1.05
-		const azimuth = fraction * Math.PI * 4.6 + (i % 3) * 0.4
-		const radialDist = 0.04 + fraction * 0.08
-		const pitch = -0.35 - Math.sin(fraction * Math.PI) * 0.45
-
-		leafMesh.position.set(
-			Math.cos(azimuth) * radialDist,
-			stemHeight,
-			Math.sin(azimuth) * radialDist
-		)
-		leafMesh.rotation.y = azimuth
-		leafMesh.rotation.z = pitch
-		leafMesh.rotation.x = ((i % 4) - 2) * 0.08
-		const scale = 0.75 + fraction * 0.45
-		leafMesh.scale.set(scale, scale, scale)
-		leafGroup.add(leafMesh)
-	}
-
-	disposables.push(potGeo, potMat, lipGeo, baseRingGeo, brassMat, soilGeo, soilMat, stemMat, leafGeo, leafMat)
-	if (obstacles) obstacles.push({ type: 'cylinder', x, z, y, radius: 0.38 })
 	return plant
 }
 
@@ -865,10 +793,16 @@ export function buildLobbyRoom(ctx, lobby) {
 		const isOnPlatform = Math.abs(x) > halfCenterWidth
 		const plantY = customY !== null ? customY : (isOnPlatform ? platformHeight : 0)
 
+		// Allow museumLayout.json per-plant overrides to remap position too.
+		const override = getPlantsConfig().overrides.find((o) => o && o.name === name) || {}
+		const fx = override.x !== undefined ? override.x : x
+		const fy = override.y !== undefined ? override.y : plantY
+		const fz = override.z !== undefined ? override.z : customZ
+
 		return createRealisticGalleryPlant({
-			x,
-			y: plantY,
-			z: customZ,
+			x: fx,
+			y: fy,
+			z: fz,
 			targetGroup,
 			disposables,
 			obstacles,
@@ -878,40 +812,11 @@ export function buildLobbyRoom(ctx, lobby) {
 
 	{
 		const innerSouthZ = halfL - wallThickness / 2
-		const benchZ = innerSouthZ - 0.45
 		const plantZ = innerSouthZ - 0.40
 
 		const decoSouth = new THREE.Group()
 		decoSouth.name = 'deco-south-lobby'
 		group.add(decoSouth)
-
-		const benchWoodMap = textures?.benchWoodMap
-		const benchWoodBump = textures?.benchWoodBump
-		const hasBenchTex = Boolean(benchWoodMap && benchWoodBump)
-
-		function addBenchAt(x) {
-			const halfCenterWidth = centerWidth / 2
-			const isOnPlatform = Math.abs(x) > halfCenterWidth
-			const benchY = isOnPlatform ? platformHeight : 0
-
-			return createRealisticGalleryBench({
-				x,
-				y: benchY,
-				z: benchZ,
-				rotationY: Math.PI,
-				targetGroup: decoSouth,
-				disposables,
-				obstacles,
-				hasBenchTex,
-				benchWoodMap,
-				benchWoodBump,
-				name: 'bench-south-lobby',
-			})
-		}
-
-		// Two luxury tufted leather benches positioned symmetrically on the south wall
-		addBenchAt(-1.6)
-		addBenchAt(1.6)
 
 		const artSizes = getArtworkSizes()
 		const lobbyCfg = artSizes.lobbyMasterpiece || {}

@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { buildRoom, deriveRoomKey } from '../game/room.js'
-import { updateLodSwitchers } from '../game/room/placedItems.js'
+import { updateLodSwitchers, whenPlacedItemsLoaded } from '../game/room/placedItems.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
 import { disposeStaticCache } from '../game/room/staticCache.js'
 import { hashStringToUint32, mulberry32, randRange, roundTo, setBodyClickableCursor } from '../misc/helper.js'
@@ -608,6 +608,7 @@ export function startYourEngines({
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
 		applyAmbiencePreset()
+		await whenPlacedItemsLoaded()
 
 		try {
 			if (typeof renderer.compileAsync === 'function') {
@@ -618,7 +619,7 @@ export function startYourEngines({
 		} catch (_) {}
 
 		deferredTextureLoadToken += 1
-		void runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
+		await runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
 
 		halfW = currentRoom.bounds?.halfW ?? halfW
 		halfL = currentRoom.bounds?.halfL ?? halfL
@@ -655,7 +656,7 @@ export function startYourEngines({
 		} catch (_) {}
 	}
 
-	loadRoom({
+	const ready = loadRoom({
 		mode: roomMode,
 		seedTitle: roomSeedTitle,
 		categories: lobbyCategories,
@@ -1303,6 +1304,7 @@ export function startYourEngines({
 				spawn: null,
 			})
 		},
+		ready,
 		getRoomKey() {
 			return currentRoom?.roomKey || 'lobby'
 		},

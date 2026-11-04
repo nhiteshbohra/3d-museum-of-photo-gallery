@@ -1244,18 +1244,6 @@ export function decorateSecretAlcoveRoom({
  * Grand Lobby Rotunda Enhancements
  */
 export function decorateLobbyGrandRotunda({ group, disposables, halfW, halfL, height } = {}) {
-	// Grand Central Crystal Chandelier in high lobby atrium
-	createChandelier({
-		x: 0,
-		y: height + 1.45,
-		z: 0,
-		group,
-		disposables,
-		rings: 2,
-		scale: 1.40,
-		lightIntensity: 2.8,
-	})
-
 	createBaseboardBrass({ halfW, halfL, group, disposables })
 }
 
@@ -1273,22 +1261,10 @@ export function applyRoomDecorations({
 	height,
 	animatedDecorations = [],
 } = {}) {
-	const k = String(roomKey || '').toLowerCase()
-	const t = String(title || '').toLowerCase()
-	if (k === 'fireside' || t.includes('fireside') || t.includes('winter')) {
-		decorateFiresideWinterRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (k === 'music' || t.includes('music') || t.includes('melod')) {
-		decorateMusicMelodiesRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (k === 'library' || t.includes('library') || t.includes('reading')) {
-		decorateLibraryReadingRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (k === 'paris' || t.includes('paris') || t.includes('masterpiece') || t.includes('romance')) {
-		decorateParisMasterpieceRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (k === 'orangery' || t.includes('orangery') || t.includes('glass')) {
-		decorateGlassOrangeryRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else if (k === 'alcove' || t.includes('secret') || t.includes('alcove') || t.includes('promise')) {
-		decorateSecretAlcoveRoom({ group, disposables, obstacles, halfW, halfL, height, animatedDecorations })
-	} else {
-		createCrownMoulding({ halfW, halfL, height, group, disposables })
-		createBaseboardBrass({ halfW, halfL, group, disposables })
-	}
+	// All salons share an identical, uncluttered architectural treatment: crown
+	// moulding and brass baseboards. No furniture or artefacts are added to any
+	// room (except the lobby, which is decorated separately), so every salon
+	// has the same neutral layout.
+	createCrownMoulding({ halfW, halfL, height, group, disposables })
+	createBaseboardBrass({ halfW, halfL, group, disposables })
 }

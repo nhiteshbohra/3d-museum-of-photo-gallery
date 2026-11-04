@@ -1,126 +1,107 @@
 {
-  "version": 1,
-  "exportedAt": "2025-08-25T12:00:00.000Z",
+  "version": 2,
+  "exportedAt": "2025-08-25T17:20:00.000Z",
+  "plantsConfig": {
+    "defaultScale": 1.5,
+    "sinkY": 0.001,
+    "overrides": [
+      {
+        "name": "plant-corner-sw-ground",
+        "scale": 1.7
+      },
+      {
+        "name": "plant-corner-se-ground",
+        "scale": 1.7
+      }
+    ]
+  },
   "rooms": {
     "lobby": [
       {
-        "id": "itm_glb_bookcase",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_bookcase.glb",
-        "lodPath": "models/ready/lod/furniture/furniture_bookcase.glb",
-        "lodDistance": 10,
-        "position": { "x": 4.6, "y": 0.016, "z": -4.2 },
-        "rotationY": 1.5708,
-        "scale": 0.01254,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_chinese_commode",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_chinese_commode.glb",
-        "position": { "x": -4.6, "y": 0, "z": -4.2 },
-        "rotationY": 0,
-        "scale": 0.4456,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_gothiccabinet",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_gothiccabinet.glb",
-        "position": { "x": 4.6, "y": 0, "z": -1.0 },
-        "rotationY": 1.5708,
-        "scale": 0.9318,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_couch_large",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_couch_large.glb",
-        "position": { "x": -4.4, "y": 0, "z": 2.0 },
-        "rotationY": 3.14159,
-        "scale": 0.4036,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_couch_wide",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_couch_wide.glb",
-        "position": { "x": 4.6, "y": 0.303, "z": 2.6 },
-        "rotationY": 1.5708,
-        "scale": 1.6569,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_delica_couch",
-        "type": "glb",
-        "path": "models/ready/furniture/furniture_delica_couch.glb",
-        "lodPath": "models/ready/lod/furniture/furniture_delica_couch.glb",
-        "lodDistance": 10,
-        "position": { "x": -4.2, "y": 0, "z": -1.5 },
-        "rotationY": 0,
-        "scale": 0.577,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_potted_plant",
-        "type": "glb",
-        "path": "models/ready/plants/plants_potted_plant_04.glb",
-        "position": { "x": 0, "y": 0, "z": 3.8 },
-        "rotationY": 0,
-        "scale": 5.618,
-        "contact": "floor"
-      },
-      {
-        "id": "itm_glb_chandelier_01",
-        "type": "glb",
-        "path": "models/ready/lighting/lighting_chandelier_01.glb",
-        "position": { "x": 0, "y": 4.0, "z": 0 },
-        "rotationY": 0,
-        "scale": 1.0025,
-        "contact": "ceiling"
-      },
-      {
-        "id": "itm_glb_chandelier_03",
-        "type": "glb",
-        "path": "models/ready/lighting/lighting_chandelier_03.glb",
-        "lodPath": "models/ready/lod/lighting/lighting_chandelier_03.glb",
-        "lodDistance": 10,
-        "position": { "x": 0, "y": 4.0, "z": 4.5 },
-        "rotationY": 0.3,
-        "scale": 0.9606,
-        "contact": "ceiling"
-      },
-      {
-        "id": "itm_glb_chandelier_osgona",
+        "id": "itm_lobby_chandelier_osgona",
         "type": "glb",
         "path": "models/ready/lighting/lighting_chandelier_osgona.glb",
-        "lodPath": "models/ready/lod/lighting/lighting_chandelier_osgona.glb",
-        "lodDistance": 12,
-        "position": { "x": 8.5, "y": 5.6, "z": 0 },
+        "contact": "ceiling",
+        "x": 0,
+        "y": 5.6,
+        "z": 0,
         "rotationY": 0,
         "scale": 0.0006224,
-        "contact": "ceiling"
+        "targetHeight": 2.1,
+        "alignToSurface": true
       },
       {
-        "id": "itm_glb_chandelier_unitario",
+        "id": "itm_lobby_sofa_curved",
         "type": "glb",
-        "path": "models/ready/lighting/lighting_chandelier_unitario.glb",
-        "position": { "x": -8.5, "y": 5.6, "z": 0 },
+        "path": "models/ready/furniture/3d_pbr_curved_sofa.glb",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": -1.5,
         "rotationY": 0,
-        "scale": 0.001929,
-        "contact": "ceiling"
-      },
-      {
-        "id": "itm_glb_wall_light_antique",
-        "type": "glb",
-        "path": "models/ready/lighting/lighting_wall_light_antique.glb",
-        "position": { "x": 6.45, "y": 2.0, "z": -2.0 },
-        "rotationY": 1.5708,
-        "scale": 0.225,
-        "contact": "wall"
+        "scale": 0.010,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
       }
     ],
-    "fireside": [],
+    "fireside": [
+      {
+        "id": "itm_fireside_chandelier_marmara",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_marmara_lightstar/scene.gltf",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.004,
+        "targetHeight": 1.1,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_fireside_sofa_curved",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_curved_sofa_set_white/scene.gltf",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.2,
+        "rotationY": 0,
+        "scale": 0.010,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      },
+      {
+        "id": "itm_fireside_plant_left",
+        "type": "glb",
+        "path": "models/ready/plants/plants_monstera.glb",
+        "contact": "floor",
+        "x": -3.4,
+        "y": 0,
+        "z": 1.2,
+        "rotationY": 0,
+        "scale": 1.0,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      },
+      {
+        "id": "itm_fireside_plant_right",
+        "type": "glb",
+        "path": "models/ready/plants/plants_monstera.glb",
+        "contact": "floor",
+        "x": 3.4,
+        "y": 0,
+        "z": 1.2,
+        "rotationY": 0,
+        "scale": 1.0,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ],
     "music": [],
     "library": [],
     "paris": [],

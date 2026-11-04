@@ -1,36 +1,12 @@
 import './style.css'
+import { DefaultLoadingManager } from 'three'
 import { startYourEngines } from './engine/engine.js'
 import { coupleSalons, coupleCategories } from './data/coupleMuseum.js'
 import { getArtworkSizes, saveArtworkSizes, resetArtworkSizes, DEFAULT_ARTWORK_SIZES } from './config/artworkSizes.js'
 
-const isAdmin = document.body.classList.contains('admin-mode') ||
-	window.location.pathname.toLowerCase().includes('admin') ||
-	new URLSearchParams(window.location.search).has('admin');
-
-if (isAdmin) {
-	document.body.classList.add('admin-mode');
-}
-
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div id="top-bar">
-    ${isAdmin ? `
-    <div class="top-bar-admin-badge" title="Curator Admin Studio Workspace">
-      <span>✦ ADMIN STUDIO ✦</span>
-    </div>
-    <button id="btn-studio-toggle" class="top-bar-btn" title="Open Placement Studio (Press B)">
-      <span>🏛 Build</span>
-      <span class="top-bar-key">B</span>
-    </button>
-    <button id="btn-map-toggle" class="top-bar-btn" title="Toggle Top-Down Map View (Press T)">
-      <span>🗺 Map</span>
-      <span class="top-bar-key">T</span>
-    </button>
-    <button id="btn-resizer-toggle" class="top-bar-btn" title="Adjust Artwork Sizes & Gaps Live (Press R)">
-      <span>📐 Size</span>
-      <span class="top-bar-key">R</span>
-    </button>
-    ` : ''}
     <button id="btn-audio-toggle" class="top-bar-btn" title="Toggle Romantic Classical Ambience (Press M)">
       <span id="audio-label">Music</span>
       <div id="soundwave-anim" class="soundwave">
@@ -63,7 +39,11 @@ app.innerHTML = `
       <div class="ticket-quote">"In every hall, a memory; in every frame, a promise."</div>
       <div class="ticket-divider"></div>
 
-      <button id="btn-enter-museum" class="btn-enter">
+      <div id="entrance-loading" aria-busy="true">
+        <progress id="entrance-progress" max="100" value="0" aria-label="Loading museum"></progress>
+        <p id="entrance-status" role="status">Preparing your museum…</p>
+      </div>
+      <button id="btn-enter-museum" class="btn-enter" hidden aria-describedby="entrance-status">
         <span class="btn-enter-sparkle">✦</span>
         <span>ENTER SANCTUARY</span>
         <span class="btn-enter-sparkle">✦</span>
@@ -98,6 +78,23 @@ const canvas = document.querySelector('#scene')
 const overlayEl = document.querySelector('#overlay')
 const crosshairEl = document.querySelector('#crosshair')
 const curtainEl = document.querySelector('#room-curtain')
+const enterButton = document.querySelector('#btn-enter-museum')
+const entranceStatus = document.querySelector('#entrance-status')
+const entranceProgress = document.querySelector('#entrance-progress')
+let entranceReady = false
+let assetsLoading = false
+let resolveAssetsLoaded = null
+DefaultLoadingManager.onStart = () => { assetsLoading = true }
+DefaultLoadingManager.onProgress = (_url, loaded, total) => {
+	const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0
+	entranceProgress.value = percent
+	if (!entranceReady) entranceStatus.textContent = `Loading museum assets (${percent}%)…`
+}
+DefaultLoadingManager.onLoad = () => {
+	assetsLoading = false
+	entranceProgress.value = 100
+	resolveAssetsLoaded?.()
+}
 
 async function withFadeTransition(actionFn) {
 	if (curtainEl) {
@@ -119,6 +116,7 @@ let prebuildQueue = []
 let idlePrebuildScheduled = false
 
 function queuePrebuildSalons(salonsToQueue) {
+	if (!entranceReady) return
 	if (!Array.isArray(salonsToQueue)) return
 	for (const title of salonsToQueue) {
 		if (title && !prebuildQueue.includes(title)) {
@@ -289,6 +287,7 @@ function toggleAmbientAudio() {
 let hasEntered = false
 
 function enterMuseum() {
+	if (!entranceReady) return
 	hasEntered = true
 	document.body.classList.add('in-sanctuary')
 	overlayEl.hidden = true
@@ -580,18 +579,9 @@ window.addEventListener('keydown', (e) => {
 			closePhotoLightbox(true)
 			return
 		}
-		const resizerDrawer = document.querySelector('#artwork-resizer-drawer')
-		if (resizerDrawer && resizerDrawer.classList.contains('open')) {
-			toggleResizerDrawer(false)
-			return
-		}
 	}
-	// Hotkeys for Music, Fullscreen, and Artwork Resizer while moving or unlocked
+	// Hotkeys for Music and Fullscreen while moving or unlocked
 	if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) {
-		return
-	}
-	if (isAdmin && (e.code === 'KeyR' || e.key === 'r' || e.key === 'R')) {
-		toggleResizerDrawer()
 		return
 	}
 	if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
@@ -608,465 +598,19 @@ window.addEventListener('keydown', (e) => {
 	}
 })
 
-// -------------------------------------------------------------------------
-// LIVE ARTWORK RESIZER DRAWER HUD (Admin Studio Workspace Only)
-// -------------------------------------------------------------------------
-let toggleResizerDrawer = () => {}
-
-if (isAdmin) {
-	const resizerDrawerEl = document.createElement('div')
-resizerDrawerEl.id = 'artwork-resizer-drawer'
-resizerDrawerEl.innerHTML = `
-	<div class="resizer-header">
-		<div class="resizer-header-title">
-			<span class="resizer-icon">📐</span>
-			<div>
-				<div class="resizer-title-text">Live Artwork Resizer</div>
-				<div class="resizer-subtitle">Real-time Multi-Room Sizing</div>
-			</div>
-		</div>
-		<button id="btn-resizer-close" class="resizer-close-btn" title="Close (R or Esc)">✕</button>
-	</div>
-
-	<div class="resizer-content">
-		<!-- 1. EAST WALL -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">1. East Wall (5 Sequential Art)</span>
-				<span class="resizer-card-tag">All Salons</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-east-w" class="resizer-val-badge">1.70 m</span>
-				</div>
-				<input type="range" id="resizer-east-w" class="resizer-slider" min="0.8" max="3.0" step="0.05" value="1.70" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-east-h" class="resizer-val-badge">1.55 m</span>
-				</div>
-				<input type="range" id="resizer-east-h" class="resizer-slider" min="0.6" max="2.4" step="0.05" value="1.55" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Spacing Gap (m)</span>
-					<span id="val-east-gap" class="resizer-val-badge">0.30 m</span>
-				</div>
-				<input type="range" id="resizer-east-gap" class="resizer-slider" min="0.1" max="1.5" step="0.05" value="0.30" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-east-y" class="resizer-val-badge">2.05 m</span>
-				</div>
-				<input type="range" id="resizer-east-y" class="resizer-slider" min="1.2" max="2.8" step="0.05" value="2.05" />
-			</div>
-		</div>
-
-		<!-- 2. NORTH WALL MASTERPIECE -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">2. North Wall Masterpiece</span>
-				<span class="resizer-card-tag">Center Big</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-north-w" class="resizer-val-badge">4.50 m</span>
-				</div>
-				<input type="range" id="resizer-north-w" class="resizer-slider" min="1.2" max="5.0" step="0.05" value="4.50" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-north-h" class="resizer-val-badge">3.00 m</span>
-				</div>
-				<input type="range" id="resizer-north-h" class="resizer-slider" min="0.8" max="3.5" step="0.05" value="3.00" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-north-y" class="resizer-val-badge">2.40 m</span>
-				</div>
-				<input type="range" id="resizer-north-y" class="resizer-slider" min="1.2" max="3.2" step="0.05" value="2.40" />
-			</div>
-		</div>
-
-		<!-- 3. SOUTH WALL GATE ARTWORKS -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">3. South Wall (Gate Flanking)</span>
-				<span class="resizer-card-tag">Left &amp; Right</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-south-w" class="resizer-val-badge">3.00 m</span>
-				</div>
-				<input type="range" id="resizer-south-w" class="resizer-slider" min="0.8" max="3.8" step="0.05" value="3.00" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-south-h" class="resizer-val-badge">2.15 m</span>
-				</div>
-				<input type="range" id="resizer-south-h" class="resizer-slider" min="0.6" max="2.8" step="0.05" value="2.15" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Door Offset ±U (m)</span>
-					<span id="val-south-u" class="resizer-val-badge">3.20 m</span>
-				</div>
-				<input type="range" id="resizer-south-u" class="resizer-slider" min="1.5" max="4.5" step="0.05" value="3.20" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-south-y" class="resizer-val-badge">2.05 m</span>
-				</div>
-				<input type="range" id="resizer-south-y" class="resizer-slider" min="1.2" max="2.8" step="0.05" value="2.05" />
-			</div>
-		</div>
-
-		<!-- 4. CENTER PARTITION -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">4. Center Partition (Highlight)</span>
-				<span class="resizer-card-tag">Front &amp; Back</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-center-w" class="resizer-val-badge">3.50 m</span>
-				</div>
-				<input type="range" id="resizer-center-w" class="resizer-slider" min="1.0" max="4.2" step="0.05" value="3.50" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-center-h" class="resizer-val-badge">2.50 m</span>
-				</div>
-				<input type="range" id="resizer-center-h" class="resizer-slider" min="0.8" max="3.0" step="0.05" value="2.50" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-center-y" class="resizer-val-badge">2.05 m</span>
-				</div>
-				<input type="range" id="resizer-center-y" class="resizer-slider" min="1.2" max="2.8" step="0.05" value="2.05" />
-			</div>
-		</div>
-
-		<!-- 5. WEST WALL NARRATIVE BOARD -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">5. West Wall (Narrative Board)</span>
-				<span class="resizer-card-tag">Autofill Text</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-west-w" class="resizer-val-badge">6.60 m</span>
-				</div>
-				<input type="range" id="resizer-west-w" class="resizer-slider" min="3.0" max="8.5" step="0.1" value="6.60" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-west-h" class="resizer-val-badge">3.00 m</span>
-				</div>
-				<input type="range" id="resizer-west-h" class="resizer-slider" min="1.5" max="3.8" step="0.05" value="3.00" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-west-y" class="resizer-val-badge">2.30 m</span>
-				</div>
-				<input type="range" id="resizer-west-y" class="resizer-slider" min="1.2" max="2.8" step="0.05" value="2.30" />
-			</div>
-		</div>
-
-		<!-- 6. GRAND LOBBY MASTERPIECE -->
-		<div class="resizer-card">
-			<div class="resizer-card-header">
-				<span class="resizer-card-title">6. Grand Lobby Masterpiece</span>
-				<span class="resizer-card-tag">South Wall</span>
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Width (m)</span>
-					<span id="val-lobby-w" class="resizer-val-badge">6.00 m</span>
-				</div>
-				<input type="range" id="resizer-lobby-w" class="resizer-slider" min="2.0" max="7.0" step="0.1" value="6.00" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Height (m)</span>
-					<span id="val-lobby-h" class="resizer-val-badge">2.85 m</span>
-				</div>
-				<input type="range" id="resizer-lobby-h" class="resizer-slider" min="1.2" max="3.8" step="0.05" value="2.85" />
-			</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-lobby-y" class="resizer-val-badge">3.25 m</span>
-				</div>
-				<input type="range" id="resizer-lobby-y" class="resizer-slider" min="1.2" max="4.0" step="0.05" value="3.25" />
-			</div>
-		</div>
-			<div class="resizer-control-row">
-				<div class="resizer-label-wrap">
-					<span>Mounting Height Y (m)</span>
-					<span id="val-lobby-y" class="resizer-val-badge">2.15 m</span>
-				</div>
-				<input type="range" id="resizer-lobby-y" class="resizer-slider" min="1.2" max="3.5" step="0.05" value="2.15" />
-			</div>
-		</div>
-	</div>
-
-	<div class="resizer-footer">
-		<button id="btn-resizer-copy" class="btn-resizer-action btn-resizer-copy">
-			<span>📋</span>
-			<span>Copy Config Code</span>
-		</button>
-		<button id="btn-resizer-reset" class="btn-resizer-action btn-resizer-reset">
-			<span>↺</span>
-			<span>Reset to Factory Defaults</span>
-		</button>
-	</div>
-`
-document.body.appendChild(resizerDrawerEl)
-
-const resizerToastEl = document.createElement('div')
-resizerToastEl.className = 'resizer-toast'
-resizerToastEl.innerHTML = `<span class="resizer-toast-icon">✨</span><span class="resizer-toast-msg"></span>`
-document.body.appendChild(resizerToastEl)
-
-let toastTimer = null
-function showResizerToast(message) {
-	if (toastTimer) clearTimeout(toastTimer)
-	const msgEl = resizerToastEl.querySelector('.resizer-toast-msg')
-	if (msgEl) msgEl.textContent = message
-	resizerToastEl.classList.add('show')
-	toastTimer = setTimeout(() => {
-		resizerToastEl.classList.remove('show')
-	}, 2800)
-}
-
-function updateResizerBadges(cfg) {
-	const setVal = (id, val) => {
-		const el = document.getElementById(id)
-		if (el) el.textContent = `${Number(val).toFixed(2)} m`
-	}
-	setVal('val-east-w', cfg.eastWall.width)
-	setVal('val-east-h', cfg.eastWall.height)
-	setVal('val-east-gap', cfg.eastWall.gap)
-	setVal('val-east-y', cfg.eastWall.y)
-
-	setVal('val-north-w', cfg.northMasterpiece.width)
-	setVal('val-north-h', cfg.northMasterpiece.height)
-	setVal('val-north-y', cfg.northMasterpiece.y)
-
-	setVal('val-south-w', cfg.southGateArtworks.width)
-	setVal('val-south-h', cfg.southGateArtworks.height)
-	setVal('val-south-u', cfg.southGateArtworks.doorOffsetU)
-	setVal('val-south-y', cfg.southGateArtworks.y)
-
-	setVal('val-center-w', cfg.centerPartition.width)
-	setVal('val-center-h', cfg.centerPartition.height)
-	setVal('val-center-y', cfg.centerPartition.y)
-
-	setVal('val-west-w', cfg.westNarrativeBoard.width)
-	setVal('val-west-h', cfg.westNarrativeBoard.height)
-	setVal('val-west-y', cfg.westNarrativeBoard.y)
-
-	setVal('val-lobby-w', cfg.lobbyMasterpiece.width)
-	setVal('val-lobby-h', cfg.lobbyMasterpiece.height)
-	setVal('val-lobby-y', cfg.lobbyMasterpiece.y)
-}
-
-function populateResizerInputs(cfg) {
-	const setInput = (id, val) => {
-		const el = document.getElementById(id)
-		if (el) el.value = val
-	}
-	setInput('resizer-east-w', cfg.eastWall.width)
-	setInput('resizer-east-h', cfg.eastWall.height)
-	setInput('resizer-east-gap', cfg.eastWall.gap)
-	setInput('resizer-east-y', cfg.eastWall.y)
-
-	setInput('resizer-north-w', cfg.northMasterpiece.width)
-	setInput('resizer-north-h', cfg.northMasterpiece.height)
-	setInput('resizer-north-y', cfg.northMasterpiece.y)
-
-	setInput('resizer-south-w', cfg.southGateArtworks.width)
-	setInput('resizer-south-h', cfg.southGateArtworks.height)
-	setInput('resizer-south-u', cfg.southGateArtworks.doorOffsetU)
-	setInput('resizer-south-y', cfg.southGateArtworks.y)
-
-	setInput('resizer-center-w', cfg.centerPartition.width)
-	setInput('resizer-center-h', cfg.centerPartition.height)
-	setInput('resizer-center-y', cfg.centerPartition.y)
-
-	setInput('resizer-west-w', cfg.westNarrativeBoard.width)
-	setInput('resizer-west-h', cfg.westNarrativeBoard.height)
-	setInput('resizer-west-y', cfg.westNarrativeBoard.y)
-
-	setInput('resizer-lobby-w', cfg.lobbyMasterpiece.width)
-	setInput('resizer-lobby-h', cfg.lobbyMasterpiece.height)
-	setInput('resizer-lobby-y', cfg.lobbyMasterpiece.y)
-}
-
-let resizerDebounceTimer = null
-function handleSliderChange() {
-	const currentSizes = {
-		eastWall: {
-			count: 5,
-			width: parseFloat(document.getElementById('resizer-east-w').value),
-			height: parseFloat(document.getElementById('resizer-east-h').value),
-			gap: parseFloat(document.getElementById('resizer-east-gap').value),
-			y: parseFloat(document.getElementById('resizer-east-y').value),
-		},
-		northMasterpiece: {
-			width: parseFloat(document.getElementById('resizer-north-w').value),
-			height: parseFloat(document.getElementById('resizer-north-h').value),
-			y: parseFloat(document.getElementById('resizer-north-y').value),
-		},
-		southGateArtworks: {
-			width: parseFloat(document.getElementById('resizer-south-w').value),
-			height: parseFloat(document.getElementById('resizer-south-h').value),
-			doorOffsetU: parseFloat(document.getElementById('resizer-south-u').value),
-			y: parseFloat(document.getElementById('resizer-south-y').value),
-		},
-		centerPartition: {
-			width: parseFloat(document.getElementById('resizer-center-w').value),
-			height: parseFloat(document.getElementById('resizer-center-h').value),
-			y: parseFloat(document.getElementById('resizer-center-y').value),
-		},
-		westNarrativeBoard: {
-			width: parseFloat(document.getElementById('resizer-west-w').value),
-			height: parseFloat(document.getElementById('resizer-west-h').value),
-			y: parseFloat(document.getElementById('resizer-west-y').value),
-		},
-		lobbyMasterpiece: {
-			width: parseFloat(document.getElementById('resizer-lobby-w').value),
-			height: parseFloat(document.getElementById('resizer-lobby-h').value),
-			y: parseFloat(document.getElementById('resizer-lobby-y').value),
-		},
-	}
-
-	updateResizerBadges(currentSizes)
-	saveArtworkSizes(currentSizes)
-
-	if (resizerDebounceTimer) clearTimeout(resizerDebounceTimer)
-	resizerDebounceTimer = setTimeout(() => {
-		if (engineApi && typeof engineApi.reloadRoomInPlace === 'function') {
-			engineApi.reloadRoomInPlace()
-		}
-	}, 60)
-}
-
-function toggleResizerDrawer(forceOpen) {
-	const shouldOpen = typeof forceOpen === 'boolean' ? forceOpen : !resizerDrawerEl.classList.contains('open')
-	if (shouldOpen) {
-		if (document.pointerLockElement) {
-			document.exitPointerLock()
-		}
-		const activeSizes = getArtworkSizes()
-		populateResizerInputs(activeSizes)
-		updateResizerBadges(activeSizes)
-		resizerDrawerEl.classList.add('open')
-	} else {
-		resizerDrawerEl.classList.remove('open')
-	}
-}
-
-// Bind drawer controls
-const initialSizes = getArtworkSizes()
-populateResizerInputs(initialSizes)
-updateResizerBadges(initialSizes)
-
-resizerDrawerEl.querySelectorAll('.resizer-slider').forEach((slider) => {
-	slider.addEventListener('input', handleSliderChange)
-})
-
-document.getElementById('btn-resizer-close')?.addEventListener('click', () => toggleResizerDrawer(false))
-document.getElementById('btn-resizer-toggle')?.addEventListener('click', () => toggleResizerDrawer())
-
-document.getElementById('btn-resizer-copy')?.addEventListener('click', () => {
-	const current = getArtworkSizes()
-	const jsSnippet = `export const DEFAULT_ARTWORK_SIZES = {
-	// 1. East Wall - 5 Sequential Artworks
-	eastWall: {
-		count: 5,
-		width: ${current.eastWall.width.toFixed(2)},
-		height: ${current.eastWall.height.toFixed(2)},
-		gap: ${current.eastWall.gap.toFixed(2)},
-		y: ${current.eastWall.y.toFixed(2)},
-	},
-
-	// 2. North Wall - Masterpiece Artwork (Centered above bench)
-	northMasterpiece: {
-		width: ${current.northMasterpiece.width.toFixed(2)},
-		height: ${current.northMasterpiece.height.toFixed(2)},
-		y: ${current.northMasterpiece.y.toFixed(2)},
-	},
-
-	// 3. South Wall - Flanking Artworks (Left & Right of gate)
-	southGateArtworks: {
-		width: ${current.southGateArtworks.width.toFixed(2)},
-		height: ${current.southGateArtworks.height.toFixed(2)},
-		doorOffsetU: ${current.southGateArtworks.doorOffsetU.toFixed(2)},
-		y: ${current.southGateArtworks.y.toFixed(2)},
-	},
-
-	// 4. Center Divider Partition - Highlight Artworks
-	centerPartition: {
-		width: ${current.centerPartition.width.toFixed(2)},
-		height: ${current.centerPartition.height.toFixed(2)},
-		y: ${current.centerPartition.y.toFixed(2)},
-	},
-
-	// 5. West Wall - Autofilled Narrative Memory Text Board
-	westNarrativeBoard: {
-		width: ${current.westNarrativeBoard.width.toFixed(2)},
-		height: ${current.westNarrativeBoard.height.toFixed(2)},
-		y: ${current.westNarrativeBoard.y.toFixed(2)},
-	},
-
-	// 6. Grand Lobby - South Wall Masterpiece
-	lobbyMasterpiece: {
-		width: ${current.lobbyMasterpiece.width.toFixed(2)},
-		height: ${current.lobbyMasterpiece.height.toFixed(2)},
-		y: ${current.lobbyMasterpiece.y.toFixed(2)},
-	},
-}`
-	navigator.clipboard.writeText(jsSnippet).then(() => {
-		showResizerToast('✓ Config code copied to clipboard!')
-	}).catch(() => {
-		showResizerToast('📋 Config prepared!')
-	})
-})
-
-document.getElementById('btn-resizer-reset')?.addEventListener('click', () => {
-	const resetSizes = resetArtworkSizes()
-	populateResizerInputs(resetSizes)
-	updateResizerBadges(resetSizes)
-	showResizerToast('↺ Reset all sizes to factory defaults!')
-	if (engineApi && typeof engineApi.reloadRoomInPlace === 'function') {
-		engineApi.reloadRoomInPlace()
-	}
-})
-}
-
+const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
 engineApi = startYourEngines({
 	canvas,
 	roomSeedTitle: initialTitle ?? 'Lobby',
 	roomMode: initialTitle ? 'gallery' : 'lobby',
 	roomSpawn: { type: 'fromWall', wall: 'south' },
 	lobbyCategories: coupleCategories,
+	galleryTitle: initialSalon?.title,
+	galleryDescription: initialSalon?.extract,
+	galleryPhotos: initialSalon?.photos,
+	galleryMainThumbnailUrl: initialSalon?.photos?.[0],
+	galleryLongExtract: initialSalon?.longExtract,
+	galleryRelatedTitles: initialSalon?.seeAlso,
 	onRandomExhibitRequested: requestRandomExhibit,
 	onPhotoClick: openPhotoLightbox,
 	onGoLobbyRequested() {
@@ -1125,24 +669,6 @@ window.__engineApi = engineApi
 window.__loadAndEnterGallery = loadAndEnterGallery
 window.__enterlobby = enterlobby
 
-if (isAdmin) {
-	import('./admin/placementStudio.js')
-		.then(({ initPlacementStudio }) => {
-			initPlacementStudio(engineApi, engineApi.scene, engineApi.camera, engineApi.renderer, canvas)
-			document.getElementById('btn-studio-toggle')?.addEventListener('click', (e) => {
-				e.stopPropagation()
-				window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyB', key: 'b', bubbles: true }))
-			})
-			document.getElementById('btn-map-toggle')?.addEventListener('click', (e) => {
-				e.stopPropagation()
-				window.dispatchEvent(new KeyboardEvent('keydown', { code: 'KeyT', key: 't', bubbles: true }))
-			})
-		})
-		.catch((err) => {
-			console.error('[Admin] Failed to initialize Placement Studio:', err)
-		})
-}
-
 if (!initialTitle) {
 	pushGalleryTrail(lobby_title)
 }
@@ -1171,12 +697,32 @@ window.addEventListener('popstate', (e) => {
 	setLoading(false)
 })
 
-if (initialTitle) {
-	loadAndEnterGallery(initialTitle, {
-		pushHistory: false,
-		updateUrlState: false,
-		spawn: { type: 'fromWall', wall: 'south' },
-	})
-} else {
-	queuePrebuildSalons(coupleCategories)
+async function prepareEntrance() {
+	try {
+		await engineApi.ready
+		if (initialTitle) {
+			await loadAndEnterGallery(initialTitle, {
+				pushHistory: false,
+				updateUrlState: false,
+				spawn: { type: 'fromWall', wall: 'south' },
+			})
+		}
+		if (assetsLoading) await new Promise((resolve) => { resolveAssetsLoaded = resolve })
+		entranceStatus.textContent = 'Preparing the room for your visit…'
+		await engineApi.renderer.compileAsync(engineApi.scene, engineApi.camera)
+		engineApi.renderer.render(engineApi.scene, engineApi.camera)
+		entranceReady = true
+		entranceProgress.value = 100
+		document.querySelector('#entrance-loading').setAttribute('aria-busy', 'false')
+		entranceStatus.textContent = 'Your room is ready. Welcome.'
+		enterButton.hidden = false
+		enterButton.disabled = false
+		queuePrebuildSalons(coupleCategories)
+	} catch (error) {
+		console.error('[Museum] Entrance loading failed:', error)
+		entranceProgress.hidden = true
+		document.querySelector('#entrance-loading').setAttribute('aria-busy', 'false')
+		entranceStatus.textContent = 'The room could not finish loading. Please reload the page to try again.'
+	}
 }
+void prepareEntrance()

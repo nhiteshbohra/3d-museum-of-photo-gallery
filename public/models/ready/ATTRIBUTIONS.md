@@ -11,5 +11,7 @@ Licence: [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0/)
 | `lighting/lighting_chandelier_osgona.glb` | 700511 Classic Osgona chandelier | LIGHTSTAR GROUP | [Sketchfab](https://sketchfab.com/3d-models/700511-classic-osgona-chandelier-9a49936474e546d1a61e536e12cf7e49) |
 | `lighting/lighting_chandelier_unitario.glb` | 763010 Unitario Lightstar chandelier | LIGHTSTAR GROUP | [Sketchfab](https://sketchfab.com/3d-models/763010-unitario-lightstar-chandelier-331466bbf06f4f7baf50be52bbd26fa9) |
 | `lighting/lighting_wall_light_antique.glb` | Antique Wall Light | Rakshaan | [Sketchfab](https://sketchfab.com/3d-models/antique-wall-light-ba2bc42641f34e07aeb36a5c99f4e654) |
+| `furniture/furniture_sofa_1_3dx/scene.gltf` | Sofa 1 \| 3DX | Snowism | [Sketchfab](https://sketchfab.com/3d-models/sofa-1-3dx-6e0045e2b6a142658d561797d9f63669) |
+| `lighting/lighting_marmara_lightstar/scene.gltf` | 801_ Marmara_ Lightstar | LIGHTSTAR GROUP | [Sketchfab](https://sketchfab.com/3d-models/801--marmara--lightstar-7b9f694b53c24c58aca2436cafe35c05) |
 
-All five are licensed under **CC-BY-4.0** (http://creativecommons.org/licenses/by/4.0/).
+All seven are licensed under **CC-BY-4.0** (http://creativecommons.org/licenses/by/4.0/).

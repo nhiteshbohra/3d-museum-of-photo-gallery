@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "node server.js"
+    "start": "node server.js",
+    "photos": "python tests/organize_photos.py"
   },
   "dependencies": {
     "three": "^0.182.0",

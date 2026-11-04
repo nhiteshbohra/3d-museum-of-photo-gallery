@@ -76,8 +76,6 @@ const server = http.createServer((req, res) => {
 
   if (pathname === '/' || pathname === '') {
     pathname = '/index.html';
-  } else if (pathname === '/admin' || pathname === '/admin/') {
-    pathname = '/admin.html';
   }
 
   // Prioritize modern production bundle from dist/ if it exists
@@ -296,7 +294,6 @@ server.listen(PORT, HOST, () => {
   console.log(`  OUR HOME 3D • PRODUCTION NODE.JS SERVER RUNNING`);
   console.log(`=======================================================`);
   console.log(`  🌐 Web App:         http://localhost:${PORT}/index.html`);
-  console.log(`  🎨 Creator Studio:  http://localhost:${PORT}/studio.html`);
   console.log(`  ⚡ WebSocket Sync:   ws://localhost:${PORT}`);
   console.log(`  📦 Environment:     ${process.env.NODE_ENV || 'production'}`);
   console.log(`=======================================================`);
