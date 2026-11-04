@@ -7,6 +7,7 @@ import { getArtworkSizes, saveArtworkSizes, resetArtworkSizes, DEFAULT_ARTWORK_S
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div id="top-bar">
+    <span id="visitor-badge" hidden></span>
     <button id="btn-audio-toggle" class="top-bar-btn" title="Toggle Romantic Classical Ambience (Press M)">
       <span id="audio-label">Music</span>
       <div id="soundwave-anim" class="soundwave">
@@ -42,6 +43,11 @@ app.innerHTML = `
       <div id="entrance-loading" aria-busy="true">
         <progress id="entrance-progress" max="100" value="0" aria-label="Loading museum"></progress>
         <p id="entrance-status" role="status">Preparing your museum…</p>
+      </div>
+
+      <div id="avatar-select" hidden>
+        <p class="avatar-prompt">Who is visiting tonight?</p>
+        <div id="avatar-grid"></div>
       </div>
       <button id="btn-enter-museum" class="btn-enter" hidden aria-describedby="entrance-status">
         <span class="btn-enter-sparkle">✦</span>
@@ -82,6 +88,63 @@ const enterButton = document.querySelector('#btn-enter-museum')
 const entranceStatus = document.querySelector('#entrance-status')
 const entranceProgress = document.querySelector('#entrance-progress')
 let entranceReady = false
+
+// ---- VISITOR / AVATAR SELECTION ----
+const AVATARS = [
+	{ id: 'maya', name: 'Maya', role: 'The Connoisseur', initials: 'M', c1: '#e6c36c', c2: '#8a5a33' },
+	{ id: 'ethan', name: 'Ethan', role: 'The Storyteller', initials: 'E', c1: '#cfa35c', c2: '#6e4a2c' },
+	{ id: 'aurelia', name: 'Aurelia', role: 'The Wanderer', initials: 'A', c1: '#d8b06a', c2: '#7d5636' },
+	{ id: 'callum', name: 'Callum', role: 'The Protector', initials: 'C', c1: '#bf8f52', c2: '#53402a' },
+]
+let selectedAvatarId = null
+const avatarSelectEl = document.querySelector('#avatar-select')
+const avatarGridEl = document.querySelector('#avatar-grid')
+const visitorBadgeEl = document.querySelector('#visitor-badge')
+
+function selectAvatar(id) {
+	selectedAvatarId = id
+	const av = AVATARS.find((a) => a.id === id)
+	if (!av) return
+	avatarGridEl.querySelectorAll('.avatar-card').forEach((c) => {
+		const active = c.dataset.avatarId === id
+		c.classList.toggle('selected', active)
+		c.setAttribute('aria-pressed', String(active))
+	})
+	enterButton.hidden = false
+	enterButton.disabled = false
+	if (visitorBadgeEl) {
+		visitorBadgeEl.hidden = false
+		visitorBadgeEl.textContent = `✦ ${av.name} · ${av.role}`
+	}
+	window.__visitor = av
+}
+
+function renderAvatarSelection() {
+	if (!avatarGridEl) return
+	avatarGridEl.innerHTML = ''
+	for (const av of AVATARS) {
+		const card = document.createElement('button')
+		card.type = 'button'
+		card.className = 'avatar-card'
+		card.dataset.avatarId = av.id
+		card.setAttribute('aria-pressed', 'false')
+		card.innerHTML = `
+			<span class="avatar-medallion" style="--c1:${av.c1};--c2:${av.c2}">
+				<span class="avatar-initials">${av.initials}</span>
+			</span>
+			<span class="avatar-name">${av.name}</span>
+			<span class="avatar-role">${av.role}</span>
+		`
+		card.addEventListener('click', () => selectAvatar(av.id))
+		avatarGridEl.appendChild(card)
+	}
+}
+
+function showAvatarSelection() {
+	if (!avatarSelectEl) return
+	if (avatarGridEl && avatarGridEl.children.length === 0) renderAvatarSelection()
+	avatarSelectEl.hidden = false
+}
 let assetsLoading = false
 let resolveAssetsLoaded = null
 DefaultLoadingManager.onStart = () => { assetsLoading = true }
@@ -287,7 +350,7 @@ function toggleAmbientAudio() {
 let hasEntered = false
 
 function enterMuseum() {
-	if (!entranceReady) return
+	if (!entranceReady || !selectedAvatarId) return
 	hasEntered = true
 	document.body.classList.add('in-sanctuary')
 	overlayEl.hidden = true
@@ -714,9 +777,10 @@ async function prepareEntrance() {
 		entranceReady = true
 		entranceProgress.value = 100
 		document.querySelector('#entrance-loading').setAttribute('aria-busy', 'false')
-		entranceStatus.textContent = 'Your room is ready. Welcome.'
-		enterButton.hidden = false
-		enterButton.disabled = false
+		entranceStatus.textContent = 'Your room is ready.'
+		enterButton.hidden = true
+		enterButton.disabled = true
+		showAvatarSelection()
 		queuePrebuildSalons(coupleCategories)
 	} catch (error) {
 		console.error('[Museum] Entrance loading failed:', error)

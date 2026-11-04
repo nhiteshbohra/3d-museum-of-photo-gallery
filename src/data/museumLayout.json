@@ -49,7 +49,7 @@
       {
         "id": "itm_fireside_chandelier_marmara",
         "type": "glb",
-        "path": "models/ready/lighting/lighting_marmara_lightstar/scene.gltf",
+        "path": "models/ready/lighting/lighting_chandelier_osgona.glb",
         "contact": "ceiling",
         "x": 0,
         "y": 3.2,
@@ -62,7 +62,7 @@
       {
         "id": "itm_fireside_sofa_curved",
         "type": "glb",
-        "path": "models/ready/furniture/furniture_curved_sofa_set_white/scene.gltf",
+        "path": "models/ready/furniture/3d_pbr_curved_sofa.glb",
         "contact": "floor",
         "x": 0,
         "y": 0,
@@ -74,32 +74,40 @@
         "sinkY": 0.001
       },
       {
-        "id": "itm_fireside_plant_left",
+        "id": "itm_fireside_bookcase",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_bookcase.glb",
+        "contact": "floor",
+        "x": 3.3,
+        "y": 0,
+        "z": -0.8,
+        "rotationY": 90,
+        "scale": 0.010,
+        "targetHeight": 2.0,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_fireside_plant_monstera_l",
         "type": "glb",
         "path": "models/ready/plants/plants_monstera.glb",
         "contact": "floor",
-        "x": -3.4,
+        "x": -3.2,
         "y": 0,
         "z": 1.2,
-        "rotationY": 0,
-        "scale": 1.0,
-        "targetHeight": 1.5,
+        "scale": 1.5,
         "alignToSurface": true,
         "sinkY": 0.001
       },
       {
-        "id": "itm_fireside_plant_right",
+        "id": "itm_fireside_plant_potted_l",
         "type": "glb",
         "path": "models/ready/plants/plants_monstera.glb",
         "contact": "floor",
-        "x": 3.4,
+        "x": 3.2,
         "y": 0,
         "z": 1.2,
-        "rotationY": 0,
-        "scale": 1.0,
-        "targetHeight": 1.5,
-        "alignToSurface": true,
-        "sinkY": 0.001
+        "scale": 0.010,
+        "alignToSurface": true
       }
     ],
     "music": [],

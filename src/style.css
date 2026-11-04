@@ -339,6 +339,95 @@ body.in-sanctuary #overlay {
 	transform: scale(1.3) rotate(45deg);
 }
 
+/* Visitor / Avatar Selection */
+#visitor-badge {
+	position: fixed;
+	top: 24px;
+	left: 28px;
+	z-index: 100;
+	font-size: 11px;
+	letter-spacing: 2px;
+	color: var(--gold-bright);
+	text-transform: uppercase;
+	padding: 7px 14px;
+	border: 1px solid rgba(212, 175, 55, 0.4);
+	border-radius: 999px;
+	background: rgba(212, 175, 55, 0.08);
+	backdrop-filter: blur(12px);
+	box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+#avatar-select {
+	margin: 4px 0 14px;
+}
+.avatar-prompt {
+	font-family: 'Cormorant Garamond', Georgia, serif;
+	font-style: italic;
+	font-size: 18px;
+	color: rgba(255, 255, 255, 0.85);
+	text-align: center;
+	margin: 0 0 14px;
+	letter-spacing: 1px;
+}
+#avatar-grid {
+	display: grid;
+	grid-template-columns: repeat(4, 1fr);
+	gap: 10px;
+}
+.avatar-card {
+	background: rgba(255, 255, 255, 0.04);
+	border: 1px solid rgba(212, 175, 55, 0.25);
+	border-radius: 12px;
+	padding: 14px 6px 12px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+	transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+	color: #fff;
+	font-family: 'Montserrat', sans-serif;
+}
+.avatar-card:hover {
+	transform: translateY(-3px);
+	border-color: var(--gold);
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35), 0 0 20px rgba(212, 175, 55, 0.15);
+	background: rgba(212, 175, 55, 0.08);
+}
+.avatar-card.selected {
+	border-color: var(--gold-bright);
+	background: linear-gradient(135deg, rgba(212, 175, 55, 0.28), rgba(18, 20, 32, 0.6));
+	box-shadow: 0 0 0 1px var(--gold-bright), 0 0 24px rgba(212, 175, 55, 0.3);
+}
+.avatar-medallion {
+	width: 62px;
+	height: 62px;
+	border-radius: 50%;
+	background: radial-gradient(circle at 30% 28%, var(--c1), var(--c2) 70%);
+	border: 2px solid rgba(212, 175, 55, 0.55);
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	box-shadow: inset 0 0 0 3px rgba(0, 0, 0, 0.25), 0 4px 14px rgba(0, 0, 0, 0.4);
+}
+.avatar-initials {
+	font-family: 'Cormorant Garamond', Georgia, serif;
+	font-size: 26px;
+	font-weight: 700;
+	color: #fff;
+	text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+}
+.avatar-name {
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 1.5px;
+	text-transform: uppercase;
+}
+.avatar-role {
+	font-size: 10px;
+	color: rgba(255, 255, 255, 0.6);
+	letter-spacing: 0.5px;
+}
+
 /* Visual Keycap Badges */
 .ticket-controls {
 	margin-top: 20px;

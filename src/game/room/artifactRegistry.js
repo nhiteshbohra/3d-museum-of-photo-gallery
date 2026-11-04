@@ -225,7 +225,7 @@ registerArtifact({
 	category: 'furniture',
 	contact: 'floor',
 	pri: 1,
-	path: 'models/ready/furniture/furniture_curved_sofa_set_white/scene.gltf',
+	path: 'models/ready/furniture/3d_pbr_curved_sofa.glb',
 	defaultScale: 0.010,
 	footprint: { shape: 'box', w: 3.2, d: 1.6, height: 0.85 },
 })
