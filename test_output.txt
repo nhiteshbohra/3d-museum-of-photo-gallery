@@ -1,0 +1,70 @@
+TAP version 13
+# Subtest: W forward / S backward; A left / D right, camera yaw=0
+ok 1 - W forward / S backward; A left / D right, camera yaw=0
+  ---
+  duration_ms: 1.56464
+  type: 'test'
+  ...
+# Subtest: diagonal W+D does not automatically sprint
+ok 2 - diagonal W+D does not automatically sprint
+  ---
+  duration_ms: 0.467622
+  type: 'test'
+  ...
+# Subtest: shift sprint doubles speed
+ok 3 - shift sprint doubles speed
+  ---
+  duration_ms: 0.124006
+  type: 'test'
+  ...
+# Subtest: front/orbit camera turns W relative to visible screen
+ok 4 - front/orbit camera turns W relative to visible screen
+  ---
+  duration_ms: 0.177607
+  type: 'test'
+  ...
+# Subtest: follow ignores orbit offset
+ok 5 - follow ignores orbit offset
+  ---
+  duration_ms: 0.105459
+  type: 'test'
+  ...
+# Subtest: idle preserves facing
+ok 6 - idle preserves facing
+  ---
+  duration_ms: 0.152169
+  type: 'test'
+  ...
+# Subtest: backward keeps view-facing
+ok 7 - backward keeps view-facing
+  ---
+  duration_ms: 0.087211
+  type: 'test'
+  ...
+# Subtest: forward follows velocity
+ok 8 - forward follows velocity
+  ---
+  duration_ms: 0.295794
+  type: 'test'
+  ...
+# Subtest: angle shortest path
+ok 9 - angle shortest path
+  ---
+  duration_ms: 0.316215
+  type: 'test'
+  ...
+# Subtest: zero input zero velocity
+ok 10 - zero input zero velocity
+  ---
+  duration_ms: 0.452209
+  type: 'test'
+  ...
+1..10
+# tests 10
+# suites 0
+# pass 10
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 79.913967
