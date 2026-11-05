@@ -448,11 +448,31 @@ export function initMultiplayer({
   function doEmote(idx) {
     const emote = getEmoteById(idx)
     if (!emote) return
+    if (state.emoteActive && state.emoteActive.idx === idx) {
+      stopEmote()
+      return
+    }
     if (state.connected) {
       netEmote(idx, true)
     }
     state.localAvatar?.setEmote(idx, true)
-    state.emoteActive = { idx, until: performance.now() + emote.durationMs }
+    state.emoteActive = {
+      idx,
+      label: emote.label,
+      loop: Boolean(emote.loop),
+      until: emote.loop ? Infinity : performance.now() + emote.durationMs,
+    }
+  }
+
+  function stopEmote() {
+    if (state.emoteActive) {
+      const idx = state.emoteActive.idx
+      if (state.connected) {
+        netEmote(idx, false)
+      }
+      state.localAvatar?.setEmote(idx, false)
+      state.emoteActive = null
+    }
   }
 
   function updateEmoteHint() {
@@ -562,11 +582,16 @@ export function initMultiplayer({
       netState(gatherLocalState())
     }
 
-    // Emote expiration check
-    if (state.emoteActive && now > state.emoteActive.until) {
-      netEmote(state.emoteActive.idx, false)
-      state.localAvatar?.setEmote(state.emoteActive.idx, false)
-      state.emoteActive = null
+    // Cancel emote if player starts walking or running
+    const ps = engineApi?.getPlayerState?.()
+    const isMoving = ps && (ps.moving || Math.hypot(ps.vx || 0, ps.vz || 0) > 0.15)
+    if (isMoving && state.emoteActive) {
+      stopEmote()
+    }
+
+    // Emote expiration check for non-looping emotes
+    if (state.emoteActive && !state.emoteActive.loop && now > state.emoteActive.until) {
+      stopEmote()
     }
 
     requestAnimationFrame(frame)
@@ -732,6 +757,15 @@ export function initMultiplayer({
       return state.seats
     },
     doEmote: (idx) => doEmote(idx),
+    stopEmote: () => stopEmote(),
+    getActiveEmote: () => state.emoteActive,
+    getNearestSeat: (maxDist = 3.5) => {
+      const cam = engineApi?.camera
+      if (!cam || !state.seats) return null
+      return findNearestSeat(state.seats, cam.position.x, cam.position.z, maxDist)
+    },
+    isSeated: () => Boolean(state.localSeat || engineApi?.isSeated?.()),
+    getLocalSeat: () => state.localSeat,
     trySit: () => trySit(),
     standUp: () => standUp(),
     openChat: () => openChat(),

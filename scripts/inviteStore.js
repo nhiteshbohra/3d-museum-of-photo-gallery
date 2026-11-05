@@ -202,9 +202,17 @@ export function revokeInvite(code) {
 export function redeemInvite(inputCode) {
   const store = loadStore(true)
   const now = Date.now()
-  const code = String(inputCode || '').trim()
-
-  const inv = store.invites[code]
+  const trimmed = String(inputCode || '').trim()
+  let inv = store.invites[trimmed]
+  if (!inv) {
+    const lower = trimmed.toLowerCase()
+    for (const [k, v] of Object.entries(store.invites)) {
+      if (k.toLowerCase() === lower) {
+        inv = v
+        break
+      }
+    }
+  }
   if (!inv) {
     return { success: false, error: 'Invalid invitation code.' }
   }

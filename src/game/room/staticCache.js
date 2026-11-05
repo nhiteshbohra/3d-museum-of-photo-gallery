@@ -4,7 +4,6 @@
  * Items in this cache are created once and reused across all room loads:
  *   - photoFrameBackTex   : neutral gray-white backing for photo frames
  *   - noPhotoTex          : "NO PHOTO" placeholder (default 1024 px)
- *   - noPhotoTexSmall     : "NO PHOTO" placeholder (512 px, for small frames)
  *   - lobbyMedallionTex   : "RETURN TO LOBBY" button canvas
  *   - luxuryMats          : shared MeshStandardMaterial instances (no map, same params)
  *

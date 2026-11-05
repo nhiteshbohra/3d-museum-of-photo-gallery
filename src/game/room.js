@@ -838,7 +838,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		group.add(img)
 		disposables.push(imgGeo, imgMat)
 
-		const frontPhotoUrl = (gallery.photos && gallery.photos[0]) || mainThumbnailUrl || null
+		const frontPhotoUrl = localPhotoPath(0) || (gallery.photos && gallery.photos[0]) || mainThumbnailUrl || null
 		img.userData = {
 			pickable: true,
 			isPhoto: true,
@@ -926,7 +926,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		group.add(imgNorth)
 		disposables.push(imgGeoNorth, imgMatNorth)
 
-		const backPhotoUrl = (gallery.photos && gallery.photos[1]) || (gallery.photos && gallery.photos[0]) || null
+		const backPhotoUrl = localPhotoPath(1) || (gallery.photos && gallery.photos[1]) || (gallery.photos && gallery.photos[0]) || null
 		imgNorth.userData = {
 			pickable: true,
 			isPhoto: true,

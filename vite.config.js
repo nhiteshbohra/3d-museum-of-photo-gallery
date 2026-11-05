@@ -9,7 +9,21 @@ export default defineConfig({
     server: {
         host: '127.0.0.1', // Forces IPv4 to prevent IPv6 localhost connection refusal
         port: 5173,
-        allowedHosts: ['.trycloudflare.com'] // Prevents invalid host header errors from Cloudflare
+        allowedHosts: ['.trycloudflare.com'], // Prevents invalid host header errors from Cloudflare
+        proxy: {
+            '/api': {
+                target: 'http://127.0.0.1:8080',
+                changeOrigin: true
+            },
+            '/photos': {
+                target: 'http://127.0.0.1:8080',
+                changeOrigin: true
+            },
+            '/ws': {
+                target: 'ws://127.0.0.1:8080',
+                ws: true
+            }
+        }
     },
     build: {
         minify: 'esbuild',

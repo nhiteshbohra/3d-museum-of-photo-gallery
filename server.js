@@ -1029,9 +1029,9 @@ wss.on('connection', ws => {
       return;
     }
 
-    // 5. EMOTE (ANIM-01: Approved emotes 1: wave, 2: dance, 3: nod)
+    // 5. EMOTE (Approved emotes & actions 1..7)
     if (type === 'emote') {
-      const idx = clampNum(data.e, 1, 3);
+      const idx = clampNum(data.e, 1, 7);
       const start = Boolean(data.start);
       broadcast({ t: 'emote', id: peerId, e: idx, start }, ws);
       return;

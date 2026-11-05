@@ -6,6 +6,7 @@ import { getArtworkSizes } from './config/artworkSizes.js'
 import charactersJson from './data/characters.json'
 import { initMultiplayer } from './avatars/multiplayer.js'
 import { createCharacterSetup } from './avatars/characterSetup.js'
+import { ACTION_CATEGORIES, ACTIONS, getActionById, getActionsByCategory } from './avatars/actionManifest.js'
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -112,30 +113,48 @@ app.innerHTML = `
   <div id="hud">
     <div id="crosshair" aria-hidden="true"></div>
 
-    <!-- Visible Animations Panel / Drawer (Feature A) -->
-    <div id="hud-animations-drawer" class="hud-animations-drawer" style="display:none;" aria-label="Animations Menu">
+    <!-- Right-Side Animations & Interactions Drawer -->
+    <div id="hud-animations-drawer" class="hud-animations-drawer" aria-label="Animations Menu" aria-hidden="true">
       <div class="anim-drawer-header">
-        <span class="anim-drawer-title">✦ Approved Gestures ✦</span>
-        <button id="btn-close-anim-drawer" class="anim-drawer-close" type="button" aria-label="Close">✕</button>
+        <span class="anim-drawer-title">✦ Gestures &amp; Actions ✦</span>
+        <button id="btn-close-anim-drawer" class="anim-drawer-close" type="button" aria-label="Close menu">✕</button>
       </div>
-      <div class="anim-drawer-grid">
-        <button class="anim-card-btn" data-emote="1" type="button" title="Perform Wave (Press 1)">
-          <span class="anim-card-emoji">👋</span>
-          <span class="anim-card-name">Wave</span>
-          <span class="anim-card-badge">1</span>
-        </button>
-        <button class="anim-card-btn" data-emote="2" type="button" title="Perform Dance (Press 2)">
-          <span class="anim-card-emoji">💃</span>
-          <span class="anim-card-name">Dance</span>
-          <span class="anim-card-badge">2</span>
-        </button>
-        <button class="anim-card-btn" data-emote="3" type="button" title="Perform Nod (Press 3)">
-          <span class="anim-card-emoji">👍</span>
-          <span class="anim-card-name">Nod</span>
-          <span class="anim-card-badge">3</span>
-        </button>
+
+      <!-- Active Status Bar -->
+      <div id="anim-status-bar" class="anim-status-bar" style="display:none;">
+        <div class="anim-status-text">
+          <span class="anim-status-dot"></span>
+          <span id="anim-status-label">Playing: Energetic Dance</span>
+        </div>
+        <button id="btn-stop-anim" class="btn-stop-anim" type="button">■ Stop</button>
       </div>
-      <div class="anim-drawer-footer">Press 1-3 anytime · Synchronized with partner</div>
+
+      <!-- Search Box -->
+      <div class="anim-search-box">
+        <span class="anim-search-icon">🔍</span>
+        <input id="action-search" class="anim-search-input" type="search" placeholder="Search 20 actions (wave, dance, sit...)" aria-label="Search actions" />
+      </div>
+
+      <!-- Category Navigation Tabs -->
+      <div id="anim-tabs" class="anim-tabs" role="tablist"></div>
+
+      <!-- Contextual Seat Banner (in Sofa / Chair tab or when near seat) -->
+      <div id="seat-context-banner" class="seat-context-banner" style="display:none;">
+        <div class="seat-context-info">
+          <span id="seat-context-title" class="seat-context-title">Nearby Furniture</span>
+          <span id="seat-context-desc" class="seat-context-desc">Walk close to a sofa or chair to rest</span>
+        </div>
+        <button id="btn-seat-context-action" class="btn-seat-action" type="button">Sit Down (E)</button>
+      </div>
+
+      <!-- Cards Grid Container -->
+      <div class="anim-cards-container">
+        <div id="anim-drawer-grid" class="anim-drawer-grid"></div>
+      </div>
+
+      <div class="anim-drawer-footer">
+        Press <strong>G</strong> or <strong>Esc</strong> to close · Keys <strong>1-3</strong> for quick emotes
+      </div>
     </div>
   </div>
 
@@ -810,23 +829,8 @@ function initMobileControls(engineApi, multiplayer) {
 
 	btnEmotes?.addEventListener('touchstart', (e) => {
 		e.preventDefault()
-		const drawer = document.querySelector('#hud-animations-drawer')
-		if (drawer) {
-			drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none'
-		}
+		toggleAnimationsDrawer()
 	}, { passive: false })
-
-	document.querySelectorAll('.anim-card-btn').forEach(btn => {
-		btn.addEventListener('touchstart', (e) => {
-			e.preventDefault()
-			const id = parseInt(btn.getAttribute('data-emote'), 10)
-			if (id && multiplayer?.doEmote) {
-				multiplayer.doEmote(id)
-			}
-			const drawer = document.querySelector('#hud-animations-drawer')
-			if (drawer) drawer.style.display = 'none'
-		}, { passive: false })
-	})
 }
 
 function enterMuseum() {
@@ -902,14 +906,228 @@ btnCamReset?.addEventListener('click', (e) => {
 	updateCameraModeUI('follow')
 })
 
+// Right-Side Drawer Controller
+let currentAnimCategory = 'gestures'
+let animSearchQuery = ''
+let drawerPollTimer = null
+
+function updateDrawerStatus() {
+	if (!animDrawer || !animDrawer.classList.contains('drawer-open')) return
+
+	const statusBar = document.querySelector('#anim-status-bar')
+	const statusLabel = document.querySelector('#anim-status-label')
+	const seatBanner = document.querySelector('#seat-context-banner')
+	const seatTitle = document.querySelector('#seat-context-title')
+	const seatDesc = document.querySelector('#seat-context-desc')
+	const btnSeatAction = document.querySelector('#btn-seat-context-action')
+
+	// 1. Active animation status
+	const activeEmote = multiplayer?.getActiveEmote?.()
+	if (statusBar && statusLabel) {
+		if (activeEmote) {
+			statusBar.style.display = 'flex'
+			statusLabel.textContent = `Playing: ${activeEmote.label || 'Action'}`
+		} else {
+			statusBar.style.display = 'none'
+		}
+	}
+
+	// 2. Contextual seating banner
+	if (seatBanner && seatTitle && seatDesc && btnSeatAction) {
+		const isSeated = multiplayer?.isSeated?.()
+		const nearestSeat = multiplayer?.getNearestSeat?.(3.5)
+
+		if (isSeated) {
+			seatBanner.style.display = 'flex'
+			seatTitle.textContent = '🟢 Currently Seated'
+			seatDesc.textContent = 'Resting comfortably on museum furniture'
+			btnSeatAction.textContent = 'Stand Up (E)'
+			btnSeatAction.disabled = false
+		} else if (nearestSeat) {
+			seatBanner.style.display = 'flex'
+			const cam = engineApi?.camera
+			const dist = cam ? Math.hypot(cam.position.x - nearestSeat.x, cam.position.z - nearestSeat.z).toFixed(1) : '1.0'
+			seatTitle.textContent = '🛋️ Available Furniture Nearby'
+			seatDesc.textContent = `${nearestSeat.id} (${dist}m away)`
+			btnSeatAction.textContent = 'Sit Down (E)'
+			btnSeatAction.disabled = false
+		} else if (currentAnimCategory === 'seats') {
+			seatBanner.style.display = 'flex'
+			seatTitle.textContent = '⚪ No Furniture Nearby'
+			seatDesc.textContent = 'Walk within 3.5m of a sofa, chair or bench to sit'
+			btnSeatAction.textContent = 'Too Far (>3.5m)'
+			btnSeatAction.disabled = true
+		} else {
+			seatBanner.style.display = 'none'
+		}
+	}
+
+	// 3. Update playing indicator on cards
+	document.querySelectorAll('.anim-card-btn').forEach(card => {
+		const netId = parseInt(card.getAttribute('data-network-id'), 10)
+		const isPlaying = activeEmote && activeEmote.idx === netId
+		card.classList.toggle('playing', Boolean(isPlaying))
+	})
+}
+
+function renderAnimDrawerGrid() {
+	const grid = document.querySelector('#anim-drawer-grid')
+	if (!grid) return
+
+	const activeEmote = multiplayer?.getActiveEmote?.()
+	let items = []
+
+	if (animSearchQuery) {
+		items = ACTIONS.filter(a =>
+			a.name.toLowerCase().includes(animSearchQuery) ||
+			(a.description || '').toLowerCase().includes(animSearchQuery) ||
+			(a.controls || '').toLowerCase().includes(animSearchQuery)
+		)
+	} else {
+		items = getActionsByCategory(currentAnimCategory)
+	}
+
+	if (items.length === 0) {
+		grid.innerHTML = '<div class="anim-empty-state">No matching animations found</div>'
+		return
+	}
+
+	grid.innerHTML = items.map(action => {
+		const isPlaying = activeEmote && activeEmote.idx === action.networkId
+		let badgeText = action.key || ''
+		if (action.loop) {
+			badgeText = badgeText ? `${badgeText} · Loop` : 'Loop'
+		}
+		const isMovement = action.category === 'movement'
+		const isSeatVariant = ['sitLow', 'sitHigh', 'sitDown'].includes(action.id)
+		const disabled = (isMovement || isSeatVariant) ? 'disabled' : ''
+
+		return `
+			<button class="anim-card-btn ${isPlaying ? 'playing' : ''}"
+				data-action-id="${action.id}"
+				data-network-id="${action.networkId || ''}"
+				data-category="${action.category}"
+				type="button"
+				${disabled}
+				title="${action.description || action.name}">
+				<div class="anim-card-top">
+					<span class="anim-card-emoji">${action.emoji || '✨'}</span>
+					${badgeText ? `<span class="anim-card-badge">${badgeText}</span>` : ''}
+				</div>
+				<div class="anim-card-name">${action.name}</div>
+				${action.controls ? `<div class="anim-card-controls">${action.controls}</div>` : ''}
+				<div class="anim-card-desc">${action.description || ''}</div>
+			</button>
+		`
+	}).join('')
+
+	// Wire card clicks
+	grid.querySelectorAll('.anim-card-btn').forEach(card => {
+		card.addEventListener('click', (e) => {
+			e.stopPropagation()
+			const actionId = card.getAttribute('data-action-id')
+			const netId = parseInt(card.getAttribute('data-network-id'), 10)
+			const cat = card.getAttribute('data-category')
+
+			if (cat === 'seats') {
+				if (actionId === 'sit') multiplayer?.trySit?.()
+				else if (actionId === 'standUp') multiplayer?.standUp?.()
+				updateDrawerStatus()
+				return
+			}
+
+			if (netId && multiplayer?.doEmote) {
+				multiplayer.doEmote(netId)
+				card.classList.add('active-pulse')
+				setTimeout(() => card.classList.remove('active-pulse'), 400)
+				updateDrawerStatus()
+			}
+		})
+	})
+}
+
+function initAnimationsDrawer() {
+	const tabsContainer = document.querySelector('#anim-tabs')
+	const searchInput = document.querySelector('#action-search')
+	const btnStop = document.querySelector('#btn-stop-anim')
+	const btnSeat = document.querySelector('#btn-seat-context-action')
+
+	// Render tabs
+	if (tabsContainer) {
+		tabsContainer.innerHTML = ACTION_CATEGORIES.map(cat => `
+			<button class="anim-tab-btn ${cat.id === currentAnimCategory ? 'active' : ''}"
+				data-cat="${cat.id}"
+				type="button"
+				role="tab">
+				<span>${cat.emoji}</span>
+				<span>${cat.label}</span>
+			</button>
+		`).join('')
+
+		tabsContainer.querySelectorAll('.anim-tab-btn').forEach(tab => {
+			tab.addEventListener('click', (e) => {
+				e.stopPropagation()
+				currentAnimCategory = tab.getAttribute('data-cat')
+				tabsContainer.querySelectorAll('.anim-tab-btn').forEach(t => t.classList.remove('active'))
+				tab.classList.add('active')
+				renderAnimDrawerGrid()
+				updateDrawerStatus()
+			})
+		})
+	}
+
+	// Search input
+	searchInput?.addEventListener('input', (e) => {
+		animSearchQuery = e.target.value.trim().toLowerCase()
+		renderAnimDrawerGrid()
+	})
+
+	// Stop animation button
+	btnStop?.addEventListener('click', (e) => {
+		e.stopPropagation()
+		multiplayer?.stopEmote?.()
+		updateDrawerStatus()
+	})
+
+	// Contextual seat button
+	btnSeat?.addEventListener('click', (e) => {
+		e.stopPropagation()
+		if (multiplayer?.isSeated?.()) {
+			multiplayer.standUp?.()
+		} else {
+			multiplayer?.trySit?.()
+		}
+		setTimeout(updateDrawerStatus, 200)
+	})
+
+	renderAnimDrawerGrid()
+}
+
 function toggleAnimationsDrawer(forceOpen) {
 	if (!animDrawer) return
-	const isClosed = animDrawer.style.display === 'none'
-	const shouldOpen = forceOpen !== undefined ? forceOpen : isClosed
-	animDrawer.style.display = shouldOpen ? 'block' : 'none'
-	btnAnimToggle?.classList.toggle('active', shouldOpen)
-	if (shouldOpen && document.pointerLockElement) {
-		document.exitPointerLock()
+	const isOpen = animDrawer.classList.contains('drawer-open')
+	const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen
+
+	if (shouldOpen) {
+		animDrawer.classList.add('drawer-open')
+		animDrawer.setAttribute('aria-hidden', 'false')
+		btnAnimToggle?.classList.add('active')
+		if (document.pointerLockElement) {
+			document.exitPointerLock()
+		}
+		updateDrawerStatus()
+		renderAnimDrawerGrid()
+		if (!drawerPollTimer) {
+			drawerPollTimer = setInterval(updateDrawerStatus, 400)
+		}
+	} else {
+		animDrawer.classList.remove('drawer-open')
+		animDrawer.setAttribute('aria-hidden', 'true')
+		btnAnimToggle?.classList.remove('active')
+		if (drawerPollTimer) {
+			clearInterval(drawerPollTimer)
+			drawerPollTimer = null
+		}
 	}
 }
 
@@ -923,25 +1141,19 @@ btnCloseAnimDrawer?.addEventListener('click', (e) => {
 	toggleAnimationsDrawer(false)
 })
 
-// Wire up emote buttons in drawer
-document.querySelectorAll('.anim-card-btn').forEach(btn => {
-	btn.addEventListener('click', (e) => {
-		e.stopPropagation()
-		const emoteId = parseInt(btn.getAttribute('data-emote'), 10)
-		if (emoteId && multiplayer?.doEmote) {
-			multiplayer.doEmote(emoteId)
-			btn.classList.add('active-pulse')
-			setTimeout(() => btn.classList.remove('active-pulse'), 400)
-		}
-	})
-})
+initAnimationsDrawer()
 
 // Unified Hotkeys Handler (Camera, Audio, Fullscreen, Gestures, Lightbox)
 window.addEventListener('keydown', (e) => {
 	if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || ['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) return
 
-	// Escape closes photo lightbox
+	// Escape closes animations drawer or photo lightbox
 	if (e.key === 'Escape') {
+		if (animDrawer?.classList.contains('drawer-open')) {
+			e.preventDefault()
+			toggleAnimationsDrawer(false)
+			return
+		}
 		if (lightboxEl && !lightboxEl.hidden) {
 			closePhotoLightbox(true)
 			return
@@ -990,9 +1202,10 @@ window.addEventListener('keydown', (e) => {
 		if (!locked && multiplayer?.doEmote) {
 			multiplayer.doEmote(emoteId)
 		}
-		const b = document.querySelector(`.anim-card-btn[data-emote="${emoteId}"]`)
+		const b = document.querySelector(`.anim-card-btn[data-network-id="${emoteId}"]`)
 		b?.classList.add('active-pulse')
 		setTimeout(() => b?.classList.remove('active-pulse'), 400)
+		updateDrawerStatus()
 	}
 })
 
@@ -1000,6 +1213,10 @@ document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuse
 
 // Resume pointer lock on canvas click if already entered and unlocked
 canvas.addEventListener('click', () => {
+	if (animDrawer?.classList.contains('drawer-open')) {
+		toggleAnimationsDrawer(false)
+		return
+	}
 	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden) {
 		requestPlay()
 	}

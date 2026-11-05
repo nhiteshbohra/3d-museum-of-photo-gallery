@@ -311,6 +311,16 @@ export class RemoteAvatar {
       }
     }
 
+    this._registerClip = registerClip
+
+    // Handle clip completion for non-looping emotes
+    this.mixer.addEventListener('finished', (e) => {
+      if (this.emoteAction && this.actions.get(this.emoteAction) === e.action) {
+        this.emoteAction = null
+        this._applyBaseAnim()
+      }
+    })
+
     // Load idle first for immediate playback
     const idlePromise = loadModelWithTimeout(`${base}${CLIP_FILES.idle}`, 45000)
       .then(gltf => {
@@ -400,16 +410,44 @@ export class RemoteAvatar {
     }
   }
 
-  setEmote(emoteIdx, start) {
-    const map = { 1: 'wave', 2: 'dance', 3: 'nod' }
-    const logical = map[emoteIdx]
+  setEmote(emoteIdx, start = true) {
+    const map = {
+      1: 'wave',
+      2: 'dance',
+      3: 'nod',
+      4: 'shake',
+      5: 'casualDance',
+      6: 'lookLeft',
+      7: 'lookRight'
+    }
+    const logical = typeof emoteIdx === 'string' ? emoteIdx : map[emoteIdx]
     if (!logical) return
     if (start) {
       this.emoteAction = logical
-      this._crossfade(logical, 0.15)
+      if (this.actions.has(logical)) {
+        this._crossfade(logical, 0.15)
+      } else {
+        const file = CLIP_FILES[logical]
+        if (file && this.modelUrl && this._registerClip) {
+          const base = this._animationBasePath(this.modelUrl)
+          loadModelWithTimeout(`${base}${file}`, 30000)
+            .then(gltf => {
+              const clip = gltf.animations && gltf.animations[0]
+              if (clip && this._registerClip) {
+                this._registerClip(logical, clip)
+                if (this.emoteAction === logical) {
+                  this._crossfade(logical, 0.15)
+                }
+              }
+            })
+            .catch(err => console.warn(`[avatars] on-demand load failed for ${logical}:`, err))
+        }
+      }
     } else {
-      this.emoteAction = null
-      this._applyBaseAnim()
+      if (this.emoteAction === logical || !logical) {
+        this.emoteAction = null
+        this._applyBaseAnim()
+      }
     }
   }
 

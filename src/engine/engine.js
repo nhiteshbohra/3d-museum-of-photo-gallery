@@ -615,13 +615,18 @@ export function startYourEngines({
 		whenPlacedItemsLoaded().catch(err => console.warn('[PlacedItems] Stream warning:', err))
 
 		try {
-			if (typeof renderer.compile === 'function') {
+			if (typeof renderer.compileAsync === 'function') {
+				await renderer.compileAsync(scene, camera)
+			} else if (typeof renderer.compile === 'function') {
 				renderer.compile(scene, camera)
 			}
 		} catch (_) {}
 
 		deferredTextureLoadToken += 1
-		await runDeferredTextureLoads(currentRoom, deferredTextureLoadToken)
+		const deferredToken = deferredTextureLoadToken
+		// Stream photo textures in the background so the first usable room frame is
+		// never blocked on network downloads; textures pop in as they finish.
+		Promise.resolve().then(() => runDeferredTextureLoads(currentRoom, deferredToken)).catch(() => {})
 
 		halfW = currentRoom.bounds?.halfW ?? halfW
 		halfL = currentRoom.bounds?.halfL ?? halfL
