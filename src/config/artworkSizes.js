@@ -64,7 +64,7 @@ export function getArtworkSizes() {
 		if (saved) {
 			const parsed = JSON.parse(saved)
 			return {
-				eastWall: { ...DEFAULT_ARTWORK_SIZES.eastWall, ...parsed.eastWall },
+				eastWall: { ...DEFAULT_ARTWORK_SIZES.eastWall, ...parsed.eastWall, count: DEFAULT_ARTWORK_SIZES.eastWall.count },
 				northMasterpiece: { ...DEFAULT_ARTWORK_SIZES.northMasterpiece, ...parsed.northMasterpiece },
 				southGateArtworks: { ...DEFAULT_ARTWORK_SIZES.southGateArtworks, ...parsed.southGateArtworks },
 				centerPartition: { ...DEFAULT_ARTWORK_SIZES.centerPartition, ...parsed.centerPartition },

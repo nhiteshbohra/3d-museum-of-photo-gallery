@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import * as THREE from 'three'
 import { fitPhotoToFrame } from '../src/misc/helper.js'
+import { getArtworkSizes } from '../src/config/artworkSizes.js'
 
 test('whole photos fit inside frames without cropping or distortion', () => {
 	for (const [iw, ih] of [[4000, 1000], [1000, 4000], [1000, 1000]]) {
@@ -21,6 +22,22 @@ test('whole photos fit inside frames without cropping or distortion', () => {
 			assert.deepEqual(texture.repeat.toArray(), [1, 1])
 			assert.deepEqual(texture.offset.toArray(), [0, 0])
 		}
+	}
+})
+
+test('old saved artwork settings cannot remove the five fixed photo slots', () => {
+	const previousWindow = globalThis.window
+	const previousStorage = globalThis.localStorage
+	globalThis.window = {}
+	globalThis.localStorage = { getItem: () => JSON.stringify({ eastWall: { count: 0, width: 1.8 } }) }
+	try {
+		assert.equal(getArtworkSizes().eastWall.count, 5)
+		assert.equal(getArtworkSizes().eastWall.width, 1.8)
+	} finally {
+		if (previousWindow === undefined) delete globalThis.window
+		else globalThis.window = previousWindow
+		if (previousStorage === undefined) delete globalThis.localStorage
+		else globalThis.localStorage = previousStorage
 	}
 })
 

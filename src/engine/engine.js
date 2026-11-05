@@ -105,32 +105,24 @@ export function startYourEngines({
 
 	async function runDeferredTextureLoads(room, token) {
 		const jobs = Array.isArray(room?.deferredTextureLoads) ? room.deferredTextureLoads : []
-		if (jobs.length === 0) return
-
-		for (const job of jobs) {
+		// Each room has at most ten photos; one slow image must not block the rest.
+		await Promise.all(jobs.map(async (job) => {
 			if (token !== deferredTextureLoadToken || currentRoom !== room) return
-
 			const url = typeof job?.url === 'string' ? job.url.trim() : ''
-			if (!url) continue
-
-			if (loadedPhotoTextureCache.has(url)) {
-				const tex = loadedPhotoTextureCache.get(url)
-				if (job && typeof job.onLoad === 'function') job.onLoad(tex)
-				continue
-			}
-
-			await new Promise((r) => window.requestAnimationFrame(r))
-			if (token !== deferredTextureLoadToken || currentRoom !== room) return
-
+			if (!url) return
 			try {
+				if (!loadedPhotoTextureCache.has(url)) {
+					await new Promise((resolve) => window.requestAnimationFrame(resolve))
+				}
+				if (token !== deferredTextureLoadToken || currentRoom !== room) return
 				const tex = await loadTextureAsync(url)
 				if (token !== deferredTextureLoadToken || currentRoom !== room) return
-				if (job && typeof job.onLoad === 'function') job.onLoad(tex)
+				if (typeof job.onLoad === 'function') job.onLoad(tex)
 			} catch (err) {
 				if (token !== deferredTextureLoadToken || currentRoom !== room) return
-				if (job && typeof job.onError === 'function') job.onError(err)
+				if (typeof job.onError === 'function') job.onError(err)
 			}
-		}
+		}))
 	}
 
 	const holdAnchor = new THREE.Object3D()
@@ -644,7 +636,7 @@ export function startYourEngines({
 		const deferredToken = deferredTextureLoadToken
 		// Stream photo textures in the background so the first usable room frame is
 		// never blocked on network downloads; textures pop in as they finish.
-		Promise.resolve().then(() => runDeferredTextureLoads(currentRoom, deferredToken)).catch(() => {})
+		Promise.resolve().then(() => runDeferredTextureLoads(nextRoom, deferredToken)).catch(err => console.warn('[OurMuseum] Photo loading failed', err))
 
 		halfW = currentRoom.bounds?.halfW ?? halfW
 		halfL = currentRoom.bounds?.halfL ?? halfL
