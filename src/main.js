@@ -8,6 +8,10 @@ import { initMultiplayer } from './avatars/multiplayer.js'
 import { createCharacterSetup } from './avatars/characterSetup.js'
 import { ACTION_CATEGORIES, ACTIONS, getActionById, getActionsByCategory } from './avatars/actionManifest.js'
 
+// Build the avatar roster from characters.json
+const charRoster = (charactersJson?.roster || []).slice(0, 2)
+const AVATARS = charRoster
+
 const app = document.querySelector('#app');
 app.innerHTML = `
   <div id="top-bar">
@@ -231,56 +235,62 @@ async function redeemInviteCode() {
 		redeemBtn.disabled = true
 		redeemBtn.textContent = 'Verifying…'
 	}
+	let data = null
 	try {
 		const res = await fetch('/api/invite/redeem', {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ code }),
 		})
-		const data = await res.json().catch(() => ({ ok: false }))
-		if (res.ok && data.ok) {
-			inviteRedeemed = true
-			lastInviteRecipient = data.recipient || null
-			window.__museumAuthenticated = true
-			window.__museumSessionToken = true
-			window.__museumPasscode = code
-			setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
-			if (inviteCodeInput) {
-				inviteCodeInput.value = code
-				inviteCodeInput.setAttribute('readonly', 'readonly')
-			}
-			if (redeemBtn) {
-				redeemBtn.textContent = 'Verified ✓'
-				redeemBtn.disabled = true
-			}
-
-			// Pre-select avatar matching recipient
-			if (data.recipient) {
-				const recLower = String(data.recipient).toLowerCase()
-				const match = AVATARS.find(a => a.name.toLowerCase() === recLower)
-				if (match) {
-					selectedAvatarId = match.id
-					if (characterSetup && typeof selectAvatar === 'function') {
-						selectAvatar(match.id)
-					}
-				}
-			}
-
-			// Load the protected letters (AUTH-02) and start museum experience
-			await loadPrivateLetters()
-			await startMuseumExperience()
-		} else {
+		data = await res.json().catch(() => ({ ok: false }))
+		if (!res.ok || !data.ok) {
 			inviteRedeemed = false
 			setInviteStatus((data && data.error) || 'Invitation could not be verified.', false)
+			return
 		}
-	} catch {
+	} catch (netErr) {
 		inviteRedeemed = false
-		setInviteStatus('Could not reach the server. Are you connected?', false)
+		setInviteStatus('Could not reach the server. Please check if the server is running on port 8080.', false)
+		return
 	} finally {
 		if (redeemBtn && !inviteRedeemed) {
 			redeemBtn.disabled = false
 			redeemBtn.textContent = 'Verify Pass'
 		}
+	}
+
+	inviteRedeemed = true
+	lastInviteRecipient = data.recipient || null
+	window.__museumAuthenticated = true
+	window.__museumSessionToken = true
+	window.__museumPasscode = code
+	setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
+	if (inviteCodeInput) {
+		inviteCodeInput.value = code
+		inviteCodeInput.setAttribute('readonly', 'readonly')
+	}
+	if (redeemBtn) {
+		redeemBtn.textContent = 'Verified ✓'
+		redeemBtn.disabled = true
+	}
+
+	// Pre-select avatar matching recipient
+	if (data.recipient && Array.isArray(AVATARS)) {
+		const recLower = String(data.recipient).toLowerCase()
+		const match = AVATARS.find(a => a.name && a.name.toLowerCase() === recLower)
+		if (match) {
+			selectedAvatarId = match.id
+			if (characterSetup && typeof selectAvatar === 'function') {
+				selectAvatar(match.id)
+			}
+		}
+	}
+
+	try {
+		await loadPrivateLetters()
+		await startMuseumExperience()
+	} catch (err) {
+		console.error('[Experience Boot Error]', err)
 	}
 }
 
@@ -361,10 +371,6 @@ if (initialInviteParam && inviteCodeInput) {
 }
 
 // ---- VISITOR / AVATAR SELECTION ----
-// Build the avatar roster from the editable characters.json (only 2 slots;
-// edit src/data/characters.json to change names/models/colours).
-const charRoster = (charactersJson?.roster || []).slice(0, 2)
-const AVATARS = charRoster
 let selectedAvatarId = null
 let avatarLoading = false
 let avatarSelection = 0
