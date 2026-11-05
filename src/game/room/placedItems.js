@@ -70,9 +70,18 @@ function attachDebugSeatVisual(anchor, seatRecord, group) {
 }
 
 let debugHudEl = null
+let isDebugSeatsCached = null
+
 export function updateDebugSeatsHud(camPos) {
 	if (typeof window === 'undefined') return
-	if (new URLSearchParams(window.location.search).get('debug') !== 'seats') return
+	if (isDebugSeatsCached === null) {
+		try {
+			isDebugSeatsCached = new URLSearchParams(window.location.search).get('debug') === 'seats'
+		} catch {
+			isDebugSeatsCached = false
+		}
+	}
+	if (!isDebugSeatsCached) return
 	if (!debugHudEl) {
 		debugHudEl = document.createElement('div')
 		debugHudEl.id = 'debug-seat-hud'
@@ -99,16 +108,6 @@ export function updateDebugSeatsHud(camPos) {
 	if (nearest) {
 		debugHudEl.textContent = `[debug=seats] Nearest: ${nearest.id} | Dist: ${minDist.toFixed(2)}m | Yaw: ${nearest.yaw.toFixed(2)}rad | CushionY: ${nearest.cushionY.toFixed(2)}m`
 	}
-}
-
-export function setRuntimeLayout(layout) {
-	if (layout && typeof layout === 'object' && layout.rooms) {
-		activeLayout = layout
-	}
-}
-
-export function getRuntimeLayout() {
-	return activeLayout
 }
 
 export function getPlacedItemsForRoom(roomKey) {

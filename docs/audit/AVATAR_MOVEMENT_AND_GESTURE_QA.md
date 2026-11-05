@@ -54,3 +54,4 @@ Per Phase 3 specifications:
   - Left joystick: horizontal movement (`WASD` analog equivalent).
   - Right joystick: look / camera orbit.
 - **Touch Gesture Drawer**: Drawer toggle button cleanly accessible in mobile portrait and landscape viewports with zero overlap over gallery navigation controls.
+

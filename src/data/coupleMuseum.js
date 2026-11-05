@@ -130,21 +130,8 @@ export function createMemoryCanvas(title, subtitle, palette, style = 'landscape'
   return canvas.toDataURL('image/png');
 }
 
-// All salons share an identical photo set so every room has the same wall
-// layout (same images in the same slots). Furniture/artefacts are applied only
-// in the lobby.
-const IDENTICAL_PHOTOS = [
-  createMemoryCanvas('The Hearth at Twilight', 'St. Moritz • December', { top: '#1c100a', mid: '#381e13', bottom: '#61341c', glow: '#ff9d42', mountain: '#120905' }),
-  createMemoryCanvas('Snowfall in the Pines', 'Zermatt Trails', { top: '#0b1424', mid: '#1f3354', bottom: '#415e85', glow: '#ffdd99', mountain: '#080d17' }),
-  createMemoryCanvas('The Warm Woolen Scarf', 'Cozy Mornings', { top: '#18121f', mid: '#362447', bottom: '#593b73', glow: '#ffc785', mountain: '#100a14' }),
-  createMemoryCanvas('Cabin by the Frozen Lake', 'Quiet Solitude', { top: '#08111f', mid: '#162945', bottom: '#2f496e', glow: '#ffe0a8', mountain: '#040912' }, 'lake'),
-  createMemoryCanvas('Embers in the Hearth', 'Midnight Glow', { top: '#1f0d08', mid: '#421a10', bottom: '#7a2f1a', glow: '#ffa352', mountain: '#140704' }),
-  createMemoryCanvas('Winter Lantern Walk', 'Old Village Pathways', { top: '#0d1829', mid: '#1c2f4d', bottom: '#3c5a85', glow: '#ffd680', mountain: '#080f1a' }),
-  createMemoryCanvas('Frost on the Balcony', 'First Morning Chill', { top: '#0a1624', mid: '#192b45', bottom: '#38547a', glow: '#d6edff', mountain: '#050c14' }),
-  createMemoryCanvas('Alpine Twilight Glow', 'Matterhorn Silhouette', { top: '#141026', mid: '#2c224a', bottom: '#563f80', glow: '#ffbe85', mountain: '#0e0a1c' }),
-  createMemoryCanvas('Steam Over Hot Cocoa', 'Sunday Warmth', { top: '#1c1510', mid: '#382a1e', bottom: '#614833', glow: '#ffc98a', mountain: '#120c08' }),
-  createMemoryCanvas('Snow Blanket on the Roof', 'Winter Slumber', { top: '#09131f', mid: '#17273d', bottom: '#304969', glow: '#e8f3ff', mountain: '#050a12' })
-]
+// All salon photo assets are loaded from /photos/<room_folder>/.
+const IDENTICAL_PHOTOS = []
 
 export const coupleSalons = {
   'Fireside Winter Memories': {
@@ -219,7 +206,3 @@ export const ROOM_KEY_TO_TITLE = {
   orangery: 'The Glass Orangery',
   alcove: 'The Secret Promise Alcove',
 };
-
-export const TITLE_TO_ROOM_KEY = Object.fromEntries(
-  Object.entries(ROOM_KEY_TO_TITLE).map(([k, v]) => [v, k])
-);

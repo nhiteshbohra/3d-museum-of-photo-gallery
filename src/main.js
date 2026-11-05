@@ -444,7 +444,9 @@ let idlePrebuildScheduled = false
 function queuePrebuildSalons(salonsToQueue) {
 	if (!entranceReady) return
 	if (!Array.isArray(salonsToQueue)) return
-	for (const title of salonsToQueue) {
+	// Cap prebuild queue to 2 adjacent rooms to prevent cache eviction thrashing
+	const targets = salonsToQueue.slice(0, 2)
+	for (const title of targets) {
 		if (title && !prebuildQueue.includes(title)) {
 			prebuildQueue.push(title)
 		}
@@ -662,7 +664,6 @@ function initMobileControls(engineApi, multiplayer) {
 	const btnSit = document.querySelector('#btn-touch-sit')
 	const btnChat = document.querySelector('#btn-touch-chat')
 	const btnEmotes = document.querySelector('#btn-touch-emotes')
-	const emotesBar = document.querySelector('#mobile-emotes-bar')
 
 	// 1. Virtual Joystick (Left touch zone)
 	let joyTouchId = null
@@ -935,10 +936,34 @@ document.querySelectorAll('.anim-card-btn').forEach(btn => {
 	})
 })
 
-// Hotkeys for Camera and Emotes (C: toggle orbit, V: front, R: reset, G: gestures, 1-3: emotes)
+// Unified Hotkeys Handler (Camera, Audio, Fullscreen, Gestures, Lightbox)
 window.addEventListener('keydown', (e) => {
+	if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || ['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) return
+
+	// Escape closes photo lightbox
+	if (e.key === 'Escape') {
+		if (lightboxEl && !lightboxEl.hidden) {
+			closePhotoLightbox(true)
+			return
+		}
+	}
+
+	// Hotkeys for Music and Fullscreen (accessible anytime)
+	if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
+		toggleAmbientAudio()
+		return
+	}
+	if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
+		if (!document.fullscreenElement) {
+			document.documentElement.requestFullscreen().catch(() => {})
+		} else {
+			document.exitFullscreen().catch(() => {})
+		}
+		return
+	}
+
+	// Museum in-world hotkeys (Camera, Gestures)
 	if (!hasEntered) return
-	if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return
 
 	if (e.code === 'KeyC') {
 		e.preventDefault()
@@ -957,19 +982,15 @@ window.addEventListener('keydown', (e) => {
 	} else if (e.code === 'KeyG') {
 		e.preventDefault()
 		toggleAnimationsDrawer()
-	} else if (e.code === 'Digit1') {
-		multiplayer?.doEmote?.(1)
-		const b = document.querySelector('.anim-card-btn[data-emote="1"]')
-		b?.classList.add('active-pulse')
-		setTimeout(() => b?.classList.remove('active-pulse'), 400)
-	} else if (e.code === 'Digit2') {
-		multiplayer?.doEmote?.(2)
-		const b = document.querySelector('.anim-card-btn[data-emote="2"]')
-		b?.classList.add('active-pulse')
-		setTimeout(() => b?.classList.remove('active-pulse'), 400)
-	} else if (e.code === 'Digit3') {
-		multiplayer?.doEmote?.(3)
-		const b = document.querySelector('.anim-card-btn[data-emote="3"]')
+	} else if (e.code === 'Digit1' || e.code === 'Digit2' || e.code === 'Digit3') {
+		const emoteId = parseInt(e.code.replace('Digit', ''), 10)
+		const canvas = document.querySelector('#scene')
+		const locked = document.pointerLockElement === canvas
+		// If pointer is unlocked, trigger emote here (when locked, multiplayer.js triggers onKeyDown)
+		if (!locked && multiplayer?.doEmote) {
+			multiplayer.doEmote(emoteId)
+		}
+		const b = document.querySelector(`.anim-card-btn[data-emote="${emoteId}"]`)
 		b?.classList.add('active-pulse')
 		setTimeout(() => b?.classList.remove('active-pulse'), 400)
 	}
@@ -1253,30 +1274,6 @@ function closePhotoLightbox(force = false) {
 
 lightboxCloseBtn.addEventListener('click', () => closePhotoLightbox(true))
 lightboxBackdrop.addEventListener('click', () => closePhotoLightbox(false))
-window.addEventListener('keydown', (e) => {
-	if (e.key === 'Escape') {
-		if (!lightboxEl.hidden) {
-			closePhotoLightbox(true)
-			return
-		}
-	}
-	// Hotkeys for Music and Fullscreen while moving or unlocked
-	if (['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) {
-		return
-	}
-	if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
-		toggleAmbientAudio()
-		return
-	}
-	if (e.code === 'KeyF' || e.key === 'f' || e.key === 'F') {
-		if (!document.fullscreenElement) {
-			document.documentElement.requestFullscreen().catch(() => {})
-		} else {
-			document.exitFullscreen().catch(() => {})
-		}
-		return
-	}
-})
 
 let museumStarted = false
 let multiplayer = null

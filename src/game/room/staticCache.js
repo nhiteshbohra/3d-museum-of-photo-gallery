@@ -63,27 +63,6 @@ export function getStaticCache() {
 	noPhotoTex.colorSpace = THREE.SRGBColorSpace
 	configureGalleryTexture(noPhotoTex)
 
-	// ── "NO PHOTO" Placeholder Texture (512 px, for small frames) ─────────────
-	const noPhotoSmallCanvas = document.createElement('canvas')
-	noPhotoSmallCanvas.width = 512
-	noPhotoSmallCanvas.height = 512
-	const npsCtx = noPhotoSmallCanvas.getContext('2d')
-	if (npsCtx) {
-		npsCtx.fillStyle = '#c0c0a9'
-		npsCtx.fillRect(0, 0, 512, 512)
-		npsCtx.strokeStyle = 'rgba(0,0,0,0.18)'
-		npsCtx.lineWidth = Math.max(4, Math.floor(512 * 0.01))
-		npsCtx.strokeRect(12, 12, 512 - 24, 512 - 24)
-		npsCtx.fillStyle = 'rgba(0,0,0,0.9)'
-		npsCtx.textAlign = 'center'
-		npsCtx.textBaseline = 'middle'
-		npsCtx.font = `800 ${Math.floor(512 * 0.11)}px system-ui, -apple-system, Segoe UI, Roboto, Arial`
-		npsCtx.fillText('NO PHOTO', 256, 256 - Math.floor(512 * 0.01))
-	}
-	const noPhotoTexSmall = new THREE.CanvasTexture(noPhotoSmallCanvas)
-	noPhotoTexSmall.colorSpace = THREE.SRGBColorSpace
-	configureGalleryTexture(noPhotoTexSmall)
-
 	// ── "RETURN TO LOBBY" Medallion Canvas Texture ───────────────────────────
 	const medallionCanvas = document.createElement('canvas')
 	medallionCanvas.width = 512
@@ -152,7 +131,6 @@ export function getStaticCache() {
 	cache = {
 		photoFrameBackTex,
 		noPhotoTex,
-		noPhotoTexSmall,
 		lobbyMedallionTex,
 		luxuryMats,
 		geoCache,
@@ -165,7 +143,6 @@ export function disposeStaticCache() {
 	if (!cache) return
 	cache.photoFrameBackTex?.dispose()
 	cache.noPhotoTex?.dispose()
-	cache.noPhotoTexSmall?.dispose()
 	cache.lobbyMedallionTex?.dispose()
 	for (const mat of Object.values(cache.luxuryMats)) mat?.dispose()
 	for (const geo of cache.geoCache.values()) geo?.dispose()

@@ -53,3 +53,4 @@ In early testing of two-user multiplayer, visitors entering the lobby could join
   - Emote sync (`wave`, `dance`, `nod`) verified.
 - End-to-end multi-browser test (`tests/server_protocol.test.mjs`):
   - 100% passed across all 10 test suites.
+

@@ -52,3 +52,4 @@ To achieve instantaneous transitions without freezing the browser during GLB par
 - **Frustum Culling & Disposal**:
   - Remote avatar meshes and inactive gallery items automatically toggle visibility based on room occupancy.
   - Disposed assets cleanly release GPU textures and geometry buffers.
+

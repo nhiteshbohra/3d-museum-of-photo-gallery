@@ -68,3 +68,4 @@ Visitor Browser                                  Node.js Hardened Server
 | **Session Revocation** | `revokeInvite(code)` invalidates active HTTP sessions and drops active WebSockets across processes | Verified |
 | **Max Capacity** | Max 2 authenticated human visitors per private museum sanctuary | Verified |
 | **Origin Policy** | Strict `/ws` path gating, origin host whitelist or null/same-origin safety | Verified |
+

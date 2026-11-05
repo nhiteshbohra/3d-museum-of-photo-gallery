@@ -62,18 +62,6 @@ export function getArtifact(id) {
 	return registry.get(id) || null
 }
 
-export function hasArtifact(id) {
-	return registry.has(id)
-}
-
-export function getAllArtifacts() {
-	return Array.from(registry.values())
-}
-
-export function getArtifactsByCategory(category) {
-	return getAllArtifacts().filter((a) => a.category === category)
-}
-
 // ─────────────────────────────────────────────────────────────────────────────
 // GLB MODEL ARTIFACT DEFINITIONS (from public/models/ready/models.manifest.json)
 // ─────────────────────────────────────────────────────────────────────────────

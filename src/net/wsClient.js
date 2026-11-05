@@ -219,7 +219,3 @@ export function netChat(text) {
 export function netPing(seq) {
   sendNet({ t: 'ping', seq })
 }
-
-export function netPong(seq) {
-  sendNet({ t: 'pong', seq })
-}

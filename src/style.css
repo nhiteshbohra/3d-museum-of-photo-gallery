@@ -877,25 +877,6 @@ body.in-sanctuary.is-touch-device #mobile-controls {
 	pointer-events: auto;
 }
 
-.mobile-emote-item {
-	background: rgba(216, 176, 106, 0.15);
-	border: 1px solid rgba(216, 176, 106, 0.35);
-	border-radius: 8px;
-	color: #f7eedb;
-	font-family: system-ui, sans-serif;
-	font-size: 13px;
-	font-weight: 600;
-	padding: 8px 16px;
-	cursor: pointer;
-	text-align: left;
-	white-space: nowrap;
-	-webkit-tap-highlight-color: transparent;
-}
-
-.mobile-emote-item:active {
-	background: rgba(216, 176, 106, 0.4);
-}
-
 /* ---- 360° ORBIT CAMERA & ANIMATION CONTROLS (UI-ANIM-01, CAM-01..02) ---- */
 .top-bar-group {
 	display: flex;
