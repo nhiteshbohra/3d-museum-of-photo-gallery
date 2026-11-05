@@ -236,7 +236,5 @@ export function validateSession(token) {
     return null
   }
 
-  session.lastSeen = Date.now()
-  saveStore(store)
   return session
 }
