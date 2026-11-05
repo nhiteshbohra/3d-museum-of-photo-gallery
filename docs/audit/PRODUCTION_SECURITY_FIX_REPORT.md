@@ -96,3 +96,4 @@ npm run models:verify
 ## 5. Production Readiness Certification
 
 No P0 or P1 security defects remain. All security fixes are backed by automated regression tests in the CI/test pipeline. Local private content is intact and untracked. Safe Git history cleanup instructions have been provided for repository maintenance.
+

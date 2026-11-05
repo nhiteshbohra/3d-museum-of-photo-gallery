@@ -14,6 +14,10 @@ This document itemizes all discovered, audited, and resolved defects across the 
 | **AUTH-03** | P0 | Security | Lack of Session Token & HttpOnly Cookie on Invitation Pass | RESOLVED |
 | **SEC-01** | P0 | Security | Directory Traversal via Unsanitized Express Static Root | RESOLVED |
 | **SEC-02** | P1 | Reliability | Server Crash on Malformed URI Decoding (`%`) | RESOLVED |
+| **SEC-03** | P0 | Security | Silent WebSocket Guest Access When Env Unset | RESOLVED |
+| **SEC-04** | P0 | Security | Cross-Process CLI Revocation Session Invalidation & Eviction | RESOLVED |
+| **SEC-05** | P1 | Security | Frontend Token Exposure & Insecure Cookie Flags | RESOLVED |
+| **SEC-06** | P1 | Security | Permissive WebSocket Upgrade Route & Unsafe Origin Handling | RESOLVED |
 | **NET-01** | P0 | Multiplayer | Enforcement of Strict Two-Player Session Capacity | RESOLVED |
 | **NET-02** | P1 | Multiplayer | Premature Peer Eviction on Mobile Transient Network Blips | RESOLVED |
 | **STATE-01** | P1 | State / Seat | Multi-Seat Occupancy Invariant Violation on Seat Switching | RESOLVED |
@@ -206,4 +210,53 @@ This document itemizes all discovered, audited, and resolved defects across the 
 - **Actual**: No visual feedback; silent failure.
 - **Permanent Fix**: Added validating spinner, error alert banner, and auto-focus recovery on rejection.
 - **Verification**: Verified in ticket pass UI interaction flow.
+
+---
+
+### SEC-03: Silent WebSocket Guest Access When Env Unset
+- **Severity**: P0 (Security)
+- **Component**: `server.js` (`join` message handler)
+- **Root Cause**: When `MUSEUM_PASSCODE` was unset in production and no code was provided in `data.code`, WebSocket joins fell through authentication checks, silently granting unauthenticated visitors full multiplayer access.
+- **Reproduction**: Connect to `ws://localhost:8080/ws` without session cookie or token, and send `{ t: "join", proto: 2, name: "Guest" }`.
+- **Expected**: Rejected with `{ t: "error", msg: "unauthorized" }` and closed with code 4003.
+- **Actual**: Visitor was accepted as guest and spawned in the room.
+- **Permanent Fix**: Enforced mandatory invitation-derived authentication on every WebSocket join. If `!authenticatedSession`, connection is immediately denied with `unauthorized` and closed with code 4003.
+- **Verification**: `tests/server_protocol.test.mjs` Section 8.2 asserts unauthenticated join is rejected with close code 4003.
+
+---
+
+### SEC-04: Cross-Process CLI Revocation Session Invalidation & Eviction
+- **Severity**: P0 (Security / Operations)
+- **Component**: `scripts/inviteStore.js` & `server.js`
+- **Root Cause**: When administrators ran `node scripts/inviteCli.js revoke <code>` in a separate process, the running server process retained in-memory session caches and kept existing WebSocket connections open indefinitely.
+- **Reproduction**: Connect visitor with valid invitation, run `revoke` CLI command in another terminal.
+- **Expected**: Running server immediately detects revocation, evicts active WebSocket connection with code 4003, and blocks further HTTP requests with 401.
+- **Actual**: Active visitor remained connected and was able to continue sending messages.
+- **Permanent Fix**: Converted `inviteStore.js` to read fresh disk state on every validation call; added file watcher and periodic interval scanner in `server.js` to evict revoked sessions instantly across process boundaries.
+- **Verification**: `tests/server_protocol.test.mjs` Section 8.6 validates live CLI revocation evicts connected WebSocket and invalidates HTTP sessions.
+
+---
+
+### SEC-05: Frontend Token Exposure & Insecure Cookie Flags
+- **Severity**: P1 (Security / Information Disclosure)
+- **Component**: `server.js` (`/api/invite/redeem`) & `src/main.js`
+- **Root Cause**: `/api/invite/redeem` included the plaintext session bearer token in the JSON response body, which frontend code saved into `window.__museumSessionToken` and `sessionStorage`, exposing it to potential XSS exfiltration. Cookies also lacked explicit `Secure` flag on HTTPS.
+- **Reproduction**: Redeem invitation and inspect response body and browser `sessionStorage`.
+- **Expected**: Token delivered exclusively in `HttpOnly; SameSite=Lax` (and `Secure` on HTTPS) cookie; zero bearer token leakage to frontend JS.
+- **Actual**: Plaintext bearer token readable from frontend JavaScript.
+- **Permanent Fix**: Omitted `sessionToken` from redemption JSON response; applied `HttpOnly; SameSite=Lax; Path=/` with conditional `Secure` flag. Frontend now relies entirely on browser-managed cookies for HTTP and WebSocket upgrades.
+- **Verification**: `tests/server_protocol.test.mjs` Section 5 & 8 asserts token is undefined in JSON body and cookie has `HttpOnly` attribute.
+
+---
+
+### SEC-06: Permissive WebSocket Upgrade Route & Unsafe Origin Handling
+- **Severity**: P1 (Security / WebSockets)
+- **Component**: `server.js` (`server.on('upgrade')`)
+- **Root Cause**: WebSocket upgrade handler accepted requests at the root path `/` and lacked safe error handling for malformed or missing `Origin` headers when `ALLOWED_ORIGINS` was configured.
+- **Reproduction**: Attempt WebSocket upgrade on `/` or send a malformed URL in the `Origin` header.
+- **Expected**: Upgrade to `/` returns 404; malformed origin returns 403.
+- **Actual**: Accepted upgrade or threw unhandled URL parsing error.
+- **Permanent Fix**: Restricted WebSocket upgrades strictly to `/ws` (rejecting all other paths with 404); wrapped Origin URL parsing in `try/catch` and rejected malformed origins with 403.
+- **Verification**: `tests/server_protocol.test.mjs` Section 8.3–8.5 verifies 404 on `/` and `/socket`, and 403 on malformed origins.
+
 

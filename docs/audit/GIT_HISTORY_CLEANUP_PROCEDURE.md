@@ -116,3 +116,4 @@ After force-pushing rewritten history:
    git reset --hard origin/fix/production-hardening
    ```
 2. Any collaborator with local private photos and letters should copy them from backup into `public/photos/` and `data/letters.json` (they will remain safely untracked because of `.gitignore`).
+
