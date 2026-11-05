@@ -5,10 +5,10 @@
   "author": "Hitesh Bohra",
   "type": "module",
   "scripts": {
-    "dev": "vite build && node server.js",
+    "dev": "vite build && node scripts/free_port.mjs 8080 && node server.js",
     "build": "vite build",
-    "preview": "node server.js",
-    "start": "node server.js",
+    "preview": "node scripts/free_port.mjs 8080 && node server.js",
+    "start": "node scripts/free_port.mjs 8080 && node server.js",
     "test": "node --test tests/*.test.mjs",
     "check": "node scripts/validate_layout.mjs && node scripts/check_photos.mjs && node --test tests/*.test.mjs && vite build",
     "check:code": "node --test tests/*.test.mjs && node scripts/validate_layout.mjs",
