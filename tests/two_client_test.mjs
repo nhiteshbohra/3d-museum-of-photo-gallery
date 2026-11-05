@@ -2,7 +2,7 @@ import WebSocket from 'ws'
 import http from 'http'
 import { spawn } from 'child_process'
 
-const PORT = 8996
+const PORT = parseInt(process.env.TEST_PORT || process.env.PORT || '8080', 10)
 const BASE_URL = `http://127.0.0.1:${PORT}`
 const WS_URL = `ws://127.0.0.1:${PORT}/ws`
 
@@ -68,6 +68,16 @@ function connect(cookie, name, model) {
 }
 
 async function startServer() {
+  try {
+    const res = await new Promise((res, rej) => {
+      http.get(`${BASE_URL}/healthz`, (r) => res(r.statusCode)).on('error', rej)
+    })
+    if (res === 200) {
+      console.log(`Connected to already running server on port ${PORT}`)
+      return
+    }
+  } catch {}
+
   serverProc = spawn('node', ['server.js'], {
     env: { ...process.env, PORT: String(PORT), NODE_ENV: 'production' }
   })
@@ -181,7 +191,7 @@ async function run() {
 
   p1.ws.close()
   p2.ws.close()
-  serverProc.kill()
+  if (serverProc) serverProc.kill()
   process.exit(0)
 }
 

@@ -8,7 +8,7 @@ export default defineConfig({
     base: './',
     server: {
         host: '127.0.0.1', // Forces IPv4 to prevent IPv6 localhost connection refusal
-        port: 5173,
+        port: 8080,
         allowedHosts: ['.trycloudflare.com'], // Prevents invalid host header errors from Cloudflare
         proxy: {
             '/api': {
