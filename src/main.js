@@ -379,8 +379,14 @@ async function checkAuthSession() {
 				redeemBtn.textContent = 'Verified ✓'
 				redeemBtn.disabled = true
 			}
-			await loadPrivateLetters()
-			await startMuseumExperience()
+			// Only auto-start if visitor already entered in this browser tab session
+			const hasActiveTabSession = window.sessionStorage.getItem('ourmuseum:entered') === '1'
+			if (hasActiveTabSession) {
+				await loadPrivateLetters()
+				await startMuseumExperience()
+			} else {
+				setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦ (Click Enter to begin)`, true)
+			}
 		} else {
 			setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
 		}
@@ -389,7 +395,7 @@ async function checkAuthSession() {
 	}
 }
 
-// Auto-check URL parameters or existing session
+// Check URL parameters or existing session
 const initialInviteParam = (new URLSearchParams(window.location.search)).get('invite') || (new URLSearchParams(window.location.search)).get('code')
 if (initialInviteParam && inviteCodeInput) {
 	inviteCodeInput.value = initialInviteParam
@@ -881,6 +887,7 @@ function enterMuseum() {
 	}
 	document.body.classList.remove('choosing-character')
 	hasEntered = true
+	try { window.sessionStorage.setItem('ourmuseum:entered', '1') } catch {}
 	document.body.classList.add('in-sanctuary')
 	overlayEl.hidden = true
 	document.querySelector('#camera-hud-group')?.removeAttribute('hidden')
@@ -1134,6 +1141,11 @@ function initAnimationsDrawer() {
 		}
 		setTimeout(updateDrawerStatus, 200)
 	})
+
+	// Isolate drawer events from world canvas interactions
+	animDrawer?.addEventListener('pointerdown', (e) => e.stopPropagation())
+	animDrawer?.addEventListener('mousedown', (e) => e.stopPropagation())
+	animDrawer?.addEventListener('click', (e) => e.stopPropagation())
 
 	renderAnimDrawerGrid()
 }

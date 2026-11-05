@@ -295,9 +295,10 @@ function getResolvedCustomization() {
         if (safeCustomization.couple?.partner2) delete safeCustomization.couple.partner2.inviteCode;
       }
 
+      const passcodeRequired = Boolean(MUSEUM_PASSCODE || listInvites().length > 0);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({
-        passcodeRequired: Boolean(MUSEUM_PASSCODE),
+        passcodeRequired,
         maxPlayers: MAX_PLAYERS_PER_SESSION,
         protocol: PROTOCOL_VERSION,
         customization: safeCustomization
@@ -1201,7 +1202,8 @@ server.listen(PORT, HOST, () => {
   console.log(`=======================================================`);
   console.log(`  🌐 Web App:         http://localhost:${PORT}/index.html`);
   console.log(`  ⚡ WebSocket Sync:   ws://localhost:${PORT}/ws (Proto v${PROTOCOL_VERSION})`);
-  console.log(`  🔒 Passcode Gate:   ${MUSEUM_PASSCODE ? 'ENABLED' : 'DISABLED (Open Dev Mode)'}`);
+  const gateActive = Boolean(MUSEUM_PASSCODE || listInvites().length > 0);
+  console.log(`  🔒 Passcode Gate:   ${gateActive ? 'ENABLED' : 'DISABLED (Open Dev Mode)'}`);
   console.log(`  👥 Capacity:        Max ${MAX_PLAYERS_PER_SESSION} human peers`);
   console.log(`=======================================================`);
 });

@@ -187,6 +187,8 @@ export class RemoteAvatar {
         box.getSize(size)
         this.root.scale.setScalar(1.7 / (size.y || 1))
         this.root.position.y -= box.min.y * this.root.scale.y
+        // Native model faces +Z; rotate root by Math.PI to align visual forward with -Z world convention
+        this.root.rotation.y = Math.PI
         this.group.add(this.root)
 
         // Make model visible immediately upon attaching root to scene

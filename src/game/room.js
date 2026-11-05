@@ -1359,7 +1359,15 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				mat.color.setHex(0xffffff)
 				mat.needsUpdate = true
 
-				if (backplate) backplate.scale.set(1, 1, 1)
+				if (backplate) {
+					const fittedW = mesh.geometry.parameters.width * mesh.scale.x
+					const fittedH = mesh.geometry.parameters.height * mesh.scale.y
+					const padW = 0.08
+					const padH = 0.08
+					const frameW = Math.min(baseW, fittedW + padW)
+					const frameH = Math.min(baseH, fittedH + padH)
+					backplate.scale.set(frameW / baseW, frameH / baseH, 1)
+				}
 
 				disposables.push(tex)
 			}
