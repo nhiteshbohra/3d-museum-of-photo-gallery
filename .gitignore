@@ -3,6 +3,7 @@ node_modules/
 dist/
 .vite/
 .cache/
+.avatar_fix_backup/
 
 # ── Environment & Secrets ──────────────────────────────────────
 .env

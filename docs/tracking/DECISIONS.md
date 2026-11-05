@@ -488,3 +488,14 @@ Keep lightweight ramp locomotion; foot IK remains a documented limitation.
   3. **Automated Test Coverage**: Added `tests/layout.test.mjs` and `tests/emotes.test.mjs`; updated `npm test` to run all test suites (`tests/*.test.mjs`).
 - **Affected Files**: `src/net/wsClient.js`, `src/avatars/multiplayer.js`, `.env.example`, `docs/DEPLOY.md`, `tests/layout.test.mjs`, `tests/emotes.test.mjs`, `package.json`.
 - **Evidence**: `npm test` passed 100% (10/10 tests); `npm run check` passed 100%; `npm run build` compiled 34 modules in 3.91s with 0 errors.
+
+## 2026-11-05 — Supplied avatar controls patch
+
+- Applied `Avatar_Controls_Fix_5bb2ab5.zip` after every source compatibility and syntax guard passed on HEAD `0f1f6d4`.
+- Adopted the supplied camera-relative movement, idle heading preservation, and Shift-only sprint behavior. Kept the supplied pure math module and its seven tests; no dependencies or model changes.
+- Preserved originals in `.avatar_fix_backup/`. Visual rig calibration and browser pointer-lock behavior require separate verification; math tests do not establish visual correctness.
+
+## 2026-11-05 — Full-image frame fitting
+
+- User requested that every photo remain fully visible. Use contain fitting with preserved proportions and the existing frame backing, replacing center-cropping across salon and lobby photo renderers.
+- Keep the historical five-photo east wall for recognized salon local-photo paths even though the legacy gallery photo array is empty. Do not restore deleted procedural photo generators or private text from history.

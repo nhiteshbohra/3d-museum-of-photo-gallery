@@ -59,6 +59,7 @@ npm start                 # Start production Node.js HTTP + WebSocket server (po
 │   │   └── engine.js            # Three.js render loop, camera follow, picking, physics
 │   │
 │   ├── avatars/
+│   │   ├── motionMath.js        # Camera-relative movement and stable facing math
 │   │   ├── characterSetup.js    # Character GLB/clip loading, V3 rig calibration
 │   │   ├── avatarWorld.js       # Avatar lifecycle, AnimationMixer crossfades, name tags
 │   │   ├── multiplayer.js       # Multiplayer orchestrator, 20Hz sync, emote triggers

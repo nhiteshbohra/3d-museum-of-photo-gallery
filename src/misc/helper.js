@@ -60,6 +60,20 @@ export function configureGalleryTexture(tex) {
 	return tex
 }
 
+export function fitPhotoToFrame(mesh, texture, width, height) {
+	const iw = texture?.image?.width
+	const ih = texture?.image?.height
+	const scale = Number.isFinite(iw) && Number.isFinite(ih) && iw > 0 && ih > 0
+		? Math.min(width / iw, height / ih) : null
+	texture.repeat.set(1, 1)
+	texture.offset.set(0, 0)
+	mesh.scale.set(
+		(scale === null ? width : iw * scale) / mesh.geometry.parameters.width,
+		(scale === null ? height : ih * scale) / mesh.geometry.parameters.height,
+		1,
+	)
+}
+
 export function setBodyClickableCursor(isClickable) {
 	if (typeof document === 'undefined') return
 	const body = document.body

@@ -702,3 +702,19 @@
      - `npm run build`: 34 modules compiled in 3.91s with 0 errors.
 
 
+## Session 2026-11-05: Apply supplied avatar controls patch
+
+- Read `AVATAR_CONTROLS_FIX_CHANGELOG_5bb2ab5.md`, the ZIP installer/module/test, and project context before applying.
+- Current HEAD was `0f1f6d45bc997ac62957388358692035616d0160`; all installer source guards passed despite the newer revision.
+- Applied movement, facing, input cleanup, momentum reset, canvas click isolation, and gesture drawer resume changes. Preserved originals in `.avatar_fix_backup/` and ignored that directory in Git.
+- Baseline `npm run check`: 10/10 tests, layout, 61/61 photos, and build passed. After patch: 17/17 tests and the same checks passed. Model verification and the isolated two-client test on port 8997 passed.
+- Browser/native control hosts were unavailable; visual controls, both rigs, and real mobile behavior remain unverified. See `docs/reports/AVATAR_CONTROLS_FIX_VERIFICATION.md` and the adjacent exact patch.
+- Existing context docs describe a removed admin page and outdated emote shortcuts; those unrelated historical descriptions were left unchanged.
+
+
+## Session 2026-11-05: Restore five-photo walls and contain full photos
+
+- Git history identified commit 5bb2ab5 clearing the legacy generated photo list while the east-wall layout still depended on that list. Kept the existing five-slot layout and enabled it when local salon photo paths exist.
+- Replaced center-cropping with shared aspect-preserving mesh fitting for wall photos, both partition faces, and lobby artwork. Texture UVs remain complete; the existing frame backing shows around photos with different proportions.
+- Wired the uploaded lobby photo into the existing deferred loader, retaining original artwork if loading fails.
+- Added tests for wide, tall, and square image fitting and the empty legacy list regression. npm run check passed: 19/19 tests, 61/61 photos, 19 layout items, and production build. Existing unrelated working changes were preserved. Visual browser QA remains pending.

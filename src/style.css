@@ -600,7 +600,8 @@ body.choosing-character #top-bar { display: none; }
 .character-setup-card .ticket-subtitle,
 .character-setup-card .ticket-quote,
 .character-setup-card .ticket-divider,
-.character-setup-card .ticket-controls { display: none; }
+.character-setup-card .ticket-controls,
+.character-setup-card #invite-box { display: none !important; }
 .character-setup-card .ticket-title { font-size: 15px; letter-spacing: 0.3em; margin: 0 0 18px; color: var(--gold); }
 .character-heading h2 { margin: 6px 0 8px; color: #f8efdf; font: 400 34px Georgia, serif; letter-spacing: -0.03em; }
 .character-heading p { margin: 0 0 22px; color: #a9a6ad; font-size: 13px; }

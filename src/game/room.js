@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl } from '../misc/helper.js'
+import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl, fitPhotoToFrame } from '../misc/helper.js'
 import { buildLobbyRoom, createRealisticGalleryPlant, createRealisticGalleryBench } from './room/lobby.js'
 import { applyRoomDecorations } from './room/decorations.js'
 import { applyPlacedItems } from './room/placedItems.js'
@@ -848,29 +848,6 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		}
 		pickableMeshes.push(img)
 
-		function autoFitTextureCover(tex, baseW, baseH) {
-			if (!tex) return
-			const iw = tex?.image?.width
-			const ih = tex?.image?.height
-			if (typeof iw === 'number' && typeof ih === 'number' && iw > 0 && ih > 0 && baseW > 0 && baseH > 0) {
-				const imageAspect = iw / ih
-				const frameAspect = baseW / baseH
-
-				if (imageAspect > frameAspect) {
-					// Image is wider than frame -> fill full height, center-crop sides
-					const s = frameAspect / imageAspect
-					tex.repeat.set(s, 1)
-					tex.offset.set((1 - s) / 2, 0)
-				} else {
-					// Image is taller than frame -> fill full width, center-crop top/bottom
-					const s = imageAspect / frameAspect
-					tex.repeat.set(1, s)
-					tex.offset.set(0, (1 - s) / 2)
-				}
-				tex.needsUpdate = true
-			}
-		}
-
 		if (frontPhotoUrl) {
 			deferredTextureLoads.push({
 				url: frontPhotoUrl,
@@ -878,11 +855,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 					tex.colorSpace = THREE.SRGBColorSpace
 					tex.premultiplyAlpha = true
 					configureGalleryTexture(tex)
-					autoFitTextureCover(tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
+					fitPhotoToFrame(img, tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
 					imgMat.map = tex
 					imgMat.color.setHex(0xffffff)
 					imgMat.needsUpdate = true
-					img.scale.set(1, 1, 1)
 					disposables.push(tex)
 				},
 				onError(err) {
@@ -943,11 +919,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 					tex.colorSpace = THREE.SRGBColorSpace
 					tex.premultiplyAlpha = true
 					configureGalleryTexture(tex)
-					autoFitTextureCover(tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
+					fitPhotoToFrame(imgNorth, tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
 					imgMatNorth.map = tex
 					imgMatNorth.color.setHex(0xffffff)
 					imgMatNorth.needsUpdate = true
-					imgNorth.scale.set(1, 1, 1)
 					disposables.push(tex)
 				},
 				onError(err) {
@@ -1083,7 +1058,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		addGridWallSlots('east')
 		addGridWallSlots('west')
 	} else {
-		if (imagePhotos.length === 0) {
+		if (imagePhotos.length === 0 && !localPhotoPath(5)) {
 			const innerEastX = halfW - wallThickness / 2
 			const decoEastZ = 0
 			const decoEast = new THREE.Group()
@@ -1378,33 +1353,12 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				tex.premultiplyAlpha = true
 				configureGalleryTexture(tex)
 
-				const iw = tex?.image?.width
-				const ih = tex?.image?.height
-				if (typeof iw === 'number' && typeof ih === 'number' && iw > 0 && ih > 0 && baseW > 0 && baseH > 0) {
-					const imageAspect = iw / ih
-					const frameAspect = baseW / baseH
-
-					// Auto-fit edge-to-edge cover: zero empty gaps, 100% full frame coverage without distortion
-					if (imageAspect > frameAspect) {
-						// Image wider than frame -> fill full height, center-crop excess width
-						const s = frameAspect / imageAspect
-						tex.repeat.set(s, 1)
-						tex.offset.set((1 - s) / 2, 0)
-					} else {
-						// Image taller than frame -> fill full width, center-crop excess height
-						const s = imageAspect / frameAspect
-						tex.repeat.set(1, s)
-						tex.offset.set(0, (1 - s) / 2)
-					}
-					tex.needsUpdate = true
-				}
+				fitPhotoToFrame(mesh, tex, baseW, baseH)
 
 				mat.map = tex
 				mat.color.setHex(0xffffff)
 				mat.needsUpdate = true
 
-				// Photo ALWAYS completely takes 100% size of the frame (no big frame with small photo)
-				mesh.scale.set(baseW, baseH, 1)
 				if (backplate) backplate.scale.set(1, 1, 1)
 
 				disposables.push(tex)

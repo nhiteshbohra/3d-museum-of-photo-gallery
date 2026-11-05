@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import { buildRoom, deriveRoomKey } from '../game/room.js'
+import { computeDesiredMovement, calculateFacingYaw, smoothAngle } from '../avatars/motionMath.js'
 import { updateLodSwitchers, updateDebugSeatsHud, whenPlacedItemsLoaded } from '../game/room/placedItems.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
 import { disposeStaticCache } from '../game/room/staticCache.js'
@@ -294,6 +295,8 @@ export function startYourEngines({
 	let currentVelX = 0
 	let currentVelZ = 0
 	let avatarBodyYaw = 0
+	let lastMovementInputZ = 0
+	let lastMovementViewYaw = 0
 	const gravity = -18
 	const jumpSpeed = 6.2
 	const moveSpeed = 2.4
@@ -328,6 +331,9 @@ export function startYourEngines({
 				camera.rotation.y = yaw
 				camera.rotation.x = pitch
 				velocity.set(0, 0, 0)
+				currentVelX = 0
+				currentVelZ = 0
+				avatarBodyYaw = yaw
 				grounded = true
 				return
 			}
@@ -380,6 +386,9 @@ export function startYourEngines({
 					camera.rotation.y = yaw
 					camera.rotation.x = pitch
 					velocity.set(0, 0, 0)
+					currentVelX = 0
+					currentVelZ = 0
+					avatarBodyYaw = yaw
 					grounded = true
 					return
 				}
@@ -392,6 +401,9 @@ export function startYourEngines({
 				camera.rotation.y = yaw
 				camera.rotation.x = pitch
 				velocity.set(0, 0, 0)
+				currentVelX = 0
+				currentVelZ = 0
+				avatarBodyYaw = yaw
 				grounded = true
 				return
 			}
@@ -413,6 +425,9 @@ export function startYourEngines({
 				camera.rotation.y = yaw
 				camera.rotation.x = pitch
 				velocity.set(0, 0, 0)
+				currentVelX = 0
+				currentVelZ = 0
+				avatarBodyYaw = yaw
 				grounded = true
 			}
 		} catch (err) {
@@ -423,6 +438,9 @@ export function startYourEngines({
 			camera.rotation.y = yaw
 			camera.rotation.x = pitch
 			velocity.set(0, 0, 0)
+			currentVelX = 0
+			currentVelZ = 0
+			avatarBodyYaw = yaw
 			grounded = true
 		}
 	}
@@ -726,6 +744,10 @@ export function startYourEngines({
 	let onCameraModeChangeCallback = null
 
 	function onKeyDown(e) {
+		// Ignore typing, overlays and pre-entry keys: never accumulate phantom movement.
+		if (!document.body.classList.contains('in-sanctuary')) return
+		if (document.getElementById('hud-animations-drawer')?.classList.contains('drawer-open')) return
+		if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
 		keysDown.add(e.code)
 		if (e.code === 'Space') jumpRequested = true
 		if (isPointerLocked() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
@@ -737,8 +759,16 @@ export function startYourEngines({
 		keysDown.delete(e.code)
 	}
 
+	function clearMovementKeys() {
+		keysDown.clear()
+		jumpRequested = false
+		lastMovementInputZ = 0
+		currentVelX = 0
+		currentVelZ = 0
+	}
 	window.addEventListener('keydown', onKeyDown)
 	window.addEventListener('keyup', onKeyUp)
+	window.addEventListener('blur', clearMovementKeys)
 
 	const mouseSensitivity = 0.0022
 
@@ -788,6 +818,7 @@ export function startYourEngines({
 	window.addEventListener('wheel', onWheel, { passive: true })
 
 	function handlePointerLockChange() {
+		if (!isPointerLocked() && !isMobileActive) clearMovementKeys()
 		if (typeof onPointerLockChange === 'function') {
 			onPointerLockChange(isPointerLocked())
 		}
@@ -814,6 +845,8 @@ export function startYourEngines({
 	}
 
 	function onMouseDown(e) {
+		// A click on a HUD/gesture/menu element must never activate a 3D object.
+		if (e.target !== canvas) return
 		if (e.button !== 0) return
 		if (interactionLocked) return
 		const locked = isPointerLocked()
@@ -967,6 +1000,8 @@ export function startYourEngines({
 		if (seat) {
 			seatedSeat = seat
 			velocity.set(0, 0, 0)
+			currentVelX = 0
+			currentVelZ = 0
 			grounded = true
 			if (!playerAvatar) {
 				camera.position.set(seat.x, seat.y + 1.1, seat.z)
@@ -1016,6 +1051,8 @@ export function startYourEngines({
 				}
 
 				camera.position.set(standX, standY, standZ)
+				currentVelX = 0
+				currentVelZ = 0
 				velocity.set(0, 0, 0)
 				grounded = true
 			}
@@ -1042,6 +1079,9 @@ export function startYourEngines({
 		const isControlActive = isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0)
 		if (!isControlActive) {
 			jumpRequested = false
+			lastMovementInputZ = 0
+			currentVelX = 0
+			currentVelZ = 0
 			return
 		}
 
@@ -1057,6 +1097,8 @@ export function startYourEngines({
 			inputX += touchMoveX
 			inputZ += touchMoveZ
 		}
+		lastMovementInputZ = inputZ
+		lastMovementViewYaw = yaw + (cameraMode === 'orbit' ? cameraYawOffset : 0)
 
 		let moveX = 0
 		let moveZ = 0
@@ -1066,13 +1108,15 @@ export function startYourEngines({
 			const nx = inputX / (len > 1 ? len : 1)
 			const nz = inputZ / (len > 1 ? len : 1)
 
-			const isSprinting = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || len > 1.2
-			const speed = moveSpeed * (isSprinting ? sprintMultiplier : 1)
-
-			const sin = Math.sin(yaw)
-			const cos = Math.cos(yaw)
-			moveX = (cos * nx + -sin * nz) * speed
-			moveZ = (-sin * nx + -cos * nz) * speed
+			// W is relative to what the visitor sees, including Front/Free Orbit.
+			// Diagonal input is normalized; Shift alone enables sprint.
+			const desired = computeDesiredMovement({
+				inputX: nx, inputZ: nz, yaw, cameraYawOffset, cameraMode,
+				sprint: keysDown.has('ShiftLeft') || keysDown.has('ShiftRight'),
+				walkSpeed: moveSpeed, sprintMultiplier,
+			})
+			moveX = desired.vx
+			moveZ = desired.vz
 		}
 
 		// Smooth acceleration and deceleration damping
@@ -1293,10 +1337,15 @@ export function startYourEngines({
 		const distance = Math.hypot(camera.position.x - previousPosition.x, camera.position.z - previousPosition.z)
 		const moving = (velMagnitude > 0.08 || distance > 0.001) && (isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0))
 
-		// Turning inertia: avatar rotates towards movement direction when active, settling to camera view
-		const targetYaw = (moving && velMagnitude > 0.15) ? Math.atan2(-currentVelX, -currentVelZ) : (yaw + Math.PI)
-		let diffYaw = ((targetYaw - avatarBodyYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI
-		avatarBodyYaw += diffYaw * Math.min(1.0, dt * 10)
+		// Preserve idle heading and face the view while stepping backward.
+		const targetYaw = calculateFacingYaw({
+			previousYaw: avatarBodyYaw,
+			viewYaw: lastMovementViewYaw,
+			vx: currentVelX, vz: currentVelZ,
+			forwardInput: lastMovementInputZ,
+			moving: moving && velMagnitude > 0.15,
+		})
+		avatarBodyYaw = smoothAngle(avatarBodyYaw, targetYaw, dt)
 
 		playerState = {
 			p: [camera.position.x, camera.position.y - eyeHeight, camera.position.z],
@@ -1582,6 +1631,9 @@ export function startYourEngines({
 			if (typeof z === 'number') camera.position.z = z
 			yaw = Number.isFinite(newYaw) ? newYaw : 0
 			pitch = Number.isFinite(newPitch) ? newPitch : 0
+			avatarBodyYaw = yaw
+			currentVelX = 0
+			currentVelZ = 0
 			camera.rotation.y = yaw
 			camera.rotation.x = pitch
 			velocity.set(0, 0, 0)
@@ -1670,6 +1722,7 @@ export function startYourEngines({
 
 			window.removeEventListener('keydown', onKeyDown)
 			window.removeEventListener('keyup', onKeyUp)
+			window.removeEventListener('blur', clearMovementKeys)
 			window.removeEventListener('mousemove', onMouseMove)
 			window.removeEventListener('mousedown', onMouseDown)
 			window.removeEventListener('wheel', onWheel)

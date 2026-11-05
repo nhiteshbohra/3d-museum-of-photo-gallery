@@ -53,6 +53,12 @@
 
 ## 2. Active Pending Tasks & Backlog
 
+### Avatar controls patch verification (2026-11-05)
+- [x] Apply supplied ZIP after compatibility checks; pass 17 tests, layout/photo checks, build, active model references, and two-client movement/gesture/seating synchronization.
+- [ ] Verify both rigs visually: W/S/A/D, releasing backward input, diagonal walking versus Shift sprint, Front/Free Orbit, room transitions, sofa stand-up, and joystick.
+- [ ] Verify gesture drawer close via G, Close, and Escape in desktop browsers, including pointer-lock refusal and clicking the canvas to resume. Browser/native automation hosts were unavailable during application.
+- [ ] Reconcile stale project map/architecture descriptions of admin entry points and old gesture shortcuts with the current source.
+
 ### 2.1 Live Two-Browser Verification Pass
 - [ ] Conduct live end-to-end verification with two real browser tabs (Maya in Tab A, Ethan in Tab B) walking in the same room.
 - [ ] Validate smooth locomotion, emote synchrony, and chat bubble visibility across both windows.
@@ -70,3 +76,8 @@
 
 ### 2.4 Production Deployment & Hosting
 - [ ] Configure production domain / reverse-proxy WebSocket pass-through when migrating from local server (`http://localhost:8080`) to remote cloud host.
+
+### Photo frames (2026-11-05)
+- [x] Restore the five east-wall photos in each salon after legacy photo-list removal.
+- [x] Preserve full image proportions in salon wall, partition, and lobby frames; verify with regression tests and production build.
+- [ ] Visually review all six salon walls and portrait/landscape uploads inside frames in the browser.

@@ -189,6 +189,23 @@ const entranceStatus = document.querySelector('#entrance-status')
 const entranceProgress = document.querySelector('#entrance-progress')
 let entranceReady = false
 
+// Core Application & Navigation State (hoisted to prevent TDZ)
+const params = new URLSearchParams(window.location.search)
+const initialTitle = params.get('exhibit')
+let engineApi = null
+let multiplayer = null
+let museumStarted = false
+let hasEntered = false
+let inviteRequired = false
+let inviteConfigChecked = false
+let lastEnteredLobbyCategory = null
+let lastEnteredLobbyDoorId = null
+let currentGalleryTitle = initialTitle || null
+const lobby_title = 'Lobby'
+let activeNavId = 0
+let activeDoorLabelOverride = null
+let historyIndex = 0
+
 // Mobile touch-device notice (UX-01)
 const isTouchDevice = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches
 const mobileNoticeEl = document.querySelector('#mobile-notice')
@@ -277,13 +294,22 @@ async function redeemInviteCode() {
 	// Pre-select avatar matching recipient
 	if (data.recipient && Array.isArray(AVATARS)) {
 		const recLower = String(data.recipient).toLowerCase()
-		const match = AVATARS.find(a => a.name && a.name.toLowerCase() === recLower)
+		const match = AVATARS.find(a => a.name && a.name.toLowerCase() === recLower) ||
+		              (recLower.includes('ethan') && !recLower.includes('maya') ? AVATARS.find(a => a.id === 'ethan') : null) ||
+		              AVATARS.find(a => a.id === 'maya') || AVATARS[0]
 		if (match) {
 			selectedAvatarId = match.id
 			if (characterSetup && typeof selectAvatar === 'function') {
 				selectAvatar(match.id)
 			}
 		}
+	}
+
+	const entranceLoadingEl = document.querySelector('#entrance-loading')
+	if (entranceLoadingEl) {
+		entranceLoadingEl.removeAttribute('hidden')
+		entranceLoadingEl.style.display = 'block'
+		if (entranceStatus) entranceStatus.textContent = 'Preparing museum sanctuary for Maya & Ethan…'
 	}
 
 	try {
@@ -339,7 +365,9 @@ async function checkAuthSession() {
 				lastInviteRecipient = data.recipient
 				setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient} ✦`, true)
 				const recLower = String(data.recipient).toLowerCase()
-				const match = AVATARS.find(a => a.name.toLowerCase() === recLower)
+				const match = AVATARS.find(a => a.name.toLowerCase() === recLower) ||
+				              (recLower.includes('ethan') && !recLower.includes('maya') ? AVATARS.find(a => a.id === 'ethan') : null) ||
+				              AVATARS.find(a => a.id === 'maya') || AVATARS[0]
 				if (match) selectedAvatarId = match.id
 			} else {
 				setInviteStatus('✦ Pass Verified: Welcome ✦', true)
@@ -426,11 +454,16 @@ async function selectAvatar(id) {
 function showAvatarSelection() {
 	if (!avatarSelectEl) return
 	if (!characterSetup) characterSetup = createCharacterSetup(avatarSelectEl, AVATARS, { onSelect: selectAvatar, onChange: updateVisitor })
-	document.querySelector('#ticket-card').classList.add('character-setup-card')
+	const ticketCard = document.querySelector('#ticket-card')
+	if (ticketCard) ticketCard.classList.add('character-setup-card')
+	const inviteBox = document.querySelector('#invite-box')
+	if (inviteBox) inviteBox.style.display = 'none'
 	document.body.classList.add('choosing-character')
 	avatarSelectEl.hidden = false
 	if (selectedAvatarId && characterSetup) {
 		selectAvatar(selectedAvatarId)
+	} else if (AVATARS.length > 0) {
+		selectAvatar(AVATARS[0].id)
 	}
 }
 let assetsLoading = false
@@ -639,10 +672,6 @@ function toggleAmbientAudio() {
 }
 
 // Event Listeners for UI
-let hasEntered = false
-
-let inviteRequired = false
-let inviteConfigChecked = false
 function checkInviteRequired() {
 	if (inviteConfigChecked) return
 	inviteConfigChecked = true
@@ -1134,6 +1163,10 @@ function toggleAnimationsDrawer(forceOpen) {
 			clearInterval(drawerPollTimer)
 			drawerPollTimer = null
 		}
+		// Click/G are user gestures; restore WASD control after closing the panel.
+		if (hasEntered && !isTouchDevice && lightboxEl?.hidden && !document.pointerLockElement) {
+			requestPlay()
+		}
 	}
 }
 
@@ -1242,19 +1275,6 @@ document.querySelector('#btn-fullscreen-toggle')?.addEventListener('click', (e) 
 	}
 })
 
-const params = new URLSearchParams(window.location.search)
-const initialTitle = params.get('exhibit')
-let engineApi = null
-
-let lastEnteredLobbyCategory = null
-let lastEnteredLobbyDoorId = null
-let currentGalleryTitle = initialTitle || null
-
-const lobby_title = 'Lobby'
-
-let activeNavId = 0
-let activeDoorLabelOverride = null
-
 const trail_key_from_local_storage = 'ourmuseum:trail:v1'
 const trail_maximum_length = 30
 
@@ -1297,8 +1317,6 @@ function setLoading(loading) {
 		engineApi.setInteractionLocked(Boolean(loading))
 	}
 }
-
-let historyIndex = 0
 
 function setUrlAndState(title, { push = false } = {}) {
 	const nextParams = new URLSearchParams(window.location.search)
@@ -1497,9 +1515,6 @@ function closePhotoLightbox(force = false) {
 
 lightboxCloseBtn.addEventListener('click', () => closePhotoLightbox(true))
 lightboxBackdrop.addEventListener('click', () => closePhotoLightbox(false))
-
-let museumStarted = false
-let multiplayer = null
 
 async function startMuseumExperience() {
 	if (museumStarted) return

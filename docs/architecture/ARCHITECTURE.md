@@ -49,6 +49,7 @@ flowchart TD
    - A 0–100% native progress bar displays real asset completion without synthetic timers or fake delays.
 
 ### 2.2 Locomotion, Third-Person Camera & Collision
+- **Movement Math (2026-11-05 patch)**: `src/avatars/motionMath.js` computes camera-relative movement, Shift-only sprint speed, idle heading preservation, backward facing, and shortest-path yaw smoothing. Browser and rig verification remains pending.
 - **Movement Anchor**: The engine camera/position vector remains the primary navigation and collision anchor in `src/engine/engine.js`.
 - **Third-Person Follow Camera**:
   - Automatically follows the selected local avatar (`Maya` or `Ethan`).
@@ -61,6 +62,7 @@ flowchart TD
   - Walkable gaps between separate parts of a single model (e.g. sofa cushions and table gaps) remain accessible.
 
 ### 2.3 Room Lifecycle & Spatial Geometry
+- **Photo Frames (2026-11-05)**: Salon local photo paths keep the five east-wall slots active even with an empty legacy gallery photo array. Wall, partition, and lobby images use `fitPhotoToFrame` in `src/misc/helper.js` to preserve the full image and its proportions within the frame. The lobby uploaded photo loads through the deferred texture queue with original artwork as fallback.
 - **Room Topology**:
   - **Grand Lobby (Central Rotunda)**: Width $X \in [-10.5, +10.5]$, Length $Z \in [-6.0, +6.0]$, Height $4.0\text{m}$. Elevated East/West promenade platforms at $Y = 1.4\text{m}$ with higher ceilings at $Y = 5.6\text{m}$.
   - **6 Themed Salons**: Width $X \in [-5.0, +5.0]$, Length $Z \in [-6.0, +6.0]$, Height $4.0\text{m}$, centered divider partition at $Z = 0$.

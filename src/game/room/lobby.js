@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import { clamp, roundTo } from '../../misc/helper.js'
+import { clamp, roundTo, fitPhotoToFrame } from '../../misc/helper.js'
 import lobbyPhotoUrl from '../../assets/lobbyphoto.png'
 import { getArtworkSizes } from '../../config/artworkSizes.js'
 import { spawnGlbItem, getPlantsConfig } from './placedItems.js'
@@ -881,22 +881,6 @@ export function buildLobbyRoom(ctx, lobby) {
 
 		const fullFrameW = frameW + frameThickness * 2
 		const fullFrameH = frameH + frameThickness * 2
-		const iw = photoTexture?.image?.width
-		const ih = photoTexture?.image?.height
-		if (typeof iw === 'number' && typeof ih === 'number' && iw > 0 && ih > 0) {
-			const imageAspect = iw / ih
-			const frameAspect = fullFrameW / fullFrameH
-			if (imageAspect > frameAspect) {
-				const s = frameAspect / imageAspect
-				photoTexture.repeat.set(s, 1)
-				photoTexture.offset.set((1 - s) / 2, 0)
-			} else {
-				const s = imageAspect / frameAspect
-				photoTexture.repeat.set(1, s)
-				photoTexture.offset.set(0, (1 - s) / 2)
-			}
-			photoTexture.needsUpdate = true
-		}
 
 		const photoGeo = new THREE.PlaneGeometry(fullFrameW, fullFrameH)
 		const photoMat = new THREE.MeshBasicMaterial({
@@ -904,6 +888,7 @@ export function buildLobbyRoom(ctx, lobby) {
 			side: THREE.FrontSide
 		})
 		const photo = new THREE.Mesh(photoGeo, photoMat)
+		fitPhotoToFrame(photo, photoTexture, frameW, frameH)
 		photo.position.set(0, 0, frameDepth / 2 + 0.01)
 		photo.userData = {
 			pickable: true,
@@ -912,6 +897,20 @@ export function buildLobbyRoom(ctx, lobby) {
 			photoUrl: photoDataUrl,
 			photoTitle: 'Grand Sanctuary Masterpiece'
 		}
+		ctx.deferredTextureLoads.push({
+			url: '/photos/00_grand_lobby/01_south_wall_masterpiece.png',
+			onLoad(texture) {
+				texture.colorSpace = THREE.SRGBColorSpace
+				fitPhotoToFrame(photo, texture, frameW, frameH)
+				photoMat.map = texture
+				photoMat.needsUpdate = true
+				photo.userData.photoUrl = '/photos/00_grand_lobby/01_south_wall_masterpiece.png'
+				disposables.push(texture)
+			},
+			onError(error) {
+				console.warn('[OurMuseum] Failed to load lobby photo; keeping original artwork', error)
+			},
+		})
 		pickableMeshes.push(photo)
 		frameGroup.add(photo)
 		disposables.push(photoGeo, photoMat)

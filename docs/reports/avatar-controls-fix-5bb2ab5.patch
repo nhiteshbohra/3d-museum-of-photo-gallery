@@ -1,0 +1,300 @@
+--- a/src/engine/engine.js
++++ b/src/engine/engine.js
+@@ -1,5 +1,6 @@
+ import * as THREE from 'three'
+ import { buildRoom, deriveRoomKey } from '../game/room.js'
++import { computeDesiredMovement, calculateFacingYaw, smoothAngle } from '../avatars/motionMath.js'
+ import { updateLodSwitchers, updateDebugSeatsHud, whenPlacedItemsLoaded } from '../game/room/placedItems.js'
+ import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
+ import { disposeStaticCache } from '../game/room/staticCache.js'
+@@ -294,6 +295,8 @@
+ 	let currentVelX = 0
+ 	let currentVelZ = 0
+ 	let avatarBodyYaw = 0
++	let lastMovementInputZ = 0
++	let lastMovementViewYaw = 0
+ 	const gravity = -18
+ 	const jumpSpeed = 6.2
+ 	const moveSpeed = 2.4
+@@ -328,6 +331,9 @@
+ 				camera.rotation.y = yaw
+ 				camera.rotation.x = pitch
+ 				velocity.set(0, 0, 0)
++				currentVelX = 0
++				currentVelZ = 0
++				avatarBodyYaw = yaw
+ 				grounded = true
+ 				return
+ 			}
+@@ -380,6 +386,9 @@
+ 					camera.rotation.y = yaw
+ 					camera.rotation.x = pitch
+ 					velocity.set(0, 0, 0)
++					currentVelX = 0
++					currentVelZ = 0
++					avatarBodyYaw = yaw
+ 					grounded = true
+ 					return
+ 				}
+@@ -392,6 +401,9 @@
+ 				camera.rotation.y = yaw
+ 				camera.rotation.x = pitch
+ 				velocity.set(0, 0, 0)
++				currentVelX = 0
++				currentVelZ = 0
++				avatarBodyYaw = yaw
+ 				grounded = true
+ 				return
+ 			}
+@@ -413,6 +425,9 @@
+ 				camera.rotation.y = yaw
+ 				camera.rotation.x = pitch
+ 				velocity.set(0, 0, 0)
++				currentVelX = 0
++				currentVelZ = 0
++				avatarBodyYaw = yaw
+ 				grounded = true
+ 			}
+ 		} catch (err) {
+@@ -423,6 +438,9 @@
+ 			camera.rotation.y = yaw
+ 			camera.rotation.x = pitch
+ 			velocity.set(0, 0, 0)
++			currentVelX = 0
++			currentVelZ = 0
++			avatarBodyYaw = yaw
+ 			grounded = true
+ 		}
+ 	}
+@@ -726,6 +744,10 @@
+ 	let onCameraModeChangeCallback = null
+ 
+ 	function onKeyDown(e) {
++		// Ignore typing, overlays and pre-entry keys: never accumulate phantom movement.
++		if (!document.body.classList.contains('in-sanctuary')) return
++		if (document.getElementById('hud-animations-drawer')?.classList.contains('drawer-open')) return
++		if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return
+ 		keysDown.add(e.code)
+ 		if (e.code === 'Space') jumpRequested = true
+ 		if (isPointerLocked() && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) {
+@@ -737,8 +759,16 @@
+ 		keysDown.delete(e.code)
+ 	}
+ 
++	function clearMovementKeys() {
++		keysDown.clear()
++		jumpRequested = false
++		lastMovementInputZ = 0
++		currentVelX = 0
++		currentVelZ = 0
++	}
+ 	window.addEventListener('keydown', onKeyDown)
+ 	window.addEventListener('keyup', onKeyUp)
++	window.addEventListener('blur', clearMovementKeys)
+ 
+ 	const mouseSensitivity = 0.0022
+ 
+@@ -788,6 +818,7 @@
+ 	window.addEventListener('wheel', onWheel, { passive: true })
+ 
+ 	function handlePointerLockChange() {
++		if (!isPointerLocked() && !isMobileActive) clearMovementKeys()
+ 		if (typeof onPointerLockChange === 'function') {
+ 			onPointerLockChange(isPointerLocked())
+ 		}
+@@ -814,6 +845,8 @@
+ 	}
+ 
+ 	function onMouseDown(e) {
++		// A click on a HUD/gesture/menu element must never activate a 3D object.
++		if (e.target !== canvas) return
+ 		if (e.button !== 0) return
+ 		if (interactionLocked) return
+ 		const locked = isPointerLocked()
+@@ -967,6 +1000,8 @@
+ 		if (seat) {
+ 			seatedSeat = seat
+ 			velocity.set(0, 0, 0)
++			currentVelX = 0
++			currentVelZ = 0
+ 			grounded = true
+ 			if (!playerAvatar) {
+ 				camera.position.set(seat.x, seat.y + 1.1, seat.z)
+@@ -1016,6 +1051,8 @@
+ 				}
+ 
+ 				camera.position.set(standX, standY, standZ)
++				currentVelX = 0
++				currentVelZ = 0
+ 				velocity.set(0, 0, 0)
+ 				grounded = true
+ 			}
+@@ -1042,6 +1079,9 @@
+ 		const isControlActive = isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0)
+ 		if (!isControlActive) {
+ 			jumpRequested = false
++			lastMovementInputZ = 0
++			currentVelX = 0
++			currentVelZ = 0
+ 			return
+ 		}
+ 
+@@ -1057,6 +1097,8 @@
+ 			inputX += touchMoveX
+ 			inputZ += touchMoveZ
+ 		}
++		lastMovementInputZ = inputZ
++		lastMovementViewYaw = yaw + (cameraMode === 'orbit' ? cameraYawOffset : 0)
+ 
+ 		let moveX = 0
+ 		let moveZ = 0
+@@ -1066,13 +1108,15 @@
+ 			const nx = inputX / (len > 1 ? len : 1)
+ 			const nz = inputZ / (len > 1 ? len : 1)
+ 
+-			const isSprinting = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || len > 1.2
+-			const speed = moveSpeed * (isSprinting ? sprintMultiplier : 1)
+-
+-			const sin = Math.sin(yaw)
+-			const cos = Math.cos(yaw)
+-			moveX = (cos * nx + -sin * nz) * speed
+-			moveZ = (-sin * nx + -cos * nz) * speed
++			// W is relative to what the visitor sees, including Front/Free Orbit.
++			// Diagonal input is normalized; Shift alone enables sprint.
++			const desired = computeDesiredMovement({
++				inputX: nx, inputZ: nz, yaw, cameraYawOffset, cameraMode,
++				sprint: keysDown.has('ShiftLeft') || keysDown.has('ShiftRight'),
++				walkSpeed: moveSpeed, sprintMultiplier,
++			})
++			moveX = desired.vx
++			moveZ = desired.vz
+ 		}
+ 
+ 		// Smooth acceleration and deceleration damping
+@@ -1293,10 +1337,15 @@
+ 		const distance = Math.hypot(camera.position.x - previousPosition.x, camera.position.z - previousPosition.z)
+ 		const moving = (velMagnitude > 0.08 || distance > 0.001) && (isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0))
+ 
+-		// Turning inertia: avatar rotates towards movement direction when active, settling to camera view
+-		const targetYaw = (moving && velMagnitude > 0.15) ? Math.atan2(-currentVelX, -currentVelZ) : (yaw + Math.PI)
+-		let diffYaw = ((targetYaw - avatarBodyYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+-		avatarBodyYaw += diffYaw * Math.min(1.0, dt * 10)
++		// Preserve idle heading and face the view while stepping backward.
++		const targetYaw = calculateFacingYaw({
++			previousYaw: avatarBodyYaw,
++			viewYaw: lastMovementViewYaw,
++			vx: currentVelX, vz: currentVelZ,
++			forwardInput: lastMovementInputZ,
++			moving: moving && velMagnitude > 0.15,
++		})
++		avatarBodyYaw = smoothAngle(avatarBodyYaw, targetYaw, dt)
+ 
+ 		playerState = {
+ 			p: [camera.position.x, camera.position.y - eyeHeight, camera.position.z],
+@@ -1582,6 +1631,9 @@
+ 			if (typeof z === 'number') camera.position.z = z
+ 			yaw = Number.isFinite(newYaw) ? newYaw : 0
+ 			pitch = Number.isFinite(newPitch) ? newPitch : 0
++			avatarBodyYaw = yaw
++			currentVelX = 0
++			currentVelZ = 0
+ 			camera.rotation.y = yaw
+ 			camera.rotation.x = pitch
+ 			velocity.set(0, 0, 0)
+@@ -1670,6 +1722,7 @@
+ 
+ 			window.removeEventListener('keydown', onKeyDown)
+ 			window.removeEventListener('keyup', onKeyUp)
++			window.removeEventListener('blur', clearMovementKeys)
+ 			window.removeEventListener('mousemove', onMouseMove)
+ 			window.removeEventListener('mousedown', onMouseDown)
+ 			window.removeEventListener('wheel', onWheel)
+--- a/src/main.js
++++ b/src/main.js
+@@ -1134,6 +1134,10 @@
+ 			clearInterval(drawerPollTimer)
+ 			drawerPollTimer = null
+ 		}
++		// Click/G are user gestures; restore WASD control after closing the panel.
++		if (hasEntered && !isTouchDevice && lightboxEl?.hidden && !document.pointerLockElement) {
++			requestPlay()
++		}
+ 	}
+ }
+ 
+--- /dev/null
++++ b/src/avatars/motionMath.js
+@@ -0,0 +1,36 @@
++/** Deterministic avatar locomotion calculations. No DOM/Three dependency.
++ * World convention: yaw=0 faces -Z; +X is right. 
++ * Orbit mode: W follows the *visible* camera heading; not the hidden base yaw.
++ */
++export function computeDesiredMovement({ inputX = 0, inputZ = 0, yaw = 0, cameraYawOffset = 0, cameraMode = 'follow', sprint = false, walkSpeed = 2.4, sprintMultiplier = 2 }) {
++  const x = Number.isFinite(inputX) ? inputX : 0
++  const z = Number.isFinite(inputZ) ? inputZ : 0
++  const len = Math.hypot(x, z)
++  const nx = len > 1 ? x / len : x
++  const nz = len > 1 ? z / len : z
++  const viewYaw = yaw + (cameraMode === 'orbit' ? cameraYawOffset : 0)
++  const speed = walkSpeed * (sprint ? sprintMultiplier : 1)
++  const sin = Math.sin(viewYaw)
++  const cos = Math.cos(viewYaw)
++  return {
++    vx: (cos * nx - sin * nz) * speed,
++    vz: (-sin * nx - cos * nz) * speed,
++    speed: len > 0 ? speed * Math.min(1, len) : 0,
++    viewYaw,
++    normalizedX: nx,
++    normalizedZ: nz,
++  }
++}
++
++export function calculateFacingYaw({ previousYaw = 0, viewYaw = 0, vx = 0, vz = 0, forwardInput = 0, moving = false }) {
++  // Preserve heading on idle. S/backward should not whip the avatar around 180°.
++  if (!moving) return previousYaw
++  if (forwardInput < -0.05) return viewYaw
++  if (Math.hypot(vx, vz) < 0.05) return previousYaw
++  return Math.atan2(-vx, -vz)
++}
++
++export function smoothAngle(previous, target, dt, response = 10) {
++  const delta = Math.atan2(Math.sin(target - previous), Math.cos(target - previous))
++  return previous + delta * Math.min(1, Math.max(0, dt) * response)
++}
+--- /dev/null
++++ b/tests/avatar_motion_contract.test.mjs
+@@ -0,0 +1,34 @@
++import test from 'node:test'
++import assert from 'node:assert/strict'
++import { computeDesiredMovement, calculateFacingYaw, smoothAngle } from '../src/avatars/motionMath.js'
++const eq = (a,b) => assert.ok(Math.abs(a-b)<1e-8, `Expected ${a} ≈ ${b}`)
++test('W forward / S backward; A left / D right, camera yaw=0', () => {
++  const w=computeDesiredMovement({inputZ:1}); const s=computeDesiredMovement({inputZ:-1});
++  const a=computeDesiredMovement({inputX:-1}); const d=computeDesiredMovement({inputX:1});
++  eq(w.vz,-2.4); eq(s.vz,2.4); eq(a.vx,-2.4); eq(d.vx,2.4)
++})
++test('diagonal W+D does not automatically sprint',()=>{
++  const d=computeDesiredMovement({inputX:1,inputZ:1})
++  eq(Math.hypot(d.vx,d.vz),2.4)
++  const s=computeDesiredMovement({inputX:1,inputZ:1,sprint:true})
++  eq(Math.hypot(s.vx,s.vz),4.8)
++})
++test('front/orbit camera turns W relative to visible screen, not hidden yaw',()=>{
++  const d=computeDesiredMovement({inputZ:1,yaw:0,cameraMode:'orbit',cameraYawOffset:Math.PI})
++  eq(d.vz,2.4)
++  const follow=computeDesiredMovement({inputZ:1,yaw:0,cameraMode:'follow',cameraYawOffset:Math.PI})
++  eq(follow.vz,-2.4)
++})
++test('idle does not make 180 degree reversal',()=>{
++  const last=0.45;eq(calculateFacingYaw({previousYaw:last,viewYaw:Math.PI,moving:false}),last)
++})
++test('S does not turn the avatar to face backward while walking backward',()=>{
++  eq(calculateFacingYaw({previousYaw:0,viewYaw:0,vx:0,vz:2.4,forwardInput:-1,moving:true}),0)
++})
++test('yaw angles interpolate across wrapping boundary by shortest route',()=>{
++  const old=Math.PI-0.01;const next=-Math.PI+0.01
++  assert.ok(Math.abs(smoothAngle(old,next,0.016)-old)<0.1)
++})
++test('zero input has zero speed',()=>{
++  const a=computeDesiredMovement({inputX:0,inputZ:0});eq(a.speed,0);eq(a.vx,0);eq(a.vz,0)
++})
