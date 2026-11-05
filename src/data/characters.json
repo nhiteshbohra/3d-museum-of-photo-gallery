@@ -1,0 +1,24 @@
+{
+  "roster": [
+    {
+      "id": "maya",
+      "name": "Maya",
+      "model": "woman.glb",
+      "role": "The Connoisseur",
+      "color": "#d8b06a",
+      "sitOffset": { "y": 0, "z": 0 }
+    },
+    {
+      "id": "ethan",
+      "name": "Ethan",
+      "model": "man.glb",
+      "role": "The Storyteller",
+      "color": "#8a5a33",
+      "sitOffset": { "y": 0, "z": 0 }
+    }
+  ],
+  "limits": {
+    "maxPlayers": 2,
+    "perConnection": 1
+  }
+}

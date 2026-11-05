@@ -1,8 +1,11 @@
 import './style.css'
 import { DefaultLoadingManager } from 'three'
 import { startYourEngines } from './engine/engine.js'
-import { coupleSalons, coupleCategories } from './data/coupleMuseum.js'
-import { getArtworkSizes, saveArtworkSizes, resetArtworkSizes, DEFAULT_ARTWORK_SIZES } from './config/artworkSizes.js'
+import { coupleSalons, coupleCategories, ROOM_KEY_TO_TITLE } from './data/coupleMuseum.js'
+import { getArtworkSizes } from './config/artworkSizes.js'
+import charactersJson from './data/characters.json'
+import { initMultiplayer } from './avatars/multiplayer.js'
+import { createCharacterSetup } from './avatars/characterSetup.js'
 
 const app = document.querySelector('#app');
 app.innerHTML = `
@@ -22,6 +25,25 @@ app.innerHTML = `
       <span>⛶</span>
       <span class="top-bar-key">F</span>
     </button>
+    <div id="camera-hud-group" class="top-bar-group" hidden>
+      <button id="btn-camera-toggle" class="top-bar-btn" title="Toggle 360° Free Orbit / Follow (Press C)">
+        <span id="camera-mode-icon">👁️</span>
+        <span id="camera-mode-label">Orbit 360°</span>
+        <span class="top-bar-key">C</span>
+      </button>
+      <button id="btn-camera-front" class="top-bar-btn" title="Front View - Look directly at avatar face (Press V)">
+        <span>👤 Front</span>
+        <span class="top-bar-key">V</span>
+      </button>
+      <button id="btn-camera-reset" class="top-bar-btn" title="Reset Camera to Behind View (Press R)">
+        <span>↺ Reset</span>
+        <span class="top-bar-key">R</span>
+      </button>
+      <button id="btn-animations-toggle" class="top-bar-btn" title="Approved Gestures & Animations (Press G)">
+        <span>✨ Gestures</span>
+        <span class="top-bar-key">G</span>
+      </button>
+    </div>
   </div>
 
   <div id="scene-container">
@@ -40,13 +62,20 @@ app.innerHTML = `
       <div class="ticket-quote">"In every hall, a memory; in every frame, a promise."</div>
       <div class="ticket-divider"></div>
 
+      <div id="invite-box" class="invite-box">
+        <div class="invite-input-row">
+          <input id="invite-code-input" class="invite-code-input" type="text" placeholder="Passcode (e.g. maya-love)" autocomplete="off" />
+          <button id="btn-redeem-invite" class="btn-redeem-invite" type="button">Verify Pass</button>
+        </div>
+        <div id="invite-status" class="invite-status" role="status"></div>
+      </div>
+
       <div id="entrance-loading" aria-busy="true">
         <progress id="entrance-progress" max="100" value="0" aria-label="Loading museum"></progress>
         <p id="entrance-status" role="status">Preparing your museum…</p>
       </div>
 
       <div id="avatar-select" hidden>
-        <p class="avatar-prompt">Who is visiting tonight?</p>
         <div id="avatar-grid"></div>
       </div>
       <button id="btn-enter-museum" class="btn-enter" hidden aria-describedby="entrance-status">
@@ -54,6 +83,11 @@ app.innerHTML = `
         <span>ENTER SANCTUARY</span>
         <span class="btn-enter-sparkle">✦</span>
       </button>
+
+      <div id="mobile-notice" class="mobile-notice" style="display:none;">
+        <p class="mobile-notice-text">🖥️ Best experienced on a computer with a keyboard and mouse.</p>
+        <button id="btn-mobile-continue" type="button" class="btn-mobile-continue">Continue anyway</button>
+      </div>
 
       <div class="ticket-controls">
         <span class="key-badge">W A S D</span> or <span class="key-badge">↑ ← ↓ →</span> Move
@@ -77,6 +111,49 @@ app.innerHTML = `
 
   <div id="hud">
     <div id="crosshair" aria-hidden="true"></div>
+
+    <!-- Visible Animations Panel / Drawer (Feature A) -->
+    <div id="hud-animations-drawer" class="hud-animations-drawer" style="display:none;" aria-label="Animations Menu">
+      <div class="anim-drawer-header">
+        <span class="anim-drawer-title">✦ Approved Gestures ✦</span>
+        <button id="btn-close-anim-drawer" class="anim-drawer-close" type="button" aria-label="Close">✕</button>
+      </div>
+      <div class="anim-drawer-grid">
+        <button class="anim-card-btn" data-emote="1" type="button" title="Perform Wave (Press 1)">
+          <span class="anim-card-emoji">👋</span>
+          <span class="anim-card-name">Wave</span>
+          <span class="anim-card-badge">1</span>
+        </button>
+        <button class="anim-card-btn" data-emote="2" type="button" title="Perform Dance (Press 2)">
+          <span class="anim-card-emoji">💃</span>
+          <span class="anim-card-name">Dance</span>
+          <span class="anim-card-badge">2</span>
+        </button>
+        <button class="anim-card-btn" data-emote="3" type="button" title="Perform Nod (Press 3)">
+          <span class="anim-card-emoji">👍</span>
+          <span class="anim-card-name">Nod</span>
+          <span class="anim-card-badge">3</span>
+        </button>
+      </div>
+      <div class="anim-drawer-footer">Press 1-3 anytime · Synchronized with partner</div>
+    </div>
+  </div>
+
+  <div id="mobile-controls" aria-hidden="true">
+    <div id="virtual-joystick-zone" class="virtual-joystick-zone">
+      <div id="joystick-base" class="joystick-base">
+        <div id="joystick-thumb" class="joystick-thumb"></div>
+      </div>
+    </div>
+    <div id="touch-look-zone" class="touch-look-zone"></div>
+    <div id="mobile-action-buttons" class="mobile-action-buttons">
+      <button id="btn-touch-jump" class="mobile-btn" type="button" aria-label="Jump">JUMP</button>
+      <button id="btn-touch-sit" class="mobile-btn" type="button" aria-label="Sit or Stand">SIT</button>
+      <button id="btn-touch-orbit" class="mobile-btn" type="button" aria-label="Orbit 360">👁️ 360°</button>
+      <button id="btn-touch-front" class="mobile-btn" type="button" aria-label="Front View">👤 FACE</button>
+      <button id="btn-touch-chat" class="mobile-btn" type="button" aria-label="Chat">💬</button>
+      <button id="btn-touch-emotes" class="mobile-btn" type="button" aria-label="Emotes">✨</button>
+    </div>
   </div>
 `
 
@@ -89,73 +166,224 @@ const entranceStatus = document.querySelector('#entrance-status')
 const entranceProgress = document.querySelector('#entrance-progress')
 let entranceReady = false
 
-// ---- VISITOR / AVATAR SELECTION ----
-const AVATARS = [
-	{ id: 'maya', name: 'Maya', role: 'The Connoisseur', initials: 'M', c1: '#e6c36c', c2: '#8a5a33' },
-	{ id: 'ethan', name: 'Ethan', role: 'The Storyteller', initials: 'E', c1: '#cfa35c', c2: '#6e4a2c' },
-	{ id: 'aurelia', name: 'Aurelia', role: 'The Wanderer', initials: 'A', c1: '#d8b06a', c2: '#7d5636' },
-	{ id: 'callum', name: 'Callum', role: 'The Protector', initials: 'C', c1: '#bf8f52', c2: '#53402a' },
-]
-let selectedAvatarId = null
-const avatarSelectEl = document.querySelector('#avatar-select')
-const avatarGridEl = document.querySelector('#avatar-grid')
-const visitorBadgeEl = document.querySelector('#visitor-badge')
-
-function selectAvatar(id) {
-	selectedAvatarId = id
-	const av = AVATARS.find((a) => a.id === id)
-	if (!av) return
-	avatarGridEl.querySelectorAll('.avatar-card').forEach((c) => {
-		const active = c.dataset.avatarId === id
-		c.classList.toggle('selected', active)
-		c.setAttribute('aria-pressed', String(active))
-	})
-	enterButton.hidden = false
-	enterButton.disabled = false
-	if (visitorBadgeEl) {
-		visitorBadgeEl.hidden = false
-		visitorBadgeEl.textContent = `✦ ${av.name} · ${av.role}`
+// Mobile touch-device notice (UX-01)
+const isTouchDevice = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches
+const mobileNoticeEl = document.querySelector('#mobile-notice')
+const mobileContinueBtn = document.querySelector('#btn-mobile-continue')
+if (isTouchDevice && mobileNoticeEl) {
+	try {
+		if (!sessionStorage.getItem('dismiss_mobile_notice')) {
+			mobileNoticeEl.style.display = 'block'
+		}
+	} catch {
+		mobileNoticeEl.style.display = 'block'
 	}
-	window.__visitor = av
+	mobileContinueBtn?.addEventListener('click', () => {
+		mobileNoticeEl.style.display = 'none'
+		try { sessionStorage.setItem('dismiss_mobile_notice', '1') } catch {}
+	})
 }
 
-function renderAvatarSelection() {
-	if (!avatarGridEl) return
-	avatarGridEl.innerHTML = ''
-	for (const av of AVATARS) {
-		const card = document.createElement('button')
-		card.type = 'button'
-		card.className = 'avatar-card'
-		card.dataset.avatarId = av.id
-		card.setAttribute('aria-pressed', 'false')
-		card.innerHTML = `
-			<span class="avatar-medallion" style="--c1:${av.c1};--c2:${av.c2}">
-				<span class="avatar-initials">${av.initials}</span>
-			</span>
-			<span class="avatar-name">${av.name}</span>
-			<span class="avatar-role">${av.role}</span>
-		`
-		card.addEventListener('click', () => selectAvatar(av.id))
-		avatarGridEl.appendChild(card)
+// ---- PRIVATE INVITATION EXCHANGE (AUTH-01, Q2, Q6) ----
+// The server issues an HttpOnly museum_session cookie on successful redemption;
+// that cookie is sent automatically on both HTTP requests and the WS upgrade,
+// so gating entrance on a successful redemption protects private content and
+// authenticates the multiplayer join.
+const inviteCodeInput = document.querySelector('#invite-code-input')
+const redeemBtn = document.querySelector('#btn-redeem-invite')
+const inviteStatusEl = document.querySelector('#invite-status')
+let inviteRedeemed = false
+let lastInviteRecipient = null
+
+function setInviteStatus(msg, ok) {
+	if (!inviteStatusEl) return
+	inviteStatusEl.textContent = msg
+	inviteStatusEl.classList.toggle('ok', !!ok)
+	inviteStatusEl.classList.toggle('error', !ok)
+}
+
+async function redeemInviteCode() {
+	const code = (inviteCodeInput?.value || '').trim()
+	if (!code) {
+		setInviteStatus('Please enter your private pass / invitation code.', false)
+		return
+	}
+	if (redeemBtn) {
+		redeemBtn.disabled = true
+		redeemBtn.textContent = 'Verifying…'
+	}
+	try {
+		const res = await fetch('/api/invite/redeem', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({ code }),
+		})
+		const data = await res.json().catch(() => ({ ok: false }))
+		if (res.ok && data.ok) {
+			inviteRedeemed = true
+			lastInviteRecipient = data.recipient || null
+			window.__museumSessionToken = data.sessionToken || null
+			window.__museumPasscode = code
+			try { sessionStorage.setItem('museum_session_token', data.sessionToken) } catch {}
+			setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
+			if (inviteCodeInput) {
+				inviteCodeInput.value = code
+				inviteCodeInput.setAttribute('readonly', 'readonly')
+			}
+			if (redeemBtn) {
+				redeemBtn.textContent = 'Verified ✓'
+				redeemBtn.disabled = true
+			}
+
+			// Pre-select avatar matching recipient
+			if (data.recipient) {
+				const recLower = String(data.recipient).toLowerCase()
+				const match = AVATARS.find(a => a.name.toLowerCase() === recLower)
+				if (match) {
+					selectedAvatarId = match.id
+					if (characterSetup && typeof selectAvatar === 'function') {
+						selectAvatar(match.id)
+					}
+				}
+			}
+
+			// Load the protected letters (AUTH-02)
+			await loadPrivateLetters()
+		} else {
+			inviteRedeemed = false
+			setInviteStatus((data && data.error) || 'Invitation could not be verified.', false)
+		}
+	} catch {
+		inviteRedeemed = false
+		setInviteStatus('Could not reach the server. Are you connected?', false)
+	} finally {
+		if (redeemBtn && !inviteRedeemed) {
+			redeemBtn.disabled = false
+			redeemBtn.textContent = 'Verify Pass'
+		}
+	}
+}
+
+async function loadPrivateLetters() {
+	try {
+		const res = await fetch('/api/letters')
+		if (res.ok) {
+			const data = await res.json()
+			if (data && data.letters) {
+				for (const [title, letterEntry] of Object.entries(data.letters)) {
+					if (coupleSalons[title]) {
+						let text = ''
+						if (typeof letterEntry === 'string') {
+							text = letterEntry
+						} else if (letterEntry && typeof letterEntry === 'object') {
+							text = letterEntry.fullText || (letterEntry.letter ? `From ${letterEntry.author || 'Ethan'} to ${letterEntry.recipient || 'Maya'}: "${letterEntry.letter}"` : (letterEntry.text || letterEntry.body || ''))
+						}
+						coupleSalons[title].longExtract = text
+					}
+				}
+				console.log('[Letters] Private salon letters loaded successfully.')
+			}
+		}
+	} catch (err) {
+		console.warn('[Letters] Failed to load private letters:', err)
+	}
+}
+
+redeemBtn?.addEventListener('click', redeemInviteCode)
+inviteCodeInput?.addEventListener('keydown', (e) => {
+	if (e.key === 'Enter') {
+		e.preventDefault()
+		redeemInviteCode()
+	}
+})
+
+// Auto-check URL parameters or existing session
+const initialInviteParam = (new URLSearchParams(window.location.search)).get('invite') || (new URLSearchParams(window.location.search)).get('code')
+if (initialInviteParam && inviteCodeInput) {
+	inviteCodeInput.value = initialInviteParam
+	redeemInviteCode()
+} else {
+	loadPrivateLetters()
+}
+
+// ---- VISITOR / AVATAR SELECTION ----
+// Build the avatar roster from the editable characters.json (only 2 slots;
+// edit src/data/characters.json to change names/models/colours).
+const charRoster = (charactersJson?.roster || []).slice(0, 2)
+const AVATARS = charRoster
+let selectedAvatarId = null
+let avatarLoading = false
+let avatarSelection = 0
+const avatarSelectEl = document.querySelector('#avatar-select')
+const visitorBadgeEl = document.querySelector('#visitor-badge')
+let characterSetup = null
+let selectedProfile = null
+
+function updateVisitor(profile) {
+	if (!profile) return
+	selectedProfile = profile
+	window.__visitor = profile
+	visitorBadgeEl.hidden = false
+	visitorBadgeEl.textContent = `✦ ${profile.name}`
+	const avatar = multiplayer.getState().localAvatar
+	if (avatar?.characterId === profile.id) {
+		avatar.name = profile.name
+		avatar.tag.textContent = profile.name
+		avatar.applyAppearance(profile.appearance)
+	}
+}
+
+async function selectAvatar(id) {
+	selectedAvatarId = id
+	const av = characterSetup?.getProfile?.() || AVATARS.find(a => a.id === id)
+	if (!av) return
+	selectedProfile = av
+	const selection = ++avatarSelection
+	avatarLoading = true
+	enterButton.hidden = true
+	enterButton.disabled = true
+	entranceProgress.value = 0
+	entranceStatus.textContent = `Preparing ${av.name}…`
+	try {
+		const local = await multiplayer.prepareAvatar(av)
+		if (selection !== avatarSelection) return
+		updateVisitor(characterSetup?.getProfile?.() || av)
+		characterSetup?.setAvatar?.(local)
+		avatarLoading = false
+		entranceProgress.value = 100
+		entranceStatus.textContent = 'Your character is ready. Welcome.'
+		enterButton.hidden = false
+		enterButton.disabled = false
+	} catch (error) {
+		if (selection !== avatarSelection) return
+		avatarLoading = false
+		entranceStatus.textContent = 'The character could not load. Select a character to try again.'
+		console.error('[Museum] Character loading failed:', error)
+		return
 	}
 }
 
 function showAvatarSelection() {
 	if (!avatarSelectEl) return
-	if (avatarGridEl && avatarGridEl.children.length === 0) renderAvatarSelection()
+	if (!characterSetup) characterSetup = createCharacterSetup(avatarSelectEl, AVATARS, { onSelect: selectAvatar, onChange: updateVisitor })
+	document.querySelector('#ticket-card').classList.add('character-setup-card')
+	document.body.classList.add('choosing-character')
 	avatarSelectEl.hidden = false
+	if (selectedAvatarId && characterSetup) {
+		selectAvatar(selectedAvatarId)
+	}
 }
 let assetsLoading = false
 let resolveAssetsLoaded = null
 DefaultLoadingManager.onStart = () => { assetsLoading = true }
 DefaultLoadingManager.onProgress = (_url, loaded, total) => {
-	const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0
-	entranceProgress.value = percent
-	if (!entranceReady) entranceStatus.textContent = `Loading museum assets (${percent}%)…`
+	if (entranceReady && !avatarLoading) return
+	const percent = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0
+	entranceProgress.value = Math.max(entranceProgress.value, percent)
+	entranceStatus.textContent = `Loading ${avatarLoading ? 'character' : 'museum'} (${entranceProgress.value}%)…`
 }
 DefaultLoadingManager.onLoad = () => {
 	assetsLoading = false
-	entranceProgress.value = 100
 	resolveAssetsLoaded?.()
 }
 
@@ -265,7 +493,9 @@ function preloadDoorPhotos(door) {
 }
 
 function requestPlay() {
-	canvas.requestPointerLock()
+	if (!isTouchDevice && canvas && typeof canvas.requestPointerLock === 'function') {
+		try { canvas.requestPointerLock() } catch (_) {}
+	}
 }
 
 // -------------------------------------------------------------------------
@@ -349,23 +579,365 @@ function toggleAmbientAudio() {
 // Event Listeners for UI
 let hasEntered = false
 
+let inviteRequired = false
+let inviteConfigChecked = false
+function checkInviteRequired() {
+	if (inviteConfigChecked) return
+	inviteConfigChecked = true
+	fetch('/api/config').then(r => r.json()).then(cfg => {
+		inviteRequired = Boolean(cfg && cfg.passcodeRequired)
+		if (inviteRequired && !inviteRedeemed && inviteStatusEl) {
+			setInviteStatus('This private museum requires a verified invitation pass to enter.', false)
+		}
+		if (cfg && cfg.customization) {
+			window.__museumConfig = cfg.customization
+			const c = cfg.customization
+			if (c.museum) {
+				const tagEl = document.querySelector('.ticket-tag')
+				const numEl = document.querySelector('.ticket-number')
+				const titleEl = document.querySelector('.ticket-title')
+				const subEl = document.querySelector('.ticket-subtitle')
+				const quoteEl = document.querySelector('.ticket-quote')
+				const footerEl = document.querySelector('#ticket-card p')
+				if (tagEl && c.museum.ticketTag) tagEl.textContent = c.museum.ticketTag
+				if (numEl && c.museum.ticketNumber) numEl.textContent = c.museum.ticketNumber
+				if (titleEl && c.museum.name) titleEl.textContent = c.museum.name
+				if (subEl && c.museum.subtitle) subEl.textContent = c.museum.subtitle
+				if (quoteEl && c.museum.entranceQuote) quoteEl.textContent = c.museum.entranceQuote
+				if (footerEl && c.museum.footerCredit) footerEl.textContent = c.museum.footerCredit
+				if (c.museum.name && c.couple) {
+					document.title = `${c.museum.name} | Virtual 3D Art Sanctuary for ${c.couple.partner1?.name || 'Maya'} & ${c.couple.partner2?.name || 'Ethan'}`
+				}
+			}
+		}
+	}).catch(() => {})
+}
+checkInviteRequired()
+
+let mobileControlsInitialized = false
+function initMobileControls(engineApi, multiplayer) {
+	if (!isTouchDevice || mobileControlsInitialized) return
+	mobileControlsInitialized = true
+	document.body.classList.add('is-touch-device')
+
+	const joystickZone = document.querySelector('#virtual-joystick-zone')
+	const joystickThumb = document.querySelector('#joystick-thumb')
+	const touchLookZone = document.querySelector('#touch-look-zone')
+	const btnJump = document.querySelector('#btn-touch-jump')
+	const btnSit = document.querySelector('#btn-touch-sit')
+	const btnChat = document.querySelector('#btn-touch-chat')
+	const btnEmotes = document.querySelector('#btn-touch-emotes')
+	const emotesBar = document.querySelector('#mobile-emotes-bar')
+
+	// 1. Virtual Joystick (Left touch zone)
+	let joyTouchId = null
+	let joyCenterX = 0
+	let joyCenterY = 0
+	const maxRadius = 45
+
+	joystickZone?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		if (joyTouchId !== null) return
+		const touch = e.changedTouches[0]
+		joyTouchId = touch.identifier
+		const rect = joystickZone.getBoundingClientRect()
+		joyCenterX = rect.left + rect.width / 2
+		joyCenterY = rect.top + rect.height / 2
+		engineApi?.setMobileActive?.(true)
+	}, { passive: false })
+
+	const updateJoystick = (touch) => {
+		const dx = touch.clientX - joyCenterX
+		const dy = touch.clientY - joyCenterY
+		const dist = Math.hypot(dx, dy)
+		const angle = Math.atan2(dy, dx)
+		const clampedDist = Math.min(dist, maxRadius)
+
+		const thumbX = Math.cos(angle) * clampedDist
+		const thumbY = Math.sin(angle) * clampedDist
+		if (joystickThumb) {
+			joystickThumb.style.transform = `translate(${thumbX}px, ${thumbY}px)`
+		}
+
+		// Normalized move vector: X is strafe, Z is forward/back (-dy)
+		const normX = thumbX / maxRadius
+		const normZ = -thumbY / maxRadius
+		engineApi?.setTouchMoveVector?.(normX, normZ)
+	}
+
+	joystickZone?.addEventListener('touchmove', (e) => {
+		e.preventDefault()
+		for (let i = 0; i < e.changedTouches.length; i++) {
+			const touch = e.changedTouches[i]
+			if (touch.identifier === joyTouchId) {
+				updateJoystick(touch)
+				break
+			}
+		}
+	}, { passive: false })
+
+	const resetJoystick = (e) => {
+		for (let i = 0; i < e.changedTouches.length; i++) {
+			if (e.changedTouches[i].identifier === joyTouchId) {
+				joyTouchId = null
+				if (joystickThumb) {
+					joystickThumb.style.transform = 'translate(0px, 0px)'
+				}
+				engineApi?.setTouchMoveVector?.(0, 0)
+				break
+			}
+		}
+	}
+
+	joystickZone?.addEventListener('touchend', resetJoystick, { passive: false })
+	joystickZone?.addEventListener('touchcancel', resetJoystick, { passive: false })
+
+	// 2. Touch Camera Look Area (Right screen swipe)
+	let lookTouchId = null
+	let lookLastX = 0
+	let lookLastY = 0
+
+	touchLookZone?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		if (lookTouchId !== null) return
+		const touch = e.changedTouches[0]
+		lookTouchId = touch.identifier
+		lookLastX = touch.clientX
+		lookLastY = touch.clientY
+		engineApi?.setMobileActive?.(true)
+	}, { passive: false })
+
+	touchLookZone?.addEventListener('touchmove', (e) => {
+		e.preventDefault()
+		for (let i = 0; i < e.changedTouches.length; i++) {
+			const touch = e.changedTouches[i]
+			if (touch.identifier === lookTouchId) {
+				const dx = touch.clientX - lookLastX
+				const dy = touch.clientY - lookLastY
+				lookLastX = touch.clientX
+				lookLastY = touch.clientY
+				engineApi?.addTouchLookDelta?.(dx, dy)
+				break
+			}
+		}
+	}, { passive: false })
+
+	const resetLook = (e) => {
+		for (let i = 0; i < e.changedTouches.length; i++) {
+			if (e.changedTouches[i].identifier === lookTouchId) {
+				lookTouchId = null
+				break
+			}
+		}
+	}
+
+	touchLookZone?.addEventListener('touchend', resetLook, { passive: false })
+	touchLookZone?.addEventListener('touchcancel', resetLook, { passive: false })
+
+	// 3. Mobile Contextual Action Buttons
+	btnJump?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		engineApi?.triggerJump?.()
+	}, { passive: false })
+
+	btnSit?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		multiplayer?.trySit?.()
+		setTimeout(() => {
+			if (btnSit) {
+				btnSit.textContent = engineApi?.getSeatedSeat?.() ? 'STAND' : 'SIT'
+			}
+		}, 150)
+	}, { passive: false })
+
+	const btnTouchOrbit = document.querySelector('#btn-touch-orbit')
+	const btnTouchFront = document.querySelector('#btn-touch-front')
+
+	btnTouchOrbit?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		const cur = engineApi?.getCameraMode?.() || 'follow'
+		const next = cur === 'orbit' ? 'follow' : 'orbit'
+		engineApi?.setCameraMode?.(next)
+		if (btnTouchOrbit) btnTouchOrbit.textContent = next === 'orbit' ? '🎥 REAR' : '👁️ 360°'
+	}, { passive: false })
+
+	btnTouchFront?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		engineApi?.setFrontView?.()
+		if (btnTouchOrbit) btnTouchOrbit.textContent = '🎥 REAR'
+	}, { passive: false })
+
+	btnChat?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		multiplayer?.openChat?.()
+	}, { passive: false })
+
+	btnEmotes?.addEventListener('touchstart', (e) => {
+		e.preventDefault()
+		const drawer = document.querySelector('#hud-animations-drawer')
+		if (drawer) {
+			drawer.style.display = drawer.style.display === 'none' ? 'block' : 'none'
+		}
+	}, { passive: false })
+
+	document.querySelectorAll('.anim-card-btn').forEach(btn => {
+		btn.addEventListener('touchstart', (e) => {
+			e.preventDefault()
+			const id = parseInt(btn.getAttribute('data-emote'), 10)
+			if (id && multiplayer?.doEmote) {
+				multiplayer.doEmote(id)
+			}
+			const drawer = document.querySelector('#hud-animations-drawer')
+			if (drawer) drawer.style.display = 'none'
+		}, { passive: false })
+	})
+}
+
 function enterMuseum() {
-	if (!entranceReady || !selectedAvatarId) return
+	if (!entranceReady || !selectedAvatarId || avatarLoading || enterButton.disabled) return
+	if (inviteRequired && !inviteRedeemed) {
+		setInviteStatus('Please verify your private invitation pass before entering.', false)
+		return
+	}
+	characterSetup.enter(engineApi.scene)
+	document.body.classList.remove('choosing-character')
 	hasEntered = true
 	document.body.classList.add('in-sanctuary')
 	overlayEl.hidden = true
+	document.querySelector('#camera-hud-group')?.removeAttribute('hidden')
 	requestPlay()
 	if (!isAudioPlaying) {
 		toggleAmbientAudio()
 	}
 	queuePrebuildSalons(coupleCategories)
+	// Start multiplayer (join + sync) once inside the sanctuary.
+	if (multiplayer && typeof multiplayer.start === 'function') {
+		multiplayer.start()
+	}
+	if (isTouchDevice) {
+		initMobileControls(engineApi, multiplayer)
+	}
 }
+
+// ---- HUD CAMERA CONTROLS & ANIMATIONS DRAWER (UI-ANIM-01, CAM-01..02) ----
+const btnCamMode = document.querySelector('#btn-camera-toggle')
+const btnCamFront = document.querySelector('#btn-camera-front')
+const btnCamReset = document.querySelector('#btn-camera-reset')
+const btnAnimToggle = document.querySelector('#btn-animations-toggle')
+const animDrawer = document.querySelector('#hud-animations-drawer')
+const btnCloseAnimDrawer = document.querySelector('#btn-close-anim-drawer')
+
+function updateCameraModeUI(mode) {
+	if (!btnCamMode) return
+	const icon = document.querySelector('#camera-mode-icon')
+	const label = document.querySelector('#camera-mode-label')
+	if (mode === 'orbit') {
+		if (icon) icon.textContent = '🎥'
+		if (label) label.textContent = 'Follow'
+		btnCamMode.classList.add('active')
+	} else {
+		if (icon) icon.textContent = '👁️'
+		if (label) label.textContent = 'Orbit 360°'
+		btnCamMode.classList.remove('active')
+	}
+}
+
+btnCamMode?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	const cur = engineApi?.getCameraMode?.() || 'follow'
+	const next = cur === 'orbit' ? 'follow' : 'orbit'
+	engineApi?.setCameraMode?.(next)
+	updateCameraModeUI(next)
+})
+
+btnCamFront?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	engineApi?.setFrontView?.()
+	updateCameraModeUI('orbit')
+})
+
+btnCamReset?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	engineApi?.resetCamera?.()
+	updateCameraModeUI('follow')
+})
+
+function toggleAnimationsDrawer(forceOpen) {
+	if (!animDrawer) return
+	const isClosed = animDrawer.style.display === 'none'
+	const shouldOpen = forceOpen !== undefined ? forceOpen : isClosed
+	animDrawer.style.display = shouldOpen ? 'block' : 'none'
+	btnAnimToggle?.classList.toggle('active', shouldOpen)
+}
+
+btnAnimToggle?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	toggleAnimationsDrawer()
+})
+
+btnCloseAnimDrawer?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	toggleAnimationsDrawer(false)
+})
+
+// Wire up emote buttons in drawer
+document.querySelectorAll('.anim-card-btn').forEach(btn => {
+	btn.addEventListener('click', (e) => {
+		e.stopPropagation()
+		const emoteId = parseInt(btn.getAttribute('data-emote'), 10)
+		if (emoteId && multiplayer?.doEmote) {
+			multiplayer.doEmote(emoteId)
+			btn.classList.add('active-pulse')
+			setTimeout(() => btn.classList.remove('active-pulse'), 400)
+		}
+	})
+})
+
+// Hotkeys for Camera and Emotes (C: toggle orbit, V: front, R: reset, G: gestures, 1-3: emotes)
+window.addEventListener('keydown', (e) => {
+	if (!hasEntered) return
+	if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return
+
+	if (e.code === 'KeyC') {
+		e.preventDefault()
+		const cur = engineApi?.getCameraMode?.() || 'follow'
+		const next = cur === 'orbit' ? 'follow' : 'orbit'
+		engineApi?.setCameraMode?.(next)
+		updateCameraModeUI(next)
+	} else if (e.code === 'KeyV') {
+		e.preventDefault()
+		engineApi?.setFrontView?.()
+		updateCameraModeUI('orbit')
+	} else if (e.code === 'KeyR') {
+		e.preventDefault()
+		engineApi?.resetCamera?.()
+		updateCameraModeUI('follow')
+	} else if (e.code === 'KeyG') {
+		e.preventDefault()
+		toggleAnimationsDrawer()
+	} else if (e.code === 'Digit1') {
+		multiplayer?.doEmote?.(1)
+		const b = document.querySelector('.anim-card-btn[data-emote="1"]')
+		b?.classList.add('active-pulse')
+		setTimeout(() => b?.classList.remove('active-pulse'), 400)
+	} else if (e.code === 'Digit2') {
+		multiplayer?.doEmote?.(2)
+		const b = document.querySelector('.anim-card-btn[data-emote="2"]')
+		b?.classList.add('active-pulse')
+		setTimeout(() => b?.classList.remove('active-pulse'), 400)
+	} else if (e.code === 'Digit3') {
+		multiplayer?.doEmote?.(3)
+		const b = document.querySelector('.anim-card-btn[data-emote="3"]')
+		b?.classList.add('active-pulse')
+		setTimeout(() => b?.classList.remove('active-pulse'), 400)
+	}
+})
 
 document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuseum)
 
 // Resume pointer lock on canvas click if already entered and unlocked
 canvas.addEventListener('click', () => {
-	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden && !document.body.classList.contains('studio-build-mode')) {
+	if (hasEntered && !document.pointerLockElement && lightboxEl.hidden) {
 		requestPlay()
 	}
 })
@@ -481,8 +1053,11 @@ async function loadAndEnterGallery(title, { pushHistory = false, spawn, updateUr
 
 	const navId = (activeNavId += 1)
 
-	const salon = findCoupleSalon(title) || coupleSalons['Fireside Winter Memories']
-	if (!salon) return
+	const salon = findCoupleSalon(title)
+	if (!salon) {
+		console.warn(`[Navigation] Salon "${title}" not found.`)
+		return
+	}
 
 	currentGalleryTitle = salon.title
 	lastEnteredLobbyCategory = salon.title
@@ -731,6 +1306,32 @@ engineApi = startYourEngines({
 window.__engineApi = engineApi
 window.__loadAndEnterGallery = loadAndEnterGallery
 window.__enterlobby = enterlobby
+
+// ---- MULTIPLAYER (avatar sync) ----
+const multiplayer = initMultiplayer({
+	engineApi,
+	selectedAvatar: () => selectedProfile,
+	getRoomKey: () => {
+		try { return engineApi.getRoomKey() } catch { return 'lobby' }
+	},
+	goToRoom(roomKey) {
+		if (!roomKey) return
+		if (roomKey === 'lobby') {
+			enterlobby({ push: true })
+			return
+		}
+		const title = ROOM_KEY_TO_TITLE[roomKey]
+		if (!title) {
+			console.error(`[Navigation] Unknown roomKey "${roomKey}" requested. Staying put.`)
+			return
+		}
+		loadAndEnterGallery(title, {
+			pushHistory: true,
+			spawn: { type: 'fromWall', wall: 'south' },
+		})
+	},
+})
+window.__multiplayer = multiplayer
 
 if (!initialTitle) {
 	pushGalleryTrail(lobby_title)

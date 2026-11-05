@@ -1,22 +1,105 @@
 /**
  * Our Museum 3D — Placed Items Spawner
  * 
- * Ingests museumLayout.json (exported from Placement Studio) and spawns
- * all customized artifacts additively into the active room.
- * Reusable by both public index.html and admin Studio without duplicate logic.
+ * Ingests museumLayout.json and spawns placed artifacts additively
+ * into each active museum room.
  *
- * Supports two item kinds:
- *  - procedural artifacts (type matches an artifactRegistry id)
- *  - GLB models (type "glb", loaded from `path` with a shared GLTFLoader
- *    cache, deep-cloned per room so resources can be disposed safely).
+ * Supports GLB models (type "glb", loaded from `path` with a shared GLTFLoader
+ * cache, deep-cloned per room so resources can be disposed safely).
  */
 import * as THREE from 'three'
-import museumLayout from '../../data/museumLayout.json'
-import { getArtifact } from './artifactRegistry.js'
+import museumLayout from '../../data/museumLayout.json' with { type: 'json' }
+import { getArtifact, findArtifactByPath } from './artifactRegistry.js'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js'
 
 let activeLayout = museumLayout
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RUNTIME SEAT REGISTRY (SEAT-01)
+// Keyed by full seatId: `${roomKey}:${itemId}:${subSeatId}`
+// ─────────────────────────────────────────────────────────────────────────────
+const runtimeSeats = new Map()
+
+export function registerRuntimeSeat(seat) {
+	if (!seat || !seat.id) return
+	runtimeSeats.set(seat.id, seat)
+}
+
+export function unregisterRuntimeSeat(seatId) {
+	runtimeSeats.delete(seatId)
+}
+
+export function clearRuntimeSeats(roomKey = null) {
+	if (!roomKey) {
+		runtimeSeats.clear()
+		return
+	}
+	for (const [id, s] of runtimeSeats.entries()) {
+		if (s.roomKey === roomKey || s.room === roomKey) {
+			runtimeSeats.delete(id)
+		}
+	}
+}
+
+export function getRuntimeSeats(roomKey = null) {
+	const list = []
+	for (const s of runtimeSeats.values()) {
+		if (!roomKey || s.roomKey === roomKey || s.room === roomKey) {
+			list.push(s)
+		}
+	}
+	return list
+}
+
+function attachDebugSeatVisual(anchor, seatRecord, group) {
+	if (typeof window === 'undefined') return
+	const isDebug = new URLSearchParams(window.location.search).get('debug') === 'seats'
+	if (!isDebug || !group) return
+
+	const sphereGeom = new THREE.SphereGeometry(0.08, 12, 12)
+	const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, wireframe: true })
+	const sphere = new THREE.Mesh(sphereGeom, sphereMat)
+	sphere.position.set(seatRecord.x, seatRecord.cushionY, seatRecord.z)
+
+	const dir = new THREE.Vector3(Math.sin(seatRecord.yaw), 0, Math.cos(seatRecord.yaw))
+	const arrow = new THREE.ArrowHelper(dir, sphere.position, 0.45, 0xffaa00, 0.12, 0.08)
+
+	group.add(sphere)
+	group.add(arrow)
+}
+
+let debugHudEl = null
+export function updateDebugSeatsHud(camPos) {
+	if (typeof window === 'undefined') return
+	if (new URLSearchParams(window.location.search).get('debug') !== 'seats') return
+	if (!debugHudEl) {
+		debugHudEl = document.createElement('div')
+		debugHudEl.id = 'debug-seat-hud'
+		debugHudEl.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);' +
+			'background:rgba(14,10,6,0.92);color:#00ffff;padding:8px 16px;border-radius:8px;' +
+			'font:500 13px ui-monospace,monospace;z-index:9999;pointer-events:none;border:1px solid #00ffff;' +
+			'box-shadow:0 4px 16px rgba(0,0,0,0.6);'
+		document.body.appendChild(debugHudEl)
+	}
+	const list = getRuntimeSeats()
+	if (!list.length) {
+		debugHudEl.textContent = '[debug=seats] No active seats in room'
+		return
+	}
+	let nearest = null
+	let minDist = Infinity
+	for (const s of list) {
+		const d = Math.hypot(camPos.x - s.x, camPos.z - s.z)
+		if (d < minDist) {
+			minDist = d
+			nearest = s
+		}
+	}
+	if (nearest) {
+		debugHudEl.textContent = `[debug=seats] Nearest: ${nearest.id} | Dist: ${minDist.toFixed(2)}m | Yaw: ${nearest.yaw.toFixed(2)}rad | CushionY: ${nearest.cushionY.toFixed(2)}m`
+	}
+}
 
 export function setRuntimeLayout(layout) {
 	if (layout && typeof layout === 'object' && layout.rooms) {
@@ -201,11 +284,17 @@ export function modelObstaclesFor(obj) {
 
 function parseTransform(itm) {
 	const pos = itm.position || {}
+	let rotY = typeof itm.rotationY === 'number' ? itm.rotationY : (typeof itm.rotY === 'number' ? itm.rotY : 0)
+	if (typeof itm.rotationDeg === 'number') {
+		rotY = THREE.MathUtils.degToRad(itm.rotationDeg)
+	} else if (Math.abs(rotY) > 2 * Math.PI) {
+		console.warn(`[PlacedItems] Item "${itm.id || 'unknown'}" has rotationY ${rotY} > 2π rad. Did you mean rotationDeg?`)
+	}
 	return {
 		x: typeof (itm.x ?? pos.x) === 'number' ? (itm.x ?? pos.x) : 0,
 		y: typeof (itm.y ?? pos.y) === 'number' ? (itm.y ?? pos.y) : 0,
 		z: typeof (itm.z ?? pos.z) === 'number' ? (itm.z ?? pos.z) : 0,
-		rotY: typeof itm.rotationY === 'number' ? itm.rotationY : (typeof itm.rotY === 'number' ? itm.rotY : 0),
+		rotY,
 		scale: typeof itm.scale === 'number' && itm.scale > 0 ? itm.scale : 1,
 	}
 }
@@ -264,6 +353,63 @@ async function spawnGlbItemAsync(itm, roomKey, ctx = {}) {
 	// Positive values push it down into the floor (e.g. 0.001 = 1mm).
 	if (Number.isFinite(itm.sinkY) && itm.sinkY !== 0) {
 		root.position.y -= itm.sinkY
+	}
+
+	// Register world seat anchors from the spawned, scaled, and aligned model (SEAT-01)
+	const artifact = findArtifactByPath(path)
+	if (artifact?.seats && Array.isArray(artifact.seats) && artifact.seats.length > 0) {
+		const box = new THREE.Box3().setFromObject(root)
+		if (!box.isEmpty()) {
+			const baseCenterX = (box.min.x + box.max.x) / 2
+			const baseMinY = box.min.y
+			const baseCenterZ = (box.min.z + box.max.z) / 2
+			const rotY = root.rotation.y
+
+			const seatHolder = new THREE.Group()
+			seatHolder.name = `seats_${itm.id || 'item'}`
+			if (group) group.add(seatHolder)
+
+			for (const s of artifact.seats) {
+				const cos = Math.cos(rotY)
+				const sin = Math.sin(rotY)
+				const wx = baseCenterX + s.x * cos - s.z * sin
+				const wz = baseCenterZ + s.x * sin + s.z * cos
+				const wy = baseMinY
+				const seatYaw = rotY + (s.yaw || 0)
+
+				const anchor = new THREE.Object3D()
+				anchor.position.set(wx, wy, wz)
+				anchor.rotation.y = seatYaw
+				const seatId = `${roomKey}:${itm.id || 'item'}:${s.id}`
+				anchor.userData = {
+					seatId,
+					roomKey,
+					height: s.height,
+					cushionY: baseMinY + s.height,
+				}
+				seatHolder.add(anchor)
+
+				const seatRecord = {
+					id: seatId,
+					room: roomKey,
+					roomKey,
+					anchor,
+					x: wx,
+					y: wy,
+					z: wz,
+					yaw: seatYaw,
+					height: s.height,
+					cushionY: baseMinY + s.height,
+					occupiedBy: null,
+				}
+				registerRuntimeSeat(seatRecord)
+				disposables.push({
+					dispose: () => unregisterRuntimeSeat(seatId),
+				})
+
+				attachDebugSeatVisual(anchor, seatRecord, group)
+			}
+		}
 	}
 
 	// Optional decimated "lod/" counterpart. When the camera moves beyond

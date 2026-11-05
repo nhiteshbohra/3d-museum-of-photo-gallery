@@ -1,0 +1,29 @@
+{
+  "generated": "2026-11-05T11:58:54.839Z",
+  "entries": [
+    {
+      "from": "public\\models\\ready\\furniture\\set_sofa_v.001.glb",
+      "to": "archive\\models\\furniture\\set_sofa_v.001.glb",
+      "size": 32955532,
+      "movedAt": "2026-11-05T11:30:41.597Z"
+    },
+    {
+      "from": "public\\models\\ready\\characters\\animations\\man\\clap.glb",
+      "to": "archive\\models\\characters\\animations\\man\\clap.glb",
+      "size": 33684,
+      "movedAt": "2026-11-05T11:58:54.828Z"
+    },
+    {
+      "from": "public\\models\\ready\\characters\\animations\\woman\\clap.glb",
+      "to": "archive\\models\\characters\\animations\\woman\\clap.glb",
+      "size": 33680,
+      "movedAt": "2026-11-05T11:58:54.833Z"
+    },
+    {
+      "from": "public\\models\\ready\\lod\\lighting\\lighting_chandelier_osgona.glb",
+      "to": "archive\\models\\lod\\lighting\\lighting_chandelier_osgona.glb",
+      "size": 244700,
+      "movedAt": "2026-11-05T11:58:54.836Z"
+    }
+  ]
+}

@@ -81,7 +81,7 @@
         "x": 3.3,
         "y": 0,
         "z": -0.8,
-        "rotationY": 90,
+        "rotationDeg": 90,
         "scale": 0.010,
         "targetHeight": 2.0,
         "alignToSurface": true
@@ -106,14 +106,180 @@
         "x": 3.2,
         "y": 0,
         "z": 1.2,
+        "scale": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ],
+    "music": [
+      {
+        "id": "itm_music_chandelier_01",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_chandelier_01.glb",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.96,
+        "targetHeight": 0.9,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_music_sofa_curved",
+        "type": "glb",
+        "path": "models/ready/furniture/3d_pbr_curved_sofa.glb",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.5,
+        "rotationY": 0,
         "scale": 0.010,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ],
+    "library": [
+      {
+        "id": "itm_library_chandelier_03",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_chandelier_03.glb",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.96,
+        "targetHeight": 1.0,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_library_sofa_classic",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_sofa_1_3dx/scene.gltf",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.5,
+        "rotationY": 0,
+        "scale": 0.018,
+        "targetHeight": 0.85,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      },
+      {
+        "id": "itm_library_bookcase",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_bookcase.glb",
+        "contact": "floor",
+        "x": 3.3,
+        "y": 0,
+        "z": -0.8,
+        "rotationDeg": 90,
+        "scale": 0.010,
+        "targetHeight": 2.0,
         "alignToSurface": true
       }
     ],
-    "music": [],
-    "library": [],
-    "paris": [],
-    "orangery": [],
-    "alcove": []
+    "paris": [
+      {
+        "id": "itm_paris_chandelier_osgona",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_chandelier_osgona.glb",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.004,
+        "targetHeight": 1.1,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_paris_sofa_curved",
+        "type": "glb",
+        "path": "models/ready/furniture/3d_pbr_curved_sofa.glb",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.5,
+        "rotationY": 0,
+        "scale": 0.010,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ],
+    "orangery": [
+      {
+        "id": "itm_orangery_chandelier_01",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_chandelier_01.glb",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.96,
+        "targetHeight": 0.9,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_orangery_sofa_curved",
+        "type": "glb",
+        "path": "models/ready/furniture/3d_pbr_curved_sofa.glb",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.5,
+        "rotationY": 0,
+        "scale": 0.010,
+        "targetHeight": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      },
+      {
+        "id": "itm_orangery_plant_monstera",
+        "type": "glb",
+        "path": "models/ready/plants/plants_monstera.glb",
+        "contact": "floor",
+        "x": -3.0,
+        "y": 0,
+        "z": 1.2,
+        "scale": 1.5,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ],
+    "alcove": [
+      {
+        "id": "itm_alcove_chandelier_03",
+        "type": "glb",
+        "path": "models/ready/lighting/lighting_chandelier_03.glb",
+        "contact": "ceiling",
+        "x": 0,
+        "y": 3.2,
+        "z": 0,
+        "rotationY": 0,
+        "scale": 0.96,
+        "targetHeight": 1.0,
+        "alignToSurface": true
+      },
+      {
+        "id": "itm_alcove_sofa_classic",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_sofa_1_3dx/scene.gltf",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 1.5,
+        "rotationY": 0,
+        "scale": 0.018,
+        "targetHeight": 0.85,
+        "alignToSurface": true,
+        "sinkY": 0.001
+      }
+    ]
   }
 }

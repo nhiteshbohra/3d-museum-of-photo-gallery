@@ -1,0 +1,47 @@
+{
+  "base_url": "http://127.0.0.1:5175",
+  "pages": [
+    {
+      "theme": "Fireside Winter Memories",
+      "url": "http://127.0.0.1:5175/?exhibit=Fireside+Winter+Memories&language=en",
+      "locked": true,
+      "canvas": true
+    },
+    {
+      "theme": "Music & Classical Melodies",
+      "url": "http://127.0.0.1:5175/?exhibit=Music+%26+Classical+Melodies&language=en",
+      "locked": true,
+      "canvas": true
+    },
+    {
+      "theme": "The Library & Reading Nook",
+      "url": "http://127.0.0.1:5175/?exhibit=The+Library+%26+Reading+Nook&language=en",
+      "locked": true,
+      "canvas": true
+    },
+    {
+      "theme": "Masterpiece Paris Romance",
+      "url": "http://127.0.0.1:5175/?exhibit=Masterpiece+Paris+Romance&language=en",
+      "locked": true,
+      "canvas": true
+    },
+    {
+      "theme": "The Glass Orangery",
+      "url": "http://127.0.0.1:5175/?exhibit=The+Glass+Orangery&language=en",
+      "locked": true,
+      "canvas": true
+    },
+    {
+      "theme": "The Secret Promise Alcove",
+      "url": "http://127.0.0.1:5175/?exhibit=The+Secret+Promise+Alcove&language=en",
+      "locked": true,
+      "canvas": true
+    }
+  ],
+  "page_errors": [],
+  "welcome": "OUR MUSEUM\n\nA Sanctuary for Maya & Ethan\nClick to play\nWASD/Arrows move \u00b7 Mouse look \u00b7 SPACE jump \u00b7 SHIFT sprint \u00b7 ESCAPE unlock\n\nCurated with \u2764\ufe0f for Maya & Ethan \u00b7 Crafted by Hitesh Bohra",
+  "pointer_lock": "scene",
+  "walking_changed_pixels": true,
+  "narrow_document_width": 390,
+  "language_stored": null
+}

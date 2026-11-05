@@ -9,7 +9,15 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "node server.js",
-    "photos": "python tests/organize_photos.py"
+    "test": "node --test tests/*.test.mjs",
+    "check": "node scripts/validate_layout.mjs && node scripts/check_photos.mjs && node --test tests/*.test.mjs && vite build",
+    "check:code": "node --test tests/*.test.mjs && node scripts/validate_layout.mjs",
+    "invite": "node scripts/invite.mjs",
+    "photos": "python tools/organize_photos.py",
+    "models:audit": "node scripts/model_manager.mjs audit",
+    "models:archive": "node scripts/model_manager.mjs archive",
+    "models:restore": "node scripts/model_manager.mjs restore",
+    "models:verify": "node scripts/model_manager.mjs verify"
   },
   "dependencies": {
     "three": "^0.182.0",

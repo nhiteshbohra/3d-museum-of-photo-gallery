@@ -1,0 +1,33 @@
+{
+  "before": 2233968775,
+  "after": 2214152618,
+  "peers": [
+    {
+      "peerId": "peer_mw3ak673_e0o6zn",
+      "name": "Asha",
+      "color": "#d8b06a",
+      "model": "woman.glb",
+      "appearance": {
+        "skin": null,
+        "hair": null,
+        "top": "#22aa66",
+        "trousers": null
+      },
+      "room": "lobby"
+    },
+    {
+      "peerId": "peer_mw3ak7r6_tmsjij",
+      "name": "Observer",
+      "color": "#d8b06a",
+      "model": "man.glb",
+      "appearance": {
+        "skin": null,
+        "hair": null,
+        "top": null,
+        "trousers": null
+      },
+      "room": "lobby"
+    }
+  ],
+  "errors": []
+}

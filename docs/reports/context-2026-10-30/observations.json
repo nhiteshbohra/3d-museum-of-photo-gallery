@@ -1,0 +1,167 @@
+{
+  "errors": [],
+  "runtime": {
+    "rooms": {
+      "rotunda": {
+        "floor": 0,
+        "spawn": [
+          0,
+          0,
+          3.5
+        ],
+        "facingY": 3.141592653589793,
+        "name": "Grand Rotunda"
+      },
+      "fireside": {
+        "floor": 0,
+        "spawn": [
+          -8.5,
+          0,
+          3
+        ],
+        "facingY": 0,
+        "name": "Fireside Winter Salon"
+      },
+      "music": {
+        "floor": 0,
+        "spawn": [
+          8.5,
+          0,
+          3
+        ],
+        "facingY": 0,
+        "name": "Music Conservatory"
+      },
+      "library": {
+        "floor": 0,
+        "spawn": [
+          -8.5,
+          0,
+          -5.5
+        ],
+        "facingY": 0,
+        "name": "Library Reading Nook"
+      },
+      "monolith": {
+        "floor": 0,
+        "spawn": [
+          8.5,
+          0,
+          -5.5
+        ],
+        "facingY": 0,
+        "name": "Monolith Sculpture Hall"
+      },
+      "orangery": {
+        "floor": 0,
+        "spawn": [
+          0,
+          0,
+          -8.5
+        ],
+        "facingY": 0,
+        "name": "Starlight Glass Orangery"
+      },
+      "promise": {
+        "floor": 0,
+        "spawn": [
+          0,
+          0,
+          -12.5
+        ],
+        "facingY": 0,
+        "name": "The Promise Alcove"
+      }
+    },
+    "artworks": 40,
+    "interactiveMeshes": 41,
+    "interactions": [
+      {
+        "id": "sit_rotunda_bench",
+        "type": "sit"
+      },
+      {
+        "id": "inspect_plaque",
+        "type": "plaque"
+      },
+      {
+        "id": "sit_fireplace_sofa",
+        "type": "sit"
+      },
+      {
+        "id": "fireplace",
+        "type": "toggle_fire"
+      },
+      {
+        "id": "play_piano",
+        "type": "piano"
+      },
+      {
+        "id": "sit_library_chair",
+        "type": "sit"
+      },
+      {
+        "id": "orangery_view",
+        "type": "balcony_view"
+      },
+      {
+        "id": "sit_promise_bench",
+        "type": "sit"
+      }
+    ],
+    "defaults": 40,
+    "online": true,
+    "role": "maya",
+    "lights": 45,
+    "render": {
+      "frame": 128,
+      "calls": 220,
+      "triangles": 37526,
+      "points": 0,
+      "lines": 0
+    }
+  },
+  "carouselFirst": "PHOTO 1 OF 40",
+  "carouselNext": "PHOTO 2 OF 40",
+  "photoModal": true,
+  "photoImage": "data:image/png;base64,iVBORw0K",
+  "artOverlayAfterPhoto": true,
+  "portalProbe": {
+    "start": [
+      0,
+      0,
+      4.6
+    ],
+    "final": [
+      0,
+      0,
+      4.945
+    ],
+    "expected": "cross z=5.5 into courtyard"
+  },
+  "syncMaya": [
+    [
+      0.65,
+      0,
+      2.0334999098507036
+    ],
+    [
+      -0.08263286054153457,
+      0,
+      -2.6313303640554597
+    ]
+  ],
+  "syncEthan": [
+    [
+      -0.21198200903153586,
+      0,
+      2.5
+    ],
+    [
+      -0.21202983656133056,
+      0,
+      2.5
+    ]
+  ],
+  "studioCards": 40
+}

@@ -1,38 +1,60 @@
-# ── Build & Dependencies ──────────────────────────────────────
+# ── Build & Distribution ───────────────────────────────────────
 node_modules/
 dist/
+.vite/
+.cache/
 
-# ── User Photos (large binary assets, stored locally only) ────
-photos/
-public/photos/
+# ── Environment & Secrets ──────────────────────────────────────
+.env
+.env.local
+.env.*.local
+data/invites.json
 
-# ── Avatar & 3D Model Assets (Phase 2, binary GLB files) ──────
-/assets/
-
-# ── Archive (avatar staging for Phase 2) ──────────────────────
-archive/
+# ── Raw 3D Model Downloads & Staging (Keep normalized in public/models/ready) ──
 /3d model/
-
-# ── Dev / QA Tools ────────────────────────────────────────────
-/screenshots/
-inspect_museum_artefacts.py
+/3d models/
+/3d_model/
+/3dmodel/
+archive/
+/archive/models/
 *.zip
-/work/
+*.tar
+*.tar.gz
+*.rar
+*.7z
 
-# ── Docs & Internal Logs ──────────────────────────────────────
-docs/
-tests/
-project-log/
-skills-lock.json
-.agents/
+# ── Dev / Test Artifacts & Reports ─────────────────────────────
+screenshots/
+test-results/
+playwright-report/
+coverage/
+.nyc_output/
+work/
+scratch/
+tmp/
+temp/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# ── Misc / OS / IDE artifacts ──────────────────────────────────
+# ── OS & IDE Artifacts ─────────────────────────────────────────
 .DS_Store
 Thumbs.db
-*.log
-.vscode/
-npm-debug.log*
+ehthumbs.db
+desktop.ini
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+*.orig
 .eslintcache
-*.md
-# ── Markdown docs ──────────────────────────────────────────────
-# Markdown source documents (PROJECT_INSTRUCTIONS.md, etc.) ARE tracked.
+
+# ── Local AI Agent Workspaces & Tool Cache ─────────────────────
+.agents/
+skills-lock.json

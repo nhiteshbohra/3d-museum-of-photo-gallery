@@ -1,0 +1,94 @@
+{
+  "$schema_description": "Our Museum 3D — Central Client Customization File. Edit couple names once; all titles, footers, and letters update automatically.",
+  "couple": {
+    "partner1": {
+      "name": "Maya",
+      "avatarId": "maya",
+      "role": "The Connoisseur",
+      "color": "#d8b06a",
+      "inviteCode": "maya-love"
+    },
+    "partner2": {
+      "name": "Ethan",
+      "avatarId": "ethan",
+      "role": "The Storyteller",
+      "color": "#8a5a33",
+      "inviteCode": "ethan-love"
+    },
+    "anniversaryDate": "October 30, 2026",
+    "celebrationYear": "2026"
+  },
+  "museum": {
+    "name": "OUR MUSEUM",
+    "subtitle": "A Sanctuary for {partner1} & {partner2}",
+    "ticketTag": "PRIVATE EXHIBITION PASS",
+    "ticketNumber": "NO. 2026-1030",
+    "entranceQuote": "\"In every hall, a memory; in every frame, a promise.\"",
+    "sanctuarySignboardFooter": "— {partner1} & {partner2} • The Eternal Sanctuary —",
+    "footerCredit": "Curated with ❤️ for {partner1} & {partner2} · Crafted by Hitesh Bohra",
+    "audioAmbience": "Romantic Classical Ambience"
+  },
+  "access": {
+    "masterPasscode": "secret123",
+    "maxHumanVisitors": 2,
+    "disconnectGraceSeconds": 30
+  },
+  "salons": {
+    "fireside": {
+      "key": "fireside",
+      "title": "Fireside Winter Memories",
+      "date": "December 24, 2023",
+      "location": "Aspen Winter Cabin",
+      "extract": "Floor-to-ceiling hearth, crackling cedar logs, and quiet warmth.",
+      "letterTitle": "Winter Cedar & Sparks"
+    },
+    "music": {
+      "key": "music",
+      "title": "Music & Classical Melodies",
+      "date": "April 14, 2024",
+      "location": "The Conservatory",
+      "extract": "Grand piano notes drifting through tall curtains, vinyl warmth, and twilight.",
+      "letterTitle": "Resonance & Melodies"
+    },
+    "library": {
+      "key": "library",
+      "title": "The Library & Reading Nook",
+      "date": "July 22, 2024",
+      "location": "Old Town Reading Nook",
+      "extract": "Floor-to-ceiling walnut bookcases, quiet afternoon sunlight, and the stories we shared over warm coffee.",
+      "letterTitle": "Quiet Afternoons"
+    },
+    "paris": {
+      "key": "paris",
+      "title": "Masterpiece Paris Romance",
+      "date": "September 18, 2024",
+      "location": "Pont des Arts, Paris",
+      "extract": "The lights along the Seine, the steps of Montmartre, and holding hands under the midnight rain.",
+      "letterTitle": "Impressionist Midnight"
+    },
+    "orangery": {
+      "key": "orangery",
+      "title": "The Glass Orangery",
+      "date": "February 14, 2025",
+      "location": "Botanical Conservatory",
+      "extract": "Lush architectural palms, starlit glass skylights, and fragrant botanical warmth against the winter chill.",
+      "letterTitle": "Evergreen Growth"
+    },
+    "alcove": {
+      "key": "alcove",
+      "title": "The Secret Promise Alcove",
+      "date": "October 30, 2026",
+      "location": "Behind the Revolving Bookcase",
+      "extract": "Hidden behind the revolving library bookcase. A private sanctuary built for two hearts.",
+      "letterTitle": "The Unspoken Promise"
+    },
+    "stargazing": {
+      "key": "stargazing",
+      "title": "Stargazing Observatory",
+      "date": "Midsummer Night",
+      "location": "High Altitude Dome",
+      "extract": "Open dome ceiling under a canopy of constellations. A quiet bench overlooking infinite space.",
+      "letterTitle": "Infinite Constellations"
+    }
+  }
+}

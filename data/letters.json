@@ -1,0 +1,49 @@
+{
+  "$schema_description": "Private salon letters. Author and recipient default to couple names from museum_config.json unless overridden.",
+  "_defaults": {
+    "author": "{partner2}",
+    "recipient": "{partner1}"
+  },
+  "Fireside Winter Memories": {
+    "title": "Winter Cedar & Sparks",
+    "date": "December 24, 2023",
+    "location": "Aspen Winter Cabin",
+    "letter": "You said you hated the cold, but you stayed outside with me in the winter woods anyway, wrapped in oversized blankets. I remember the smell of cedar in the fireplace and how you smiled when the sparks flew upward. This salon holds every winter we have lived together."
+  },
+  "Music & Classical Melodies": {
+    "title": "Resonance & Melodies",
+    "date": "April 14, 2024",
+    "location": "The Conservatory",
+    "letter": "Every time you sat by the piano, the noise of the day seemed to dissolve. Even when you were just playing scales or humming along to an old vinyl record, the room felt lighter. This conservatory is built with resonant mahogany and strings."
+  },
+  "The Library & Reading Nook": {
+    "title": "Quiet Afternoons",
+    "date": "July 22, 2024",
+    "location": "Old Town Reading Nook",
+    "letter": "Our favorite afternoons were always the simplest: two armchairs, rain tapping against tall windows, and hours where neither of us felt the need to speak because just being in the same room was enough."
+  },
+  "Masterpiece Paris Romance": {
+    "title": "Impressionist Midnight",
+    "date": "September 18, 2024",
+    "location": "Pont des Arts, Paris",
+    "letter": "Paris is beautiful, but Paris with you felt like stepping inside an Impressionist canvas. The reflections of streetlamps on wet cobblestones, the taste of warm croissants, and the way you looked at the city from the bridge."
+  },
+  "The Glass Orangery": {
+    "title": "Evergreen Growth",
+    "date": "February 14, 2025",
+    "location": "Botanical Conservatory",
+    "letter": "Even in the coldest months of winter, this glass pavilion stays green and alive. It is a reminder that no matter what season the world outside is in, inside our home there is always warmth and growth."
+  },
+  "The Secret Promise Alcove": {
+    "title": "The Unspoken Promise",
+    "date": "October 30, 2026",
+    "location": "Behind the Revolving Bookcase",
+    "letter": "You found the hidden alcove. Some promises don't need to be spoken out loud to the world; they are kept quietly in private places like this. My promise to you is simple: wherever we go, and whatever changes, I will stand beside you, love you, and choose you, every day."
+  },
+  "Stargazing Observatory": {
+    "title": "Infinite Constellations",
+    "date": "Midsummer Night",
+    "location": "High Altitude Dome",
+    "letter": "Under a canopy of constellations, looking out into the infinite universe, every quiet moment together shines like starlight."
+  }
+}

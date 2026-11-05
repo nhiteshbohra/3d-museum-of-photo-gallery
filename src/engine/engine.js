@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { buildRoom, deriveRoomKey } from '../game/room.js'
-import { updateLodSwitchers, whenPlacedItemsLoaded } from '../game/room/placedItems.js'
+import { updateLodSwitchers, updateDebugSeatsHud, whenPlacedItemsLoaded } from '../game/room/placedItems.js'
 import { disposeSharedRoomMaterialTextures } from '../game/room/textures.js'
 import { disposeStaticCache } from '../game/room/staticCache.js'
 import { hashStringToUint32, mulberry32, randRange, roundTo, setBodyClickableCursor } from '../misc/helper.js'
@@ -682,7 +682,7 @@ export function startYourEngines({
 		if (pickableMeshes.length) candidates.push(...pickableMeshes)
 		if (candidates.length === 0) return false
 
-		raycaster.setFromCamera(rayNdc, camera)
+		raycaster.setFromCamera(rayNdc, activeCamera || camera)
 		const hits = raycaster.intersectObjects(candidates, true)
 		if (hits.length === 0) return false
 
@@ -706,6 +706,17 @@ export function startYourEngines({
 
 	const keysDown = new Set()
 	let jumpRequested = false
+	let touchMoveX = 0
+	let touchMoveZ = 0
+	let isMobileActive = false
+
+	// Camera modes: 'follow' (third-person rear) vs 'orbit' (independent 360° free orbit)
+	let cameraMode = 'follow'
+	let cameraYawOffset = 0
+	let targetYawOffset = null
+	let currentZoomDistance = 3.2
+	let targetZoomDistance = 3.2
+	let onCameraModeChangeCallback = null
 
 	function onKeyDown(e) {
 		keysDown.add(e.code)
@@ -739,17 +750,35 @@ export function startYourEngines({
 	function onMouseMove(e) {
 		if (!isPointerLocked()) return
 
-		yaw -= e.movementX * mouseSensitivity
-		pitch -= e.movementY * mouseSensitivity
+		if (cameraMode === 'orbit') {
+			// Orbit around avatar without rotating the avatar or broadcasting movement
+			cameraYawOffset -= e.movementX * mouseSensitivity
+			targetYawOffset = null
+			pitch -= e.movementY * mouseSensitivity
+			pitch = Math.max(-0.65, Math.min(0.75, pitch))
+		} else {
+			yaw -= e.movementX * mouseSensitivity
+			pitch -= e.movementY * mouseSensitivity
 
-		const limit = Math.PI / 2 - 0.01
-		pitch = Math.max(-limit, Math.min(limit, pitch))
+			const limit = Math.PI / 2 - 0.01
+			pitch = Math.max(-limit, Math.min(limit, pitch))
 
-		camera.rotation.y = yaw
-		camera.rotation.x = pitch
+			camera.rotation.y = yaw
+			camera.rotation.x = pitch
+		}
 	}
 
 	window.addEventListener('mousemove', onMouseMove)
+
+	function onWheel(e) {
+		// Mouse wheel zoom
+		if (document.body.classList.contains('in-sanctuary')) {
+			const delta = e.deltaY * 0.0025
+			targetZoomDistance = Math.max(1.2, Math.min(5.5, targetZoomDistance + delta))
+		}
+	}
+
+	window.addEventListener('wheel', onWheel, { passive: true })
 
 	function handlePointerLockChange() {
 		if (typeof onPointerLockChange === 'function') {
@@ -793,12 +822,12 @@ export function startYourEngines({
 		}
 
 		if (locked) {
-			raycaster.setFromCamera(rayNdc, camera)
+			raycaster.setFromCamera(rayNdc, activeCamera || camera)
 		} else {
 			const rect = canvas.getBoundingClientRect()
 			const mouseX = ((e.clientX - rect.left) / rect.width) * 2 - 1
 			const mouseY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
-			raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), camera)
+		raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), activeCamera || camera)
 		}
 		const candidates = []
 		if (doorHitMeshes.length) candidates.push(...doorHitMeshes)
@@ -924,8 +953,87 @@ export function startYourEngines({
 		return Math.max(min, Math.min(max, v))
 	}
 
+	let seatedSeat = null
+	let onStandRequestedCallback = null
+
+	function setSeated(seat) {
+		if (seat) {
+			seatedSeat = seat
+			velocity.set(0, 0, 0)
+			grounded = true
+			if (!playerAvatar) {
+				camera.position.set(seat.x, seat.y + 1.1, seat.z)
+				yaw = seat.yaw
+				pitch = 0
+				camera.rotation.y = yaw
+				camera.rotation.x = pitch
+			}
+		} else {
+			if (seatedSeat) {
+				// Stand up on the floor 0.7 m in front of the seat along its facing (SEAT-02)
+				const fwdX = Math.sin(seatedSeat.yaw)
+				const fwdZ = Math.cos(seatedSeat.yaw)
+				let standX = seatedSeat.x + fwdX * 0.7
+				let standZ = seatedSeat.z + fwdZ * 0.7
+				const standY = seatedSeat.y + eyeHeight
+
+				const margin = 0.35
+				const maxX = halfW - margin
+				const maxZ = halfL - margin
+				standX = clamp(standX, -maxX, maxX)
+				standZ = clamp(standZ, -maxZ, maxZ)
+
+				// Collision check against room obstacles so you never pop into a wall/obstacle
+				const playerRadius = 0.35
+				for (const o of roomObstacles) {
+					if (!o || o.type !== 'box') continue
+					const ox = typeof o.x === 'number' ? o.x : 0
+					const oz = typeof o.z === 'number' ? o.z : 0
+					const w = typeof o.w === 'number' ? o.w : 0
+					const d = typeof o.d === 'number' ? o.d : 0
+					if (!(w > 0 && d > 0)) continue
+					const buffer = playerRadius + 0.05
+					const hx = w / 2 + buffer
+					const hz = d / 2 + buffer
+					const dx = standX - ox
+					const dz = standZ - oz
+					if (Math.abs(dx) < hx && Math.abs(dz) < hz) {
+						const pushX = hx - Math.abs(dx)
+						const pushZ = hz - Math.abs(dz)
+						if (pushX < pushZ) {
+							standX += (dx === 0 ? 1 : Math.sign(dx)) * pushX
+						} else {
+							standZ += (dz === 0 ? 1 : Math.sign(dz)) * pushZ
+						}
+					}
+				}
+
+				camera.position.set(standX, standY, standZ)
+				velocity.set(0, 0, 0)
+				grounded = true
+			}
+			seatedSeat = null
+		}
+	}
+
 	function updatePlayer(dt) {
-		if (!isPointerLocked()) {
+		if (seatedSeat) {
+			jumpRequested = false
+			const moveKey = keysDown.has('KeyW') || keysDown.has('KeyA') || keysDown.has('KeyS') || keysDown.has('KeyD') ||
+				keysDown.has('ArrowUp') || keysDown.has('ArrowDown') || keysDown.has('ArrowLeft') || keysDown.has('ArrowRight') ||
+				keysDown.has('Space') || (Math.hypot(touchMoveX, touchMoveZ) > 0.2)
+			if (moveKey) {
+				if (typeof onStandRequestedCallback === 'function') {
+					onStandRequestedCallback()
+				} else {
+					setSeated(null)
+				}
+			}
+			return
+		}
+
+		const isControlActive = isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0)
+		if (!isControlActive) {
 			jumpRequested = false
 			return
 		}
@@ -935,18 +1043,23 @@ export function startYourEngines({
 		const moveLeft = keysDown.has('KeyA') || keysDown.has('ArrowLeft')
 		const moveRight = keysDown.has('KeyD') || keysDown.has('ArrowRight')
 
-		const inputX = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0)
-		const inputZ = (moveForward ? 1 : 0) - (moveBackward ? 1 : 0)
+		let inputX = (moveRight ? 1 : 0) - (moveLeft ? 1 : 0)
+		let inputZ = (moveForward ? 1 : 0) - (moveBackward ? 1 : 0)
+
+		if (touchMoveX !== 0 || touchMoveZ !== 0) {
+			inputX += touchMoveX
+			inputZ += touchMoveZ
+		}
 
 		let moveX = 0
 		let moveZ = 0
 
 		if (inputX !== 0 || inputZ !== 0) {
 			const len = Math.hypot(inputX, inputZ)
-			const nx = inputX / len
-			const nz = inputZ / len
+			const nx = inputX / (len > 1 ? len : 1)
+			const nz = inputZ / (len > 1 ? len : 1)
 
-			const isSprinting = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight')
+			const isSprinting = keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || len > 1.2
 			const speed = moveSpeed * (isSprinting ? sprintMultiplier : 1)
 
 			const sin = Math.sin(yaw)
@@ -1106,6 +1219,95 @@ export function startYourEngines({
 	}
 
 	let activeCamera = camera
+	let playerAvatar = null
+	const followCamera = camera.clone()
+	const followTarget = new THREE.Vector3()
+	const followOffset = new THREE.Vector3()
+	const followRay = new THREE.Raycaster()
+	let playerState = { p: [0, 0, 0], ry: 0, moving: false, anim: 'idle' }
+
+	function updateAvatar(dt, previousPosition) {
+		// Smooth interpolation for cameraYawOffset and zoom distance
+		if (targetYawOffset !== null) {
+			let diff = (targetYawOffset - cameraYawOffset) % (Math.PI * 2)
+			if (diff < -Math.PI) diff += Math.PI * 2
+			if (diff > Math.PI) diff -= Math.PI * 2
+			if (Math.abs(diff) < 0.005) {
+				cameraYawOffset = targetYawOffset
+				targetYawOffset = null
+			} else {
+				cameraYawOffset += diff * Math.min(1.0, dt * 10)
+			}
+		}
+		currentZoomDistance += (targetZoomDistance - currentZoomDistance) * Math.min(1.0, dt * 10)
+
+		const effectivePitch = Math.max(-0.65, Math.min(0.75, pitch))
+
+		if (seatedSeat) {
+			playerState = {
+				p: [seatedSeat.x, seatedSeat.y, seatedSeat.z],
+				ry: seatedSeat.yaw,
+				moving: false,
+				anim: 'sit',
+				mode: 'sit',
+				seat: seatedSeat.id,
+			}
+			if (playerAvatar) {
+				playerAvatar.group.position.set(seatedSeat.x, seatedSeat.y, seatedSeat.z)
+				playerAvatar.group.rotation.y = seatedSeat.yaw
+				Object.assign(playerAvatar.target, playerState)
+				playerAvatar.group.visible = !!playerAvatar.root
+				playerAvatar.update(performance.now(), dt)
+				playerAvatar.tag.style.display = 'none'
+
+				const effectiveSeatedYaw = seatedSeat.yaw + cameraYawOffset
+				const seatedDistance = Math.max(1.2, currentZoomDistance * 0.8)
+				followTarget.set(seatedSeat.x, seatedSeat.y + 0.9, seatedSeat.z)
+				followOffset.set(0, 0.4, seatedDistance).applyEuler(new THREE.Euler(effectivePitch, effectiveSeatedYaw, 0, 'YXZ'))
+				followRay.set(followTarget, followOffset.clone().normalize())
+				followRay.far = followOffset.length()
+				const hit = followRay.intersectObjects(currentRoom?.group.children.filter(o => o.isMesh) || [], false)[0]
+				if (hit) followOffset.setLength(Math.max(0.25, hit.distance - 0.15))
+				followCamera.position.copy(followTarget).add(followOffset)
+				followCamera.lookAt(followTarget)
+				followCamera.updateMatrixWorld()
+			} else {
+				camera.position.set(seatedSeat.x, seatedSeat.y + 1.1, seatedSeat.z)
+			}
+			return
+		}
+
+		const distance = Math.hypot(camera.position.x - previousPosition.x, camera.position.z - previousPosition.z)
+		const moving = distance > 0.0001 && (isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0))
+		playerState = {
+			p: [camera.position.x, camera.position.y - eyeHeight, camera.position.z],
+			ry: yaw + Math.PI,
+			moving,
+			anim: !grounded ? 'jump' : moving ? ((keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || Math.hypot(touchMoveX, touchMoveZ) > 0.8) ? 'run' : 'walk') : 'idle',
+			mode: 'stand',
+			seat: null,
+		}
+		if (!playerAvatar) return
+		playerAvatar.group.position.fromArray(playerState.p)
+		playerAvatar.group.rotation.y = playerState.ry
+		Object.assign(playerAvatar.target, playerState)
+		playerAvatar.group.visible = !!playerAvatar.root
+		playerAvatar.update(performance.now(), dt)
+		playerAvatar.tag.style.display = 'none'
+
+		const effectiveStandingYaw = yaw + cameraYawOffset
+		followTarget.copy(camera.position).y -= 0.6
+		followOffset.set(0, 0.7, currentZoomDistance).applyEuler(new THREE.Euler(effectivePitch, effectiveStandingYaw, 0, 'YXZ'))
+		followRay.set(followTarget, followOffset.clone().normalize())
+		followRay.far = followOffset.length()
+		// ponytail: camera obstruction checks room architecture; detailed furniture
+		// camera occlusion can use dedicated low-poly proxies if needed later.
+		const hit = followRay.intersectObjects(currentRoom?.group.children.filter(o => o.isMesh) || [], false)[0]
+		if (hit) followOffset.setLength(Math.max(0.25, hit.distance - 0.15))
+		followCamera.position.copy(followTarget).add(followOffset)
+		followCamera.lookAt(followTarget)
+		followCamera.updateMatrixWorld()
+	}
 
 	function resize() {
 		const width = canvas.clientWidth
@@ -1117,6 +1319,8 @@ export function startYourEngines({
 		const aspect = width / height
 		camera.aspect = aspect
 		camera.updateProjectionMatrix()
+		followCamera.aspect = aspect
+		followCamera.updateProjectionMatrix()
 
 		if (activeCamera && activeCamera.isOrthographicCamera) {
 			const size = activeCamera.userData?.frustumHalfSize || 8
@@ -1136,7 +1340,7 @@ export function startYourEngines({
 	let lastHeadingReport = 0
 
 	function frame() {
-		const dt = clock.getDelta()
+		const dt = Math.min(clock.getDelta(), 0.05)
 
 		if (typeof onFps === 'function') {
 			fpsFrames += 1
@@ -1160,7 +1364,9 @@ export function startYourEngines({
 			}
 		}
 
+		const previousPosition = camera.position.clone()
 		updatePlayer(dt)
+		updateAvatar(dt, previousPosition)
 
 		// Animate dynamic room decorations (flickering fire/candles, petals, ceiling fan, clock pendulum, etc.)
 		if (currentRoom?.animatedDecorations) {
@@ -1181,6 +1387,9 @@ export function startYourEngines({
 
 		// Advance distance-based LOD switching for placed GLB models.
 		updateLodSwitchers(camera.position)
+
+		// Calibration helper when ?debug=seats is active.
+		updateDebugSeatsHud(camera.position)
 
 		resize()
 		renderer.render(scene, activeCamera || camera)
@@ -1321,6 +1530,25 @@ export function startYourEngines({
 		getActiveCamera() {
 			return activeCamera || camera
 		},
+		setPlayerAvatar(avatar) {
+			playerAvatar = avatar
+			activeCamera = avatar ? followCamera : camera
+			updateAvatar(0, camera.position)
+			resize()
+		},
+		getPlayerState() {
+			return playerState
+		},
+		setSeated,
+		isSeated() {
+			return !!seatedSeat
+		},
+		getSeatedSeat() {
+			return seatedSeat
+		},
+		onStandRequested(fn) {
+			onStandRequestedCallback = fn
+		},
 		triggerResize() {
 			resize()
 		},
@@ -1335,6 +1563,81 @@ export function startYourEngines({
 			velocity.set(0, 0, 0)
 			grounded = true
 		},
+		setTouchMoveVector(x, z) {
+			touchMoveX = Number.isFinite(x) ? Math.max(-1.5, Math.min(1.5, x)) : 0
+			touchMoveZ = Number.isFinite(z) ? Math.max(-1.5, Math.min(1.5, z)) : 0
+			if (touchMoveX !== 0 || touchMoveZ !== 0) isMobileActive = true
+		},
+		addTouchLookDelta(dx, dy) {
+			isMobileActive = true
+			const touchSensitivity = 0.0032
+			if (cameraMode === 'orbit') {
+				cameraYawOffset -= dx * touchSensitivity
+				targetYawOffset = null
+				pitch -= dy * touchSensitivity
+				pitch = Math.max(-0.65, Math.min(0.75, pitch))
+			} else {
+				yaw -= dx * touchSensitivity
+				pitch -= dy * touchSensitivity
+				const limit = Math.PI / 2 - 0.01
+				pitch = Math.max(-limit, Math.min(limit, pitch))
+				camera.rotation.y = yaw
+				camera.rotation.x = pitch
+			}
+		},
+		getCameraMode() {
+			return cameraMode
+		},
+		setCameraMode(mode) {
+			cameraMode = mode === 'orbit' ? 'orbit' : 'follow'
+			if (cameraMode === 'follow') {
+				targetYawOffset = 0
+			}
+			if (typeof onCameraModeChangeCallback === 'function') {
+				onCameraModeChangeCallback(cameraMode)
+			}
+		},
+		setFrontView() {
+			cameraMode = 'orbit'
+			targetYawOffset = Math.PI
+			if (typeof onCameraModeChangeCallback === 'function') {
+				onCameraModeChangeCallback(cameraMode)
+			}
+		},
+		resetCamera() {
+			cameraMode = 'follow'
+			targetYawOffset = 0
+			targetZoomDistance = 3.2
+			if (typeof onCameraModeChangeCallback === 'function') {
+				onCameraModeChangeCallback(cameraMode)
+			}
+		},
+		onCameraModeChange(fn) {
+			onCameraModeChangeCallback = fn
+		},
+		adjustZoom(delta) {
+			targetZoomDistance = Math.max(1.2, Math.min(5.5, targetZoomDistance + delta))
+		},
+		triggerJump() {
+			if (seatedSeat) {
+				if (typeof onStandRequestedCallback === 'function') {
+					onStandRequestedCallback()
+				} else {
+					setSeated(null)
+				}
+				return
+			}
+			if (grounded) {
+				jumpRequested = true
+				isMobileActive = true
+			}
+		},
+		setMobileActive(active) {
+			isMobileActive = Boolean(active)
+		},
+		isMobileActive() {
+			return isMobileActive
+		},
 		stop() {
 			if (held) releaseHeld()
 
@@ -1345,6 +1648,7 @@ export function startYourEngines({
 			window.removeEventListener('keyup', onKeyUp)
 			window.removeEventListener('mousemove', onMouseMove)
 			window.removeEventListener('mousedown', onMouseDown)
+			window.removeEventListener('wheel', onWheel)
 			document.removeEventListener('pointerlockchange', handlePointerLockChange)
 
 			if (flashlightTimeoutId) window.clearTimeout(flashlightTimeoutId)

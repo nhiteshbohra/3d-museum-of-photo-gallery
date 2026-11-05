@@ -1,0 +1,70 @@
+{
+  "version": "4.0",
+  "format": "animation-only GLB (skeleton channels, no meshes)",
+  "characters": [
+    "man",
+    "woman"
+  ],
+  "available": [
+    "walk",
+    "walk_start",
+    "walk_stop",
+    "run",
+    "jump",
+    "wave",
+    "clap",
+    "casual_dance",
+    "energetic_dance",
+    "sit_down",
+    "seated_idle",
+    "stand_up",
+    "sit_low_chair",
+    "sit_high_chair",
+    "nod_yes",
+    "shake_head_no",
+    "turn_head_left",
+    "turn_head_right",
+    "idle_weight_shift",
+    "turn_in_place",
+    "step_back"
+  ],
+  "excluded": [
+    "blink_subtle",
+    "breathing_idle",
+    "cheer",
+    "laugh",
+    "look_at_art",
+    "point",
+    "stretch",
+    "talk_gestures",
+    "thumbs_up",
+    "use_phone",
+    "yawn"
+  ],
+  "looping": [
+    "walk",
+    "run",
+    "casual_dance",
+    "energetic_dance",
+    "seated_idle",
+    "idle_weight_shift"
+  ],
+  "oneShot": [
+    "walk_start",
+    "walk_stop",
+    "jump",
+    "wave",
+    "clap",
+    "sit_down",
+    "stand_up",
+    "sit_low_chair",
+    "sit_high_chair",
+    "nod_yes",
+    "shake_head_no",
+    "turn_head_left",
+    "turn_head_right",
+    "turn_in_place",
+    "step_back"
+  ],
+  "source": "V4 pack: original characters preserved. walk_start, walk_stop, step_back, turn_in_place, idle_weight_shift replaced with fuller-body clips; clap reintroduced."
+}

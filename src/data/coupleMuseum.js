@@ -150,7 +150,7 @@ export const coupleSalons = {
   'Fireside Winter Memories': {
     title: 'Fireside Winter Memories',
     extract: 'Warm hearths, snowy pines, and quiet evenings where the outside world faded away into embers and candlelight.',
-    longExtract: 'From Ethan to Maya: "You said you hated the cold, but you stayed outside with me in the winter woods anyway, wrapped in oversized blankets. I remember the smell of cedar in the fireplace and how you smiled when the sparks flew upward. This salon holds every winter we have lived together."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Music & Classical Melodies', 'The Library & Reading Nook', 'Masterpiece Paris Romance', 'The Glass Orangery', 'The Secret Promise Alcove']
@@ -159,7 +159,7 @@ export const coupleSalons = {
   'Music & Classical Melodies': {
     title: 'Music & Classical Melodies',
     extract: 'Chopin nocturnes on the grand piano, acoustic acoustics, and the songs that became the soundtrack to our life.',
-    longExtract: 'From Ethan to Maya: "Every time you sat by the piano, the noise of the day seemed to dissolve. Even when you were just playing scales or humming along to an old vinyl record, the room felt lighter. This conservatory is built with resonant mahogany and strings."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Fireside Winter Memories', 'The Library & Reading Nook', 'The Glass Orangery', 'The Secret Promise Alcove']
@@ -168,7 +168,7 @@ export const coupleSalons = {
   'The Library & Reading Nook': {
     title: 'The Library & Reading Nook',
     extract: 'Floor-to-ceiling walnut bookcases, quiet afternoon sunlight, and the stories we shared over warm coffee.',
-    longExtract: 'From Ethan to Maya: "Our favorite afternoons were always the simplest: two armchairs, rain tapping against tall windows, and hours where neither of us felt the need to speak because just being in the same room was enough."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Fireside Winter Memories', 'Masterpiece Paris Romance', 'The Secret Promise Alcove']
@@ -177,7 +177,7 @@ export const coupleSalons = {
   'Masterpiece Paris Romance': {
     title: 'Masterpiece Paris Romance',
     extract: 'The lights along the Seine, the steps of Montmartre, and holding hands under the midnight rain.',
-    longExtract: 'From Ethan to Maya: "Paris is beautiful, but Paris with you felt like stepping inside an Impressionist canvas. The reflections of streetlamps on wet cobblestones, the taste of warm croissants, and the way you looked at the city from the bridge."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Fireside Winter Memories', 'The Glass Orangery', 'The Secret Promise Alcove']
@@ -186,7 +186,7 @@ export const coupleSalons = {
   'The Glass Orangery': {
     title: 'The Glass Orangery',
     extract: 'Lush architectural palms, starlit glass skylights, and fragrant botanical warmth against the winter chill.',
-    longExtract: 'From Ethan to Maya: "Even in the coldest months of winter, this glass pavilion stays green and alive. It is a reminder that no matter what season the world outside is in, inside our home there is always warmth and growth."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Fireside Winter Memories', 'Music & Classical Melodies', 'The Secret Promise Alcove']
@@ -195,7 +195,7 @@ export const coupleSalons = {
   'The Secret Promise Alcove': {
     title: 'The Secret Promise Alcove',
     extract: 'Hidden behind the revolving library bookcase. A private sanctuary built for two hearts.',
-    longExtract: 'From Ethan to Maya: "You found the hidden alcove. Some promises don\'t need to be spoken out loud to the world; they are kept quietly in private places like this. My promise to you is simple: wherever we go, and whatever changes, I will stand beside you, love you, and choose you, every day."',
+    longExtract: '✦ Present your private invitation pass to reveal Ethan and Maya\'s personal letter for this salon ✦',
     mainThumbnailUrl: null,
     photos: IDENTICAL_PHOTOS,
     seeAlso: ['Fireside Winter Memories', 'Masterpiece Paris Romance', 'The Glass Orangery']
@@ -210,3 +210,16 @@ export const coupleCategories = [
   'The Glass Orangery',
   'The Secret Promise Alcove'
 ];
+
+export const ROOM_KEY_TO_TITLE = {
+  fireside: 'Fireside Winter Memories',
+  music: 'Music & Classical Melodies',
+  library: 'The Library & Reading Nook',
+  paris: 'Masterpiece Paris Romance',
+  orangery: 'The Glass Orangery',
+  alcove: 'The Secret Promise Alcove',
+};
+
+export const TITLE_TO_ROOM_KEY = Object.fromEntries(
+  Object.entries(ROOM_KEY_TO_TITLE).map(([k, v]) => [v, k])
+);

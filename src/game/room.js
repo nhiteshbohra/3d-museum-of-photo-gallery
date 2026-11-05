@@ -1570,7 +1570,8 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 					// 5. Signature / Footer
 					ctx.fillStyle = '#c5a059'
 					ctx.font = 'italic 22px "Cormorant Garamond", Georgia, serif'
-					ctx.fillText('— Maya & Ethan • The Eternal Sanctuary —', canvas.width / 2, footerY)
+					const sanctuaryFooter = (typeof window !== 'undefined' && window.__museumConfig?.museum?.sanctuarySignboardFooter) || '— Maya & Ethan • The Eternal Sanctuary —'
+					ctx.fillText(sanctuaryFooter, canvas.width / 2, footerY)
 
 					nextLine = quoteLines.length
 				} else {

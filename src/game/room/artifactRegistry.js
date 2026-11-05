@@ -11,6 +11,8 @@
  *  - defaultScale: scale factor that maps the model's native units to real
  *    metres, so a placed model renders at its real-world size
  *  - path: path to the ready .glb model
+ *  - seats: [{ id, x, z, yaw, height }] where x/z offsets and height are in REAL METRES
+ *    at final size relative to the model's base centre. Never multiply by scale.
  *
  * The procedural artifact builders were removed (see git history) in favour of
  * these real 3D models.
@@ -18,6 +20,15 @@
 import * as THREE from 'three'
 
 const registry = new Map()
+
+export function findArtifactByPath(path) {
+	const p = String(path || '')
+	if (!p) return null
+	for (const a of registry.values()) {
+		if (a.path && (a.path === p || p.endsWith(a.path) || a.path.endsWith(p))) return a
+	}
+	return null
+}
 
 export function registerArtifact(def) {
 	if (!def || !def.id) {
@@ -99,6 +110,10 @@ registerArtifact({
 	path: 'models/ready/furniture/furniture_couch_large.glb',
 	defaultScale: 0.4036,
 	footprint: { shape: 'box', w: 2.1, d: 1.0, height: 0.85 },
+	seats: [
+		{ id: 'couch_l_1', x: -0.65, z: 0.35, yaw: 0, height: 0.46 },
+		{ id: 'couch_l_2', x: 0.65, z: 0.35, yaw: 0, height: 0.46 },
+	],
 })
 
 registerArtifact({
@@ -110,6 +125,11 @@ registerArtifact({
 	path: 'models/ready/furniture/furniture_couch_wide.glb',
 	defaultScale: 1.6569,
 	footprint: { shape: 'box', w: 2.4, d: 1.0, height: 0.85 },
+	seats: [
+		{ id: 'couch_w_1', x: -0.75, z: 0.35, yaw: 0, height: 0.46 },
+		{ id: 'couch_w_2', x: 0, z: 0.35, yaw: 0, height: 0.46 },
+		{ id: 'couch_w_3', x: 0.75, z: 0.35, yaw: 0, height: 0.46 },
+	],
 })
 
 registerArtifact({
@@ -121,6 +141,10 @@ registerArtifact({
 	path: 'models/ready/furniture/furniture_delica_couch.glb',
 	defaultScale: 0.577,
 	footprint: { shape: 'box', w: 2.0, d: 0.95, height: 0.85 },
+	seats: [
+		{ id: 'delica_1', x: -0.6, z: 0.35, yaw: 0, height: 0.46 },
+		{ id: 'delica_2', x: 0.6, z: 0.35, yaw: 0, height: 0.46 },
+	],
 })
 
 registerArtifact({
@@ -216,6 +240,11 @@ registerArtifact({
 	path: 'models/ready/furniture/furniture_sofa_1_3dx/scene.gltf',
 	defaultScale: 0.018,
 	footprint: { shape: 'box', w: 2.3, d: 1.0, height: 0.85 },
+	seats: [
+		{ id: 'sofa1_1', x: -0.7, z: 0.45, yaw: 0, height: 0.50 },
+		{ id: 'sofa1_2', x: 0, z: 0.45, yaw: 0, height: 0.50 },
+		{ id: 'sofa1_3', x: 0.7, z: 0.45, yaw: 0, height: 0.50 },
+	],
 })
 
 // Furniture — Curved Sofa Set (white)
@@ -228,6 +257,11 @@ registerArtifact({
 	path: 'models/ready/furniture/3d_pbr_curved_sofa.glb',
 	defaultScale: 0.010,
 	footprint: { shape: 'box', w: 3.2, d: 1.6, height: 0.85 },
+	seats: [
+		{ id: 'curved_1', x: -1.0, z: 0.7, yaw: 0, height: 0.48 },
+		{ id: 'curved_2', x: 0, z: 0.7, yaw: 0, height: 0.48 },
+		{ id: 'curved_3', x: 1.0, z: 0.7, yaw: 0, height: 0.48 },
+	],
 })
 
 // Furniture — Bench 3 USSR (game ready)
@@ -240,6 +274,10 @@ registerArtifact({
 	path: 'models/ready/furniture/furniture_bench_ussr.glb',
 	defaultScale: 0.9,
 	footprint: { shape: 'box', w: 2.0, d: 0.6, height: 0.9 },
+	seats: [
+		{ id: 'bench_1', x: -0.5, z: 0.25, yaw: 0, height: 0.50 },
+		{ id: 'bench_2', x: 0.5, z: 0.25, yaw: 0, height: 0.50 },
+	],
 })
 
 // Plants — Monstera
