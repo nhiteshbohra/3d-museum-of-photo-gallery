@@ -1,0 +1,49 @@
+{
+  "$schema_description": "Private salon letters template. Copy this file to data/letters.json on deployment. Author and recipient default to couple names from museum_config.json unless overridden.",
+  "_defaults": {
+    "author": "{partner2}",
+    "recipient": "{partner1}"
+  },
+  "Fireside Winter Memories": {
+    "title": "Winter Cedar & Sparks",
+    "date": "December 24, 2023",
+    "location": "Aspen Winter Cabin",
+    "letter": "Sample letter: In every winter we have lived together, the warmth of home always burns bright."
+  },
+  "Music & Classical Melodies": {
+    "title": "Resonance & Melodies",
+    "date": "April 14, 2024",
+    "location": "The Conservatory",
+    "letter": "Sample letter: The melodies of our life together echo in every quiet corner."
+  },
+  "The Library & Reading Nook": {
+    "title": "Quiet Afternoons",
+    "date": "July 22, 2024",
+    "location": "Old Town Reading Nook",
+    "letter": "Sample letter: Sharing silent afternoons together is our greatest comfort."
+  },
+  "Masterpiece Paris Romance": {
+    "title": "Impressionist Midnight",
+    "date": "September 18, 2024",
+    "location": "Pont des Arts, Paris",
+    "letter": "Sample letter: Walking hand in hand under the midnight rain."
+  },
+  "The Glass Orangery": {
+    "title": "Evergreen Growth",
+    "date": "February 14, 2025",
+    "location": "Botanical Conservatory",
+    "letter": "Sample letter: Our love is an evergreen garden that blooms through all seasons."
+  },
+  "The Secret Promise Alcove": {
+    "title": "The Unspoken Promise",
+    "date": "October 30, 2026",
+    "location": "Behind the Revolving Bookcase",
+    "letter": "Sample letter: A private sanctuary built for two hearts."
+  },
+  "Stargazing Observatory": {
+    "title": "Infinite Constellations",
+    "date": "Midsummer Night",
+    "location": "High Altitude Dome",
+    "letter": "Sample letter: Under infinite skies, our journey continues together."
+  }
+}

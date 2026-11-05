@@ -631,7 +631,7 @@ export function initMultiplayer({
           appearance: av?.appearance,
           room: currentRoomKey(),
           code: window.__museumPasscode || '',
-          sessionToken: window.__museumSessionToken || ''
+          sessionToken: ''
         })
       } else if (s.kind === 'close' || s.kind === 'closed') {
         state.connected = false

@@ -5,15 +5,13 @@
       "name": "Maya",
       "avatarId": "maya",
       "role": "The Connoisseur",
-      "color": "#d8b06a",
-      "inviteCode": "maya-love"
+      "color": "#d8b06a"
     },
     "partner2": {
       "name": "Ethan",
       "avatarId": "ethan",
       "role": "The Storyteller",
-      "color": "#8a5a33",
-      "inviteCode": "ethan-love"
+      "color": "#8a5a33"
     },
     "anniversaryDate": "October 30, 2026",
     "celebrationYear": "2026"
@@ -29,7 +27,6 @@
     "audioAmbience": "Romantic Classical Ambience"
   },
   "access": {
-    "masterPasscode": "secret123",
     "maxHumanVisitors": 2,
     "disconnectGraceSeconds": 30
   },

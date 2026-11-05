@@ -222,9 +222,9 @@ async function redeemInviteCode() {
 		if (res.ok && data.ok) {
 			inviteRedeemed = true
 			lastInviteRecipient = data.recipient || null
-			window.__museumSessionToken = data.sessionToken || null
+			window.__museumAuthenticated = true
+			window.__museumSessionToken = true
 			window.__museumPasscode = code
-			try { sessionStorage.setItem('museum_session_token', data.sessionToken) } catch {}
 			setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
 			if (inviteCodeInput) {
 				inviteCodeInput.value = code

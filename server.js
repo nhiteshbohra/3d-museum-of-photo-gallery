@@ -22,7 +22,7 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { validateSession, redeemInvite, createInvite, listInvites, revokeInvite } from './scripts/inviteStore.js';
+import { validateSession, redeemInvite, createInvite, listInvites, revokeInvite, getStorePath } from './scripts/inviteStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -265,13 +265,11 @@ function getResolvedCustomization() {
     }
   }
 
-  if (!customConfig.access) customConfig.access = {};
-  if (!customConfig.access.partner1Passcode) {
-    customConfig.access.partner1Passcode = customConfig.couple?.partner1?.inviteCode || 'maya-love';
-  }
-  if (!customConfig.access.partner2Passcode) {
-    customConfig.access.partner2Passcode = customConfig.couple?.partner2?.inviteCode || 'ethan-love';
-  }
+  // Strictly strip all credentials, passcodes, and secrets from configuration
+  delete customConfig.access;
+  delete customConfig.masterPasscode;
+  if (customConfig.couple?.partner1) delete customConfig.couple.partner1.inviteCode;
+  if (customConfig.couple?.partner2) delete customConfig.couple.partner2.inviteCode;
 
   if (customConfig.salons) {
     for (const salon of Object.values(customConfig.salons)) {
@@ -286,16 +284,23 @@ function getResolvedCustomization() {
   return { customConfig, templateMap, interpolate };
 }
 
-    // Public client config endpoint
+    // Public client config endpoint (zero credentials or passcodes exposed)
     if (pathname === '/api/config') {
       const { customConfig } = getResolvedCustomization();
+      const safeCustomization = customConfig ? JSON.parse(JSON.stringify(customConfig)) : null;
+      if (safeCustomization) {
+        delete safeCustomization.access;
+        delete safeCustomization.masterPasscode;
+        if (safeCustomization.couple?.partner1) delete safeCustomization.couple.partner1.inviteCode;
+        if (safeCustomization.couple?.partner2) delete safeCustomization.couple.partner2.inviteCode;
+      }
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({
         passcodeRequired: Boolean(MUSEUM_PASSCODE),
         maxPlayers: MAX_PLAYERS_PER_SESSION,
         protocol: PROTOCOL_VERSION,
-        customization: customConfig
+        customization: safeCustomization
       }));
       return;
     }
@@ -319,15 +324,22 @@ function getResolvedCustomization() {
         return;
       }
 
-      const cookieVal = `museum_session=${encodeURIComponent(redemption.sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`;
+      const isHttps = Boolean(
+        req.socket.encrypted ||
+        req.headers['x-forwarded-proto'] === 'https' ||
+        (typeof req.headers['cf-visitor'] === 'string' && req.headers['cf-visitor'].includes('https'))
+      );
+      const secureFlag = isHttps ? '; Secure' : '';
+      const cookieVal = `museum_session=${encodeURIComponent(redemption.sessionToken)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secureFlag}`;
+
       res.writeHead(200, {
         'Content-Type': 'application/json',
         'Set-Cookie': cookieVal,
         'Cache-Control': 'no-store'
       });
+      // Never expose session token directly to frontend JS
       res.end(JSON.stringify({
         ok: true,
-        sessionToken: redemption.sessionToken,
         recipient: redemption.recipient
       }));
       return;
@@ -556,24 +568,94 @@ const wss = new WebSocketServer({
   maxPayload: MAX_PAYLOAD_BYTES
 });
 
-// Upgrade handling with Origin verification
+// Evict revoked active sessions immediately across process boundaries
+function evictRevokedSessions() {
+  for (const [ws, profile] of sessionPeers) {
+    if (profile && profile.sessionToken) {
+      const valid = validateSession(profile.sessionToken);
+      if (!valid) {
+        console.log(`[WS] Evicting revoked session for peer ${profile.peerId} (${profile.name})`);
+        try {
+          ws.send(JSON.stringify({ t: 'error', msg: 'session-revoked' }));
+        } catch {}
+        if (profile.seated) {
+          sessionSeats.delete(profile.seated);
+          broadcast({ t: 'stand', id: profile.peerId }, null);
+        }
+        sessionPeers.delete(ws);
+        broadcast({ t: 'peer_left', peerId: profile.peerId, peerCount: sessionPeers.size }, null);
+        try {
+          ws.close(4003, 'session-revoked');
+        } catch {}
+      }
+    }
+  }
+}
+
+// Watch store file directory for CLI invitation revocations across separate processes
+try {
+  const storeFilePath = getStorePath();
+  const storeDirPath = path.dirname(storeFilePath);
+  if (fs.existsSync(storeDirPath)) {
+    fs.watch(storeDirPath, (eventType, filename) => {
+      if (!filename || filename === path.basename(storeFilePath)) {
+        evictRevokedSessions();
+      }
+    });
+  }
+} catch (err) {
+  console.warn('[InviteStore Watcher] fs.watch not active:', err.message);
+}
+
+// Periodic check backup (every 400ms) to guarantee fast eviction across process boundaries
+const storeEvictionInterval = setInterval(() => {
+  if (sessionPeers.size > 0) {
+    evictRevokedSessions();
+  }
+}, 400);
+storeEvictionInterval.unref();
+
+// Upgrade handling with strict /ws route and safe Origin verification
 server.on('upgrade', (req, socket, head) => {
+  // Strict URL route check: only /ws allowed
+  const reqUrl = req.url ? req.url.split('?')[0] : '';
+  if (reqUrl !== '/ws') {
+    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  // Safe Origin parsing and enforcement
   const origin = req.headers.origin;
-  if (ALLOWED_ORIGINS && origin) {
-    const originHost = new URL(origin).host.toLowerCase();
-    if (!ALLOWED_ORIGINS.includes(originHost)) {
+  if (origin) {
+    try {
+      new URL(origin);
+    } catch {
       socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
       socket.destroy();
       return;
     }
   }
 
-  // URL route check
-  const reqUrl = req.url ? req.url.split('?')[0] : '/';
-  if (reqUrl !== '/ws' && reqUrl !== '/') {
-    socket.write('HTTP/1.1 404 Not Found\r\n\r\n');
-    socket.destroy();
-    return;
+  if (ALLOWED_ORIGINS) {
+    if (!origin) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    let originHost;
+    try {
+      originHost = new URL(origin).host.toLowerCase();
+    } catch {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+    if (!ALLOWED_ORIGINS.includes(originHost)) {
+      socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+      socket.destroy();
+      return;
+    }
   }
 
   // Per-IP connection rate check (max 8 per IP)
@@ -693,26 +775,39 @@ wss.on('connection', ws => {
       }
 
       if (!authenticatedSession) {
-        if (MUSEUM_PASSCODE) {
-          if (!checkPasscodeRate(ws._clientIp)) {
-            deny('rate-limit');
-            return;
-          }
-          if (!verifyPasscode(data.code)) {
-            deny('bad-code');
-            ws.close(4003, 'bad-code');
-            return;
-          }
-        } else if (data.code) {
+        if (data.code) {
           const redemption = redeemInvite(data.code);
           if (redemption.success) {
             authenticatedSession = validateSession(redemption.sessionToken);
+          } else if (MUSEUM_PASSCODE) {
+            if (!checkPasscodeRate(ws._clientIp)) {
+              deny('rate-limit');
+              return;
+            }
+            if (verifyPasscode(data.code)) {
+              authenticatedSession = { recipient: 'Passcode Guest', token: null };
+            } else {
+              deny('bad-code');
+              ws.close(4003, 'bad-code');
+              return;
+            }
           } else {
             deny('bad-code');
             ws.close(4003, 'bad-code');
             return;
           }
+        } else {
+          // Strictly reject unauthenticated joins
+          deny('unauthorized');
+          ws.close(4003, 'unauthorized');
+          return;
         }
+      }
+
+      if (!authenticatedSession) {
+        deny('unauthorized');
+        ws.close(4003, 'unauthorized');
+        return;
       }
 
       // Check 30s disconnection grace (Q3): reconnecting partner?
@@ -763,7 +858,7 @@ wss.on('connection', ws => {
 
       const profile = {
         peerId,
-        name: safeStr(authenticatedSession?.recipient || data.name, 24) || 'Guest',
+        name: safeStr(data.name || authenticatedSession?.recipient, 24) || 'Guest',
         color: safeColor,
         model: safeModel,
         appearance,
@@ -832,6 +927,25 @@ wss.on('connection', ws => {
     if (!joined) {
       deny('join-first');
       return;
+    }
+
+    // Active session revocation check on incoming messages
+    const currentProfile = sessionPeers.get(ws);
+    if (currentProfile && currentProfile.sessionToken) {
+      const valid = validateSession(currentProfile.sessionToken);
+      if (!valid) {
+        deny('session-revoked');
+        if (currentProfile.seated) {
+          sessionSeats.delete(currentProfile.seated);
+          broadcast({ t: 'stand', id: currentProfile.peerId }, null);
+        }
+        sessionPeers.delete(ws);
+        broadcast({ t: 'peer_left', peerId: currentProfile.peerId, peerCount: sessionPeers.size }, null);
+        try {
+          ws.close(4003, 'session-revoked');
+        } catch {}
+        return;
+      }
     }
 
     // 2. LEAVE
@@ -1014,6 +1128,7 @@ function broadcast(message, senderWs) {
 
 // 30-second ping/pong heartbeat to detect dead connections and free slots
 const heartbeatInterval = setInterval(() => {
+  evictRevokedSessions();
   for (const [ws, profile] of sessionPeers) {
     if (!ws.isAlive) {
       console.log(`[WS Heartbeat] Terminating inactive connection: ${profile.peerId}`);

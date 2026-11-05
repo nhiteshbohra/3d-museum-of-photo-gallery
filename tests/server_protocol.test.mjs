@@ -7,6 +7,7 @@ import http from 'http';
 import { WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import assert from 'assert';
+import { revokeInvite, createInvite } from '../scripts/inviteStore.js';
 
 const TEST_PORT = 8991;
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
@@ -275,12 +276,14 @@ async function runTests() {
     assert.strictEqual(resValidRedeem.status, 200, 'Valid code redemption must return 200');
     assert.strictEqual(resValidRedeem.body.ok, true);
     assert.strictEqual(resValidRedeem.body.recipient, 'Maya');
-    assert.ok(resValidRedeem.body.sessionToken, 'Returns sessionToken');
-    sessionToken = resValidRedeem.body.sessionToken;
+    assert.strictEqual(resValidRedeem.body.sessionToken, undefined, 'Session token MUST NOT be exposed in JSON body');
     const rawCookie = resValidRedeem.headers['set-cookie']?.[0] || '';
-    assert.ok(rawCookie.includes('museum_session='), 'Sets HttpOnly museum_session cookie');
+    assert.ok(rawCookie.includes('museum_session='), 'Sets museum_session cookie');
+    assert.ok(rawCookie.includes('HttpOnly'), 'Cookie MUST be HttpOnly');
+    assert.ok(rawCookie.includes('SameSite=Lax'), 'Cookie MUST have SameSite=Lax');
     sessionCookie = rawCookie.split(';')[0];
-    console.log('  ✓ Valid invite code (maya-love) successfully redeemed, cookie issued');
+    sessionToken = decodeURIComponent(rawCookie.match(/museum_session=([^;]+)/)[1]);
+    console.log('  ✓ Valid invite code successfully redeemed with secure HttpOnly cookie and zero body token leakage');
 
     // Unauthenticated GET /photos/ returns 401
     const resUnauthPhoto = await fetchUrl('/photos/README.md');
@@ -385,8 +388,126 @@ async function runTests() {
     assert.strictEqual(msgPartnerReconnected.status, 'reconnected');
     console.log('  ✓ Participant reconnected within grace successfully restored without eviction');
 
-    wsAliceReconnected.close();
-    wsPartner.close();
+    wsAliceReconnected.send(JSON.stringify({ t: 'leave' }));
+    wsPartner.send(JSON.stringify({ t: 'leave' }));
+    await sleep(200);
+
+    // -------------------------------------------------------------
+    // 8. PRODUCTION HARDENING FIXES VERIFICATION
+    // -------------------------------------------------------------
+    console.log('\n--- 8. Testing Production Security Hardening Fixes ---');
+
+    // 8.1: /api/config does not expose credentials
+    const resConfig = await fetchUrl('/api/config');
+    assert.strictEqual(resConfig.status, 200);
+    const configBody = JSON.parse(resConfig.body);
+    assert.strictEqual(configBody.customization?.access, undefined, '/api/config MUST NOT contain access object');
+    assert.strictEqual(configBody.customization?.masterPasscode, undefined, '/api/config MUST NOT contain masterPasscode');
+    assert.strictEqual(configBody.customization?.couple?.partner1?.inviteCode, undefined, '/api/config MUST NOT contain inviteCode');
+    assert.strictEqual(configBody.customization?.couple?.partner2?.inviteCode, undefined, '/api/config MUST NOT contain inviteCode');
+    console.log('  ✓ Fix 1 Verified: /api/config exposes zero credentials, passcodes, or invite codes');
+
+    // 8.2: WebSocket join without auth is rejected with unauthorized (4003)
+    const wsUnauth = await connectWs();
+    const pUnauthClose = new Promise((resolve) => {
+      wsUnauth.on('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    wsUnauth.send(JSON.stringify({ t: 'join', proto: 2, name: 'Attacker' }));
+    const msgUnauth = await nextMessage(wsUnauth, m => m.t === 'error');
+    assert.strictEqual(msgUnauth.msg, 'unauthorized');
+    const closeUnauth = await pUnauthClose;
+    assert.strictEqual(closeUnauth.code, 4003);
+    console.log('  ✓ Fix 3 Verified: Unauthenticated WebSocket join strictly rejected with unauthorized (close 4003)');
+
+    // 8.3: Upgrade to / returns 404
+    const resUpgradeRoot = await new Promise((resolve) => {
+      const wsRoot = new WebSocket(`ws://127.0.0.1:${TEST_PORT}/`);
+      wsRoot.on('unexpected-response', (req, res) => {
+        resolve(res.statusCode);
+      });
+      wsRoot.on('error', () => {});
+    });
+    assert.strictEqual(resUpgradeRoot, 404, 'Upgrade to / must return 404');
+
+    // 8.4: Upgrade to /socket returns 404
+    const resUpgradeOther = await new Promise((resolve) => {
+      const wsOther = new WebSocket(`ws://127.0.0.1:${TEST_PORT}/socket`);
+      wsOther.on('unexpected-response', (req, res) => {
+        resolve(res.statusCode);
+      });
+      wsOther.on('error', () => {});
+    });
+    assert.strictEqual(resUpgradeOther, 404, 'Upgrade to /socket must return 404');
+
+    // 8.5: Malformed origin header returns 403
+    const resMalformedOrigin = await new Promise((resolve) => {
+      const wsBadOrigin = new WebSocket(WS_URL, {
+        headers: { Origin: ':::not-a-valid-url:::' }
+      });
+      wsBadOrigin.on('unexpected-response', (req, res) => {
+        resolve(res.statusCode);
+      });
+      wsBadOrigin.on('error', () => {});
+    });
+    assert.strictEqual(resMalformedOrigin, 403, 'Malformed Origin header must return 403');
+    console.log('  ✓ Fix 6 Verified: WebSocket upgrades restricted to /ws and malformed origins safely rejected with 403');
+
+    // 8.6: Live Invitation Revocation Evicts Connected Active WebSocket
+    const testInvite = createInvite({ recipient: 'RevocationTarget', ttlHours: 1, customCode: 'test-revoke-code' });
+    assert.ok(testInvite.code);
+
+    const resRedeemTarget = await new Promise((resolve, reject) => {
+      const req = http.request(new URL('/api/invite/redeem', BASE_URL), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      }, res => {
+        let d = '';
+        res.on('data', c => d += c);
+        res.on('end', () => resolve({
+          status: res.statusCode,
+          headers: res.headers,
+          body: JSON.parse(d || '{}')
+        }));
+      });
+      req.on('error', reject);
+      req.write(JSON.stringify({ code: 'test-revoke-code' }));
+      req.end();
+    });
+    assert.strictEqual(resRedeemTarget.status, 200);
+    const targetCookie = resRedeemTarget.headers['set-cookie'][0].split(';')[0];
+
+    const wsTarget = new WebSocket(WS_URL, {
+      headers: { Cookie: targetCookie }
+    });
+    await new Promise(r => wsTarget.on('open', r));
+    wsTarget.send(JSON.stringify({ t: 'join', proto: 2, name: 'RevocationTarget', model: 'woman.glb' }));
+    const msgTargetJoin = await nextMessage(wsTarget, m => m.t === 'room_state');
+    assert.strictEqual(msgTargetJoin.t, 'room_state');
+    console.log('  ✓ Revocation target joined WebSocket successfully');
+
+    const wsObserver = await connectWs();
+    wsObserver.send(JSON.stringify({ t: 'join', proto: 2, code: 'secret123', name: 'Observer', model: 'man.glb' }));
+    await nextMessage(wsObserver, m => m.t === 'room_state');
+
+    const pTargetEvicted = new Promise((resolve) => {
+      wsTarget.on('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    const pObserverNotified = nextMessage(wsObserver, m => m.t === 'peer_left', 5000);
+
+    const revokedOk = revokeInvite('test-revoke-code');
+    assert.strictEqual(revokedOk, true, 'revokeInvite must return true');
+
+    const eviction = await pTargetEvicted;
+    assert.strictEqual(eviction.code, 4003, 'Evicted socket must close with 4003');
+    const observerNotice = await pObserverNotified;
+    assert.strictEqual(observerNotice.t, 'peer_left', 'Partner notified that revoked peer left');
+
+    const resBlockedHttp = await fetchUrl('/api/letters', {
+      headers: { Cookie: targetCookie }
+    });
+    assert.strictEqual(resBlockedHttp.status, 401, 'Revoked session must immediately fail HTTP auth with 401');
+    console.log('  ✓ Fix 4 Verified: Live CLI revocation immediately evicts connected WebSocket and invalidates HTTP sessions');
+    wsObserver.close();
 
     console.log('\n=======================================================');
     console.log('  ALL STEP 1 HARDENING & PROTOCOL TESTS PASSED! (100%)');

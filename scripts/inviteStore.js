@@ -14,25 +14,40 @@ const rootDir = path.resolve(__dirname, '..')
 const dataDir = path.join(rootDir, 'data')
 const storePath = path.join(dataDir, 'invites.json')
 
+export function getStorePath() {
+  return storePath
+}
+
 function ensureDataDir() {
   if (!fs.existsSync(dataDir)) {
     fs.mkdirSync(dataDir, { recursive: true })
   }
 }
 
-function loadStore() {
-  try {
-    ensureDataDir()
-    if (fs.existsSync(storePath)) {
-      const raw = fs.readFileSync(storePath, 'utf8')
-      const parsed = JSON.parse(raw)
-      return {
-        invites: parsed.invites || {},
-        sessions: parsed.sessions || {},
+export function loadStore() {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    try {
+      ensureDataDir()
+      if (fs.existsSync(storePath)) {
+        const raw = fs.readFileSync(storePath, 'utf8')
+        if (raw.trim()) {
+          const parsed = JSON.parse(raw)
+          return {
+            invites: parsed.invites || {},
+            sessions: parsed.sessions || {},
+          }
+        }
       }
+      return { invites: {}, sessions: {} }
+    } catch (err) {
+      if (attempt < 4 && (err.code === 'EBUSY' || err.code === 'EPERM' || err instanceof SyntaxError)) {
+        // Short busy wait on Windows file locking
+        const start = Date.now()
+        while (Date.now() - start < 15) {}
+        continue
+      }
+      console.warn('[InviteStore] Could not load invites.json, initializing fresh store:', err.message)
     }
-  } catch (err) {
-    console.warn('[InviteStore] Could not load invites.json, initializing fresh store:', err.message)
   }
   return { invites: {}, sessions: {} }
 }
@@ -40,39 +55,31 @@ function loadStore() {
 function saveStore(store) {
   try {
     ensureDataDir()
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2), 'utf8')
+    const tmpPath = `${storePath}.${Date.now()}.${Math.random().toString(36).substring(2, 6)}.tmp`
+    fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf8')
+    try {
+      fs.renameSync(tmpPath, storePath)
+    } catch {
+      // Fallback for Windows file locks
+      fs.copyFileSync(tmpPath, storePath)
+      try { fs.unlinkSync(tmpPath) } catch {}
+    }
   } catch (err) {
     console.error('[InviteStore] Failed to save invites.json:', err)
   }
 }
 
-let memoryStore = loadStore()
-
-// Seed initial default invites from museum_config.json (or fallback) if store is empty
-if (Object.keys(memoryStore.invites).length === 0) {
-  let partner1Name = 'Maya'
-  let partner1Code = 'maya-love'
-  let partner2Name = 'Ethan'
-  let partner2Code = 'ethan-love'
-
-  try {
-    const configPath = path.join(dataDir, 'museum_config.json')
-    if (fs.existsSync(configPath)) {
-      const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'))
-      if (cfg.couple?.partner1) {
-        partner1Name = cfg.couple.partner1.name || partner1Name
-        partner1Code = cfg.couple.partner1.inviteCode || cfg.couple.partner1.defaultInviteCode || cfg.access?.partner1Passcode || partner1Code
-      }
-      if (cfg.couple?.partner2) {
-        partner2Name = cfg.couple.partner2.name || partner2Name
-        partner2Code = cfg.couple.partner2.inviteCode || cfg.couple.partner2.defaultInviteCode || cfg.access?.partner2Passcode || partner2Code
-      }
-    }
-  } catch {}
+// Seed initial default invites from environment or secure defaults if store is completely empty
+const initialStore = loadStore()
+if (Object.keys(initialStore.invites).length === 0) {
+  const partner1Name = 'Maya'
+  const partner1Code = (process.env.DEFAULT_INVITE_PARTNER1 || 'maya-love').trim()
+  const partner2Name = 'Ethan'
+  const partner2Code = (process.env.DEFAULT_INVITE_PARTNER2 || 'ethan-love').trim()
 
   const now = Date.now()
   const oneYear = now + 365 * 24 * 60 * 60 * 1000
-  memoryStore.invites[partner1Code] = {
+  initialStore.invites[partner1Code] = {
     code: partner1Code,
     recipient: partner1Name,
     createdAt: now,
@@ -81,7 +88,7 @@ if (Object.keys(memoryStore.invites).length === 0) {
     redeemed: false,
     sessionToken: null,
   }
-  memoryStore.invites[partner2Code] = {
+  initialStore.invites[partner2Code] = {
     code: partner2Code,
     recipient: partner2Name,
     createdAt: now,
@@ -90,7 +97,7 @@ if (Object.keys(memoryStore.invites).length === 0) {
     redeemed: false,
     sessionToken: null,
   }
-  saveStore(memoryStore)
+  saveStore(initialStore)
 }
 
 /**
@@ -121,7 +128,6 @@ export function createInvite({ recipient = 'Guest', ttlHours = 24, customCode = 
 
   store.invites[code] = record
   saveStore(store)
-  memoryStore = store
   return record
 }
 
@@ -144,7 +150,7 @@ export function listInvites() {
 }
 
 /**
- * Revoke an existing invitation code
+ * Revoke an existing invitation code and immediately destroy associated sessions
  */
 export function revokeInvite(code) {
   const store = loadStore()
@@ -152,13 +158,16 @@ export function revokeInvite(code) {
   if (!inv) return false
 
   inv.revoked = true
-  if (inv.sessionToken && store.sessions[inv.sessionToken]) {
-    delete store.sessions[inv.sessionToken]
+
+  // Delete all sessions derived from this invite
+  for (const [token, session] of Object.entries(store.sessions)) {
+    if (session.code === code || session.token === inv.sessionToken) {
+      delete store.sessions[token]
+    }
   }
   inv.sessionToken = null
 
   saveStore(store)
-  memoryStore = store
   return true
 }
 
@@ -201,7 +210,6 @@ export function redeemInvite(inputCode) {
   }
 
   saveStore(store)
-  memoryStore = store
 
   return {
     success: true,
@@ -211,12 +219,12 @@ export function redeemInvite(inputCode) {
 }
 
 /**
- * Validate an existing session token (from HttpOnly cookie or Authorization header).
+ * Validate an existing session token against fresh on-disk store.
  * Returns session record or null.
  */
 export function validateSession(token) {
   if (!token || typeof token !== 'string') return null
-  const store = memoryStore
+  const store = loadStore()
   const session = store.sessions[token]
   if (!session) return null
 
@@ -229,6 +237,6 @@ export function validateSession(token) {
   }
 
   session.lastSeen = Date.now()
+  saveStore(store)
   return session
 }
-

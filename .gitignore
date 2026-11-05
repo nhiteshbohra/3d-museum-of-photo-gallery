@@ -9,6 +9,14 @@ dist/
 .env.local
 .env.*.local
 data/invites.json
+data/letters.json
+
+# ── Private Media & Personal Photos (Local originals preserved, protected from Git) ──
+public/photos/**/*.png
+public/photos/**/*.jpg
+public/photos/**/*.jpeg
+public/photos/**/*.webp
+!public/photos/README.md
 
 # ── Raw 3D Model Downloads & Staging (Keep normalized in public/models/ready) ──
 /3d model/
