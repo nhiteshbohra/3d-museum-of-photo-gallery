@@ -43,3 +43,4 @@
    - Cap default mobile DPR to 1.5 with fallback to 1.0 on low-end devices, with manual override in settings.
 3. **Photo Cache LRU:**
    - Bounded LRU cache of 20 textures with explicit `.dispose()` of geometries and materials on room unloading.
+

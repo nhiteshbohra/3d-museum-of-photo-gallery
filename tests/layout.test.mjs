@@ -56,11 +56,22 @@ test('Every placed GLB item points to an existing file in public/', () => {
   }
 })
 
-test('Every room contains at least one seating item', () => {
+test('Lobby contains seating, and non-lobby rooms obey simplification rule (only plants allowed from decor)', () => {
   const rooms = layout.rooms || {}
+  // 1. Lobby must contain seating (sofas)
+  const lobbyItems = rooms.lobby || []
+  const lobbyHasSeat = lobbyItems.some(itm => itm.id && (itm.id.includes('sofa') || itm.id.includes('couch') || itm.id.includes('bench')))
+  assert.ok(lobbyHasSeat, 'Lobby must have a seating item placed')
+
+  // 2. Non-lobby rooms must contain only plants from decorative assets (no sofas, no bookcases/artifacts, no chandeliers)
   for (const [roomKey, items] of Object.entries(rooms)) {
-    const hasSeat = items.some(itm => (itm.id && (itm.id.includes('sofa') || itm.id.includes('couch') || itm.id.includes('bench'))))
-    assert.ok(hasSeat, `Room "${roomKey}" should have a seating item placed`)
+    if (roomKey === 'lobby') continue
+    for (const itm of items) {
+      assert.ok(
+        itm.path.includes('plants') || itm.id.includes('plant'),
+        `Non-lobby room "${roomKey}" contains forbidden decor item "${itm.id}" (${itm.path}). Only plants are permitted.`
+      )
+    }
   }
 })
 

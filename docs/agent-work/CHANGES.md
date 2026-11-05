@@ -27,3 +27,4 @@
 - `9df1a93`: `docs(audit): add final verified regression and audit report`
 - `f122ae6`: `fix(avatars): align visual forward pivot, adapt photo frames to aspect ratio, enforce passcode gate presentation`
 - `08a0f80`: `feat(avatars): implement walk-start/stop/step-back/turn state machine and mobile gesture drawer UX`
+

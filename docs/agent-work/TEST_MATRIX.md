@@ -30,3 +30,4 @@
 | AUTH-SC-05 | Expired/Revoked invitation | Status displays red error "This invitation has been revoked." | Access blocked with 401; no session issued; visitor cannot enter |
 | AUTH-SC-06 | URL query param (`?code=290512`) | Input prefilled; validated via server session; smooth entry | No double redemption or unhandled promise rejection |
 | AUTH-SC-07 | Double click on Enter button | Handled idempotently by UI state machine | Exactly one `startMuseumExperience()` execution; no race conditions |
+
