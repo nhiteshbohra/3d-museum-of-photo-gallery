@@ -50,3 +50,4 @@ The interaction drawer has been completely redesigned and implemented as a **rig
 ## 3. Pointer Lock Safety
 
 Opening the drawer triggers `document.exitPointerLock()`, releasing the mouse cursor smoothly. Closing the drawer permits seamless re-entry on subsequent canvas interactions without trapping the cursor or locking keyboard inputs.
+

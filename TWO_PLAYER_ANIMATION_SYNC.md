@@ -56,3 +56,4 @@ Starting isolated test server on port 8996...
    - Looping dances (`Energetic Dance`, `Casual Dance`) play continuously on both clients until stopped or interrupted by movement.
 4. **Authoritative Seating**:
    - Both clients reflect seated posture and floor relocation without desynchronization.
+

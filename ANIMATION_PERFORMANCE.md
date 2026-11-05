@@ -21,3 +21,4 @@ All 20 animation files average only 28 KB each (compressed binary GLBs). Rather 
 - **Mixer Overhead**: Negligible CPU load (<0.4% per frame) using Three.js `AnimationMixer` with quaternion slerp interpolation.
 - **Garbage Collection Safety**: Avatars cleanly release action references and mixer listeners in `dispose()`.
 - **Render Performance**: Solid 60 FPS maintained during simultaneous two-player animations, locomotion, and camera orbiting.
+

@@ -1,5 +1,28 @@
 #!/usr/bin/env python3
 """
+@'
+from pathlib import Path
+from tools.organize_photos import ROOMS, list_images, target_name, convert_to_png
+
+photos = list_images("images")
+slots = [(room, slot) for room, (_, count) in ROOMS.items()
+         for slot in range(1, count + 1)]
+
+if not photos:
+    raise SystemExit("No photos found in images.")
+if len(photos) > len(slots):
+    raise SystemExit(f"Found {len(photos)} photos; only {len(slots)} slots available.")
+
+for photo, (room, slot) in zip(photos, slots):
+    destination = Path("public/photos") / ROOMS[room][0] / (target_name(room, slot) + ".png")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    convert_to_png(photo, str(destination))
+    print(f"{Path(photo).name} -> {destination}")
+
+print(f"Copied {len(photos)} photos.")
+'@ | python -
+
+
 organize_photos.py — Sort your personal photos into the Museum's public/photos layout.
 
 The 3D museum displays artwork by reading image files from public/photos/<room>/.
@@ -41,7 +64,7 @@ and skipped (they are not guessed).
 --------------------------------------------------------------------------
 Usage
 --------------------------------------------------------------------------
-    python tools/organize_photos.py --source C:/Users/you/Pictures/museum_images
+    python tools/organize_photos.py --source images
     python tools/organize_photos.py --source ./raw --out public/photos --dry-run
 
 Options:

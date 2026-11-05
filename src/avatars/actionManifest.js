@@ -273,3 +273,4 @@ export function getActionByKey(code) {
 export function getActionsByCategory(category) {
   return ACTIONS.filter(a => a.category === category)
 }
+

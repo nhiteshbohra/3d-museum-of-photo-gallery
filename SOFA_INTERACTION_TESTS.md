@@ -31,3 +31,4 @@ Automated tests in `tests/server_protocol.test.mjs`, `tests/seats.test.mjs`, and
   ✓ Alice stood up; seat released
   ✓ Bob successfully claimed previously released seat
 ```
+

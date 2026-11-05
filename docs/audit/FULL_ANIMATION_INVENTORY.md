@@ -51,3 +51,4 @@ This inventory documents all 20 skeletal animation clips present in `public/mode
 3. **Exclusion Check Verification**:
    - Strictly verified: No excluded gestures (clap, cheer, laugh, thumbs-up, point/look at art, talk gestures, yawn, phone use, breathing idle, blink) exist in the manifest or runtime code paths.
    - All 20 assets match approved items in the project specifications.
+

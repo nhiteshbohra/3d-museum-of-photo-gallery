@@ -29,3 +29,4 @@
 - **Hardened Security & Protocol Tests**: Traversal allowlist, crash proofing, invitation redemption, HttpOnly cookie security, photo gatekeeping, letter security, single-seat invariant, 30s disconnection grace, CLI revocation all passed.
 - **Two-Client Integration Suite**: 6/6 test stages passed (presence, join, model assignment, movement, wave, dance, cancel, sit, stand).
 - **Vite Build**: Succeeded in 5.10s, output verified in `dist/`.
+

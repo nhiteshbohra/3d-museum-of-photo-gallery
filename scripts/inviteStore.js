@@ -206,8 +206,10 @@ export function redeemInvite(inputCode) {
   let inv = store.invites[trimmed]
   if (!inv) {
     const lower = trimmed.toLowerCase()
+    const cleanInput = lower.replace(/[\s\-_.]/g, '')
     for (const [k, v] of Object.entries(store.invites)) {
-      if (k.toLowerCase() === lower) {
+      const cleanKey = k.toLowerCase().replace(/[\s\-_.]/g, '')
+      if (k.toLowerCase() === lower || (cleanInput && cleanKey === cleanInput)) {
         inv = v
         break
       }
@@ -225,14 +227,11 @@ export function redeemInvite(inputCode) {
     return { success: false, error: 'This invitation has expired.' }
   }
 
-  // Issue or renew session token for this participant
-  let sessionToken = inv.sessionToken
-  if (!sessionToken || !store.sessions[sessionToken]) {
-    sessionToken = generateToken('sess', 16)
-    inv.sessionToken = sessionToken
-  }
-
+  // Issue a fresh unique session token for each client session
+  const sessionToken = generateToken('sess', 16)
+  inv.sessionToken = sessionToken
   inv.redeemed = true
+
   store.sessions[sessionToken] = {
     token: sessionToken,
     code: inv.code,
@@ -248,6 +247,29 @@ export function redeemInvite(inputCode) {
     sessionToken,
     recipient: inv.recipient,
   }
+}
+
+/**
+ * Delete all active sessions from the store.
+ */
+export function resetSessions() {
+  const store = loadStore(true)
+  const count = Object.keys(store.sessions).length
+  store.sessions = {}
+  for (const inv of Object.values(store.invites)) {
+    inv.sessionToken = null
+  }
+  saveStore(store)
+  return count
+}
+
+/**
+ * Wipe all invitations and sessions completely.
+ */
+export function clearAll() {
+  const store = { invites: {}, sessions: {} }
+  saveStore(store)
+  return true
 }
 
 /**
