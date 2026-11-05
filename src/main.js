@@ -287,8 +287,13 @@ async function redeemInviteCode() {
 		inviteCodeInput.setAttribute('readonly', 'readonly')
 	}
 	if (redeemBtn) {
-		redeemBtn.textContent = 'Verified ✓'
-		redeemBtn.disabled = true
+		redeemBtn.textContent = 'Enter Sanctuary →'
+		redeemBtn.disabled = false
+		redeemBtn.onclick = () => {
+			if (!museumStarted) {
+				startMuseumExperience()
+			}
+		}
 	}
 
 	// Pre-select avatar matching recipient
@@ -361,37 +366,58 @@ async function checkAuthSession() {
 			inviteRedeemed = true
 			window.__museumAuthenticated = true
 			window.__museumSessionToken = true
-			if (data && data.recipient) {
-				lastInviteRecipient = data.recipient
-				setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient} ✦`, true)
-				const recLower = String(data.recipient).toLowerCase()
-				const match = AVATARS.find(a => a.name.toLowerCase() === recLower) ||
-				              (recLower.includes('ethan') && !recLower.includes('maya') ? AVATARS.find(a => a.id === 'ethan') : null) ||
-				              AVATARS.find(a => a.id === 'maya') || AVATARS[0]
-				if (match) selectedAvatarId = match.id
-			} else {
-				setInviteStatus('✦ Pass Verified: Welcome ✦', true)
-			}
+			const recipient = data?.recipient || 'Maya & Ethan'
+			lastInviteRecipient = recipient
+			setInviteStatus(`✦ Pass Verified: Welcome, ${recipient} ✦`, true)
+
+			const recLower = String(recipient).toLowerCase()
+			const match = AVATARS.find(a => a.name && a.name.toLowerCase() === recLower) ||
+			              (recLower.includes('ethan') && !recLower.includes('maya') ? AVATARS.find(a => a.id === 'ethan') : null) ||
+			              AVATARS.find(a => a.id === 'maya') || AVATARS[0]
+			if (match) selectedAvatarId = match.id
+
 			if (inviteCodeInput) {
+				if (!inviteCodeInput.value) inviteCodeInput.value = '290512'
 				inviteCodeInput.setAttribute('readonly', 'readonly')
 			}
 			if (redeemBtn) {
-				redeemBtn.textContent = 'Verified ✓'
-				redeemBtn.disabled = true
+				redeemBtn.textContent = 'Enter Sanctuary →'
+				redeemBtn.disabled = false
+				redeemBtn.onclick = () => {
+					if (!museumStarted) {
+						startMuseumExperience()
+					}
+				}
 			}
-			// Only auto-start if visitor already entered in this browser tab session
-			const hasActiveTabSession = window.sessionStorage.getItem('ourmuseum:entered') === '1'
-			if (hasActiveTabSession) {
-				await loadPrivateLetters()
-				await startMuseumExperience()
-			} else {
-				setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦ (Click Enter to begin)`, true)
+
+			const entranceLoadingEl = document.querySelector('#entrance-loading')
+			if (entranceLoadingEl) {
+				entranceLoadingEl.removeAttribute('hidden')
+				entranceLoadingEl.style.display = 'block'
+				if (entranceStatus) entranceStatus.textContent = `Preparing museum sanctuary for ${recipient}…`
 			}
+
+			await loadPrivateLetters()
+			await startMuseumExperience()
 		} else {
 			setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
+			if (redeemBtn) {
+				redeemBtn.disabled = false
+				redeemBtn.textContent = 'Verify Pass'
+			}
+			if (inviteCodeInput) {
+				inviteCodeInput.removeAttribute('readonly')
+			}
 		}
 	} catch {
 		setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
+		if (redeemBtn) {
+			redeemBtn.disabled = false
+			redeemBtn.textContent = 'Verify Pass'
+		}
+		if (inviteCodeInput) {
+			inviteCodeInput.removeAttribute('readonly')
+		}
 	}
 }
 

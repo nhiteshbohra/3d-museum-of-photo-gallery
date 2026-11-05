@@ -1359,14 +1359,20 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 				mat.color.setHex(0xffffff)
 				mat.needsUpdate = true
 
+				const fittedW = (mesh.geometry.parameters?.width || 1) * mesh.scale.x
+				const fittedH = (mesh.geometry.parameters?.height || 1) * mesh.scale.y
+				const padW = 0.08
+				const padH = 0.08
+				const frameW = Math.min(baseW, fittedW + padW)
+				const frameH = Math.min(baseH, fittedH + padH)
+
 				if (backplate) {
-					const fittedW = mesh.geometry.parameters.width * mesh.scale.x
-					const fittedH = mesh.geometry.parameters.height * mesh.scale.y
-					const padW = 0.08
-					const padH = 0.08
-					const frameW = Math.min(baseW, fittedW + padW)
-					const frameH = Math.min(baseH, fittedH + padH)
 					backplate.scale.set(frameW / baseW, frameH / baseH, 1)
+				}
+
+				if (slot?.outlineObject) {
+					slot.outlineObject.scale.set(frameW / (slot.width || baseW), frameH / (slot.height || baseH), 1)
+					ensureOutlineInFront(slot)
 				}
 
 				disposables.push(tex)

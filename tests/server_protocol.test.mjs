@@ -405,7 +405,9 @@ async function runTests() {
     assert.strictEqual(configBody.customization?.masterPasscode, undefined, '/api/config MUST NOT contain masterPasscode');
     assert.strictEqual(configBody.customization?.couple?.partner1?.inviteCode, undefined, '/api/config MUST NOT contain inviteCode');
     assert.strictEqual(configBody.customization?.couple?.partner2?.inviteCode, undefined, '/api/config MUST NOT contain inviteCode');
-    console.log('  ✓ Fix 1 Verified: /api/config exposes zero credentials, passcodes, or invite codes');
+    assert.strictEqual(typeof configBody.passcodeRequired, 'boolean', 'passcodeRequired must be boolean');
+    assert.strictEqual(configBody.passcodeRequired, true, 'passcodeRequired must be true when active invites exist');
+    console.log('  ✓ Fix 1 Verified: /api/config exposes zero credentials, passcodes, or invite codes, and accurately reflects active invite status');
 
     // 8.2: WebSocket join without auth is rejected with unauthorized (4003)
     const wsUnauth = await connectWs();
