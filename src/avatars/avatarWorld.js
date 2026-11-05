@@ -16,13 +16,14 @@ import { clone } from 'three/addons/utils/SkeletonUtils.js'
 
 export const INTERP_BUFFER_MS = 100
 
-const loader = new GLTFLoader()
-const texLoader = new THREE.TextureLoader()
+const avatarLoadingManager = new THREE.LoadingManager()
+const loader = new GLTFLoader(avatarLoadingManager)
+const texLoader = new THREE.TextureLoader(avatarLoadingManager)
 const modelCache = new Map() // url -> Promise<gltf>
 
 const REQUIRED_CLIPS = new Set(['idle', 'walk', 'run', 'jump', 'sit'])
 
-function loadModelWithTimeout(url, timeoutMs = 15000) {
+function loadModelWithTimeout(url, timeoutMs = 45000) {
   if (modelCache.has(url)) return modelCache.get(url)
   const p = new Promise((resolve, reject) => {
     let settled = false
@@ -142,7 +143,7 @@ export class RemoteAvatar {
     const url = modelUrl.startsWith('models/') || modelUrl.startsWith('/')
       ? modelUrl
       : `models/ready/characters/${modelUrl}`
-    this.modelPromise = loadModelWithTimeout(url, 15000)
+    this.modelPromise = loadModelWithTimeout(url, 45000)
       .then(async (gltf) => {
         if (!this.alive) return
         this.root = clone(gltf.scene)
@@ -183,10 +184,19 @@ export class RemoteAvatar {
         this.root.position.y -= box.min.y * this.root.scale.y
         this.group.add(this.root)
 
+        // Make model visible immediately upon attaching root to scene
+        this.applyRoom(this._visibleRooms || this.room || 'lobby')
+
         // Set up the animation mixer on this skeleton
         this.mixer = new THREE.AnimationMixer(this.root)
-        await Promise.all([texturesReady, this._loadAnimations(modelUrl)])
-        if (this.alive && this._visibleRooms) this.applyRoom(this._visibleRooms)
+
+        // Progressive background loading: textures and animations load non-blockingly
+        const animPromise = this._loadAnimations(modelUrl)
+        Promise.allSettled([texturesReady, animPromise]).then(() => {
+          if (this.alive) this.applyRoom(this._visibleRooms || this.room || 'lobby')
+        })
+
+        return this
       })
       .catch((err) => {
         console.warn('[avatars] failed to load model', url, err)
@@ -282,51 +292,62 @@ export class RemoteAvatar {
     const base = this._animationBasePath(modelUrl)
     const entries = Object.entries(CLIP_FILES)
 
-    // Load with Promise.allSettled so missing optional clips do not fail character
-    return Promise.allSettled(entries.map(([logical, file]) =>
-      loadModelWithTimeout(`${base}${file}`, 15000)
-        .then((gltf) => {
-          if (!this.alive || !this.mixer) return
-          const clip = gltf.animations && gltf.animations[0]
-          if (!clip) throw new Error(`V4 animation "${logical}" has no clip`)
-          this.clips.set(logical, clip)
-        })
-        .catch((err) => {
-          if (REQUIRED_CLIPS.has(logical)) {
-            console.error('[avatars] failed to load REQUIRED clip:', logical, err)
-            throw err
-          } else {
-            console.warn('[avatars] optional clip unavailable:', logical, err.message)
-          }
-        })
-    )).then((results) => {
+    const registerClip = (logical, clip) => {
+      if (!this.alive || !this.mixer || !clip) return
+      const reference = this.clips.get('walk') || clip
+      const names = new Set(clip.tracks.map(t => t.name))
+      const resting = (reference?.tracks || []).filter(t => t.name.endsWith('.quaternion') && !names.has(t.name)).map(t =>
+        new THREE.QuaternionKeyframeTrack(t.name, [0], t.values.slice(0, 4)))
+      const complete = new THREE.AnimationClip(clip.name, clip.duration, [...clip.tracks, ...resting])
+      this.clips.set(logical, complete)
+      const action = this.mixer.clipAction(complete)
+      action.setLoop(LOOPING_CLIPS.has(logical) ? THREE.LoopRepeat : THREE.LoopOnce, LOOPING_CLIPS.has(logical) ? Infinity : 1)
+      action.clampWhenFinished = !LOOPING_CLIPS.has(logical)
+      this.actions.set(logical, action)
+      if (logical === 'idle' && !this.currentAction) {
+        this.currentAction = action
+        action.reset().play()
+        this._animationsLoaded = true
+      }
+    }
+
+    // Load idle first for immediate playback
+    const idlePromise = loadModelWithTimeout(`${base}${CLIP_FILES.idle}`, 45000)
+      .then(gltf => {
+        const clip = gltf.animations && gltf.animations[0]
+        if (clip) registerClip('idle', clip)
+      })
+      .catch(err => console.warn('[avatars] idle clip load warning:', err.message))
+
+    // Stream essential clips next (walk, run, jump, sit, wave, dance, nod)
+    const essential = ['walk', 'run', 'jump', 'sit', 'wave', 'dance', 'nod']
+    for (const logical of essential) {
+      const file = CLIP_FILES[logical]
+      if (file && logical !== 'idle') {
+        loadModelWithTimeout(`${base}${file}`, 45000)
+          .then(gltf => {
+            const clip = gltf.animations && gltf.animations[0]
+            if (clip) registerClip(logical, clip)
+          })
+          .catch(err => console.warn(`[avatars] clip "${logical}" load warning:`, err.message))
+      }
+    }
+
+    // Lazy load non-essential animation clips after initial scene settled
+    setTimeout(() => {
       if (!this.alive) return
-
-      // Verify that all required clips were successfully loaded
-      for (const req of REQUIRED_CLIPS) {
-        if (!this.clips.has(req)) {
-          throw new Error(`Required animation clip "${req}" could not be loaded`)
-        }
+      for (const [logical, file] of entries) {
+        if (logical === 'idle' || essential.includes(logical)) continue
+        loadModelWithTimeout(`${base}${file}`, 45000)
+          .then(gltf => {
+            const clip = gltf.animations && gltf.animations[0]
+            if (clip) registerClip(logical, clip)
+          })
+          .catch(() => {})
       }
+    }, 4000)
 
-      // Partial V3 clips omit arm rotations; use the walk's resting pose
-      // for missing joints instead of returning those joints to the A-pose.
-      const reference = this.clips.get('walk')
-      for (const [logical, clip] of this.clips) {
-        const names = new Set(clip.tracks.map(t => t.name))
-        const resting = (reference?.tracks || []).filter(t => t.name.endsWith('.quaternion') && !names.has(t.name)).map(t =>
-          new THREE.QuaternionKeyframeTrack(t.name, [0], t.values.slice(0, 4)))
-        const complete = new THREE.AnimationClip(clip.name, clip.duration, [...clip.tracks, ...resting])
-        this.clips.set(logical, complete)
-        const action = this.mixer.clipAction(complete)
-        action.setLoop(LOOPING_CLIPS.has(logical) ? THREE.LoopRepeat : THREE.LoopOnce, LOOPING_CLIPS.has(logical) ? Infinity : 1)
-        action.clampWhenFinished = !LOOPING_CLIPS.has(logical)
-        this.actions.set(logical, action)
-      }
-      this.currentAction = this.actions.get('idle')
-      this.currentAction?.reset().play()
-      this._animationsLoaded = true
-    })
+    return idlePromise
   }
 
   _crossfade(logical, duration = 0.25) {
@@ -352,23 +373,31 @@ export class RemoteAvatar {
 
   applyRoom(roomKey) {
     this._visibleRooms = roomKey
-    const visible = this.alive && (!roomKey || this.room === roomKey)
+    const myRoom = (this.room || '').trim().toLowerCase()
+    const targetRoom = (roomKey || '').trim().toLowerCase()
+    const visible = this.alive && (!targetRoom || !myRoom || myRoom === targetRoom)
     this.group.visible = visible && !!this.root
     this.tag.style.display = visible && !!this.root ? 'block' : 'none'
   }
 
   setData(state) {
-    this.room = state.room ?? this.room
-    this.buffer.push({
-      t: performance.now(),
-      x: state.p[0], y: state.p[1], z: state.p[2],
-      ry: state.ry,
-      anim: state.anim,
-      moving: state.moving,
-      mode: state.mode,
-      seat: state.seat,
-    })
-    if (this.buffer.length > 30) this.buffer.shift()
+    this.room = state.room || state.location || this.room
+    if (Array.isArray(state.p) && state.p.length >= 3) {
+      if (this.buffer.length === 0) {
+        this.group.position.set(state.p[0], state.p[1], state.p[2])
+        if (Number.isFinite(state.ry)) this.group.rotation.y = state.ry
+      }
+      this.buffer.push({
+        t: performance.now(),
+        x: state.p[0], y: state.p[1], z: state.p[2],
+        ry: Number.isFinite(state.ry) ? state.ry : 0,
+        anim: state.anim || 'idle',
+        moving: Boolean(state.moving),
+        mode: state.mode || 'stand',
+        seat: state.seat || null,
+      })
+      if (this.buffer.length > 30) this.buffer.shift()
+    }
   }
 
   setEmote(emoteIdx, start) {
@@ -511,8 +540,11 @@ export class AvatarWorld {
         av.applyAppearance()
       }
     }
-    av.room = peer.room ?? av.room
-    const roomKey = this.rooms()
+    av.room = peer.room || peer.location || av.room
+    if (peer.p) {
+      av.setData(peer)
+    }
+    const roomKey = this.rooms ? this.rooms() : null
     av.applyRoom(roomKey)
     return av
   }

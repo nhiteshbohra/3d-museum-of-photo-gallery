@@ -70,7 +70,7 @@ app.innerHTML = `
         <div id="invite-status" class="invite-status" role="status"></div>
       </div>
 
-      <div id="entrance-loading" aria-busy="true">
+      <div id="entrance-loading" aria-busy="true" hidden>
         <progress id="entrance-progress" max="100" value="0" aria-label="Loading museum"></progress>
         <p id="entrance-status" role="status">Preparing your museum…</p>
       </div>
@@ -247,8 +247,9 @@ async function redeemInviteCode() {
 				}
 			}
 
-			// Load the protected letters (AUTH-02)
+			// Load the protected letters (AUTH-02) and start museum experience
 			await loadPrivateLetters()
+			await startMuseumExperience()
 		} else {
 			inviteRedeemed = false
 			setInviteStatus((data && data.error) || 'Invitation could not be verified.', false)
@@ -297,13 +298,47 @@ inviteCodeInput?.addEventListener('keydown', (e) => {
 	}
 })
 
+async function checkAuthSession() {
+	try {
+		const res = await fetch('/api/letters')
+		if (res.ok) {
+			const data = await res.json()
+			inviteRedeemed = true
+			window.__museumAuthenticated = true
+			window.__museumSessionToken = true
+			if (data && data.recipient) {
+				lastInviteRecipient = data.recipient
+				setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient} ✦`, true)
+				const recLower = String(data.recipient).toLowerCase()
+				const match = AVATARS.find(a => a.name.toLowerCase() === recLower)
+				if (match) selectedAvatarId = match.id
+			} else {
+				setInviteStatus('✦ Pass Verified: Welcome ✦', true)
+			}
+			if (inviteCodeInput) {
+				inviteCodeInput.setAttribute('readonly', 'readonly')
+			}
+			if (redeemBtn) {
+				redeemBtn.textContent = 'Verified ✓'
+				redeemBtn.disabled = true
+			}
+			await loadPrivateLetters()
+			await startMuseumExperience()
+		} else {
+			setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
+		}
+	} catch {
+		setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
+	}
+}
+
 // Auto-check URL parameters or existing session
 const initialInviteParam = (new URLSearchParams(window.location.search)).get('invite') || (new URLSearchParams(window.location.search)).get('code')
 if (initialInviteParam && inviteCodeInput) {
 	inviteCodeInput.value = initialInviteParam
 	redeemInviteCode()
 } else {
-	loadPrivateLetters()
+	checkAuthSession()
 }
 
 // ---- VISITOR / AVATAR SELECTION ----
@@ -799,7 +834,11 @@ function enterMuseum() {
 		setInviteStatus('Please verify your private invitation pass before entering.', false)
 		return
 	}
-	characterSetup.enter(engineApi.scene)
+	try {
+		characterSetup?.enter?.(engineApi.scene)
+	} catch (err) {
+		console.warn('[enterMuseum] characterSetup.enter warning:', err)
+	}
 	document.body.classList.remove('choosing-character')
 	hasEntered = true
 	document.body.classList.add('in-sanctuary')
@@ -868,6 +907,9 @@ function toggleAnimationsDrawer(forceOpen) {
 	const shouldOpen = forceOpen !== undefined ? forceOpen : isClosed
 	animDrawer.style.display = shouldOpen ? 'block' : 'none'
 	btnAnimToggle?.classList.toggle('active', shouldOpen)
+	if (shouldOpen && document.pointerLockElement) {
+		document.exitPointerLock()
+	}
 }
 
 btnAnimToggle?.addEventListener('click', (e) => {
@@ -1236,130 +1278,146 @@ window.addEventListener('keydown', (e) => {
 	}
 })
 
-const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
-engineApi = startYourEngines({
-	canvas,
-	roomSeedTitle: initialTitle ?? 'Lobby',
-	roomMode: initialTitle ? 'gallery' : 'lobby',
-	roomSpawn: { type: 'fromWall', wall: 'south' },
-	lobbyCategories: coupleCategories,
-	galleryTitle: initialSalon?.title,
-	galleryDescription: initialSalon?.extract,
-	galleryPhotos: initialSalon?.photos,
-	galleryMainThumbnailUrl: initialSalon?.photos?.[0],
-	galleryLongExtract: initialSalon?.longExtract,
-	galleryRelatedTitles: initialSalon?.seeAlso,
-	onRandomExhibitRequested: requestRandomExhibit,
-	onPhotoClick: openPhotoLightbox,
-	onGoLobbyRequested() {
-		setLoading(false)
-		if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
-			engineApi.setInteractionLocked(false)
-		}
-		enterlobby({ push: true })
-	},
-	onPointerLockChange(locked) {
-		if (!hasEntered) {
-			overlayEl.hidden = locked
-		} else {
-			overlayEl.hidden = true
-		}
-		document.body.classList.toggle('locked', locked)
-	},
-	onDoorHover: preloadDoorPhotos,
-	onDoorProximity: preloadDoorPhotos,
-	onDoorTrigger(door) {
-		withFadeTransition(async () => {
-			if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
-				setLoading(false)
-				if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
-					engineApi.setInteractionLocked(false)
-				}
-				await enterlobby({ push: true })
-				return
+let museumStarted = false
+let multiplayer = null
+
+async function startMuseumExperience() {
+	if (museumStarted) return
+	museumStarted = true
+
+	const entranceLoadingEl = document.querySelector('#entrance-loading')
+	if (entranceLoadingEl) {
+		entranceLoadingEl.removeAttribute('hidden')
+		entranceLoadingEl.style.display = 'block'
+	}
+
+	const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
+	engineApi = startYourEngines({
+		canvas,
+		roomSeedTitle: initialTitle ?? 'Lobby',
+		roomMode: initialTitle ? 'gallery' : 'lobby',
+		roomSpawn: { type: 'fromWall', wall: 'south' },
+		lobbyCategories: coupleCategories,
+		galleryTitle: initialSalon?.title,
+		galleryDescription: initialSalon?.extract,
+		galleryPhotos: initialSalon?.photos,
+		galleryMainThumbnailUrl: initialSalon?.photos?.[0],
+		galleryLongExtract: initialSalon?.longExtract,
+		galleryRelatedTitles: initialSalon?.seeAlso,
+		onRandomExhibitRequested: requestRandomExhibit,
+		onPhotoClick: openPhotoLightbox,
+		onGoLobbyRequested() {
+			setLoading(false)
+			if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+				engineApi.setInteractionLocked(false)
 			}
-
-			const doorTarget = (typeof door?.category === 'string' && door.category.length > 0)
-				? door.category
-				: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
-
-			if (doorTarget) {
-				lastEnteredLobbyCategory = doorTarget
-				lastEnteredLobbyDoorId = typeof door.id === 'string' ? door.id : null
-				try {
-					window.sessionStorage.setItem('ourmuseum:lastSalon', doorTarget)
-					if (lastEnteredLobbyDoorId) {
-						window.sessionStorage.setItem('ourmuseum:lastDoorId', lastEnteredLobbyDoorId)
-					}
-				} catch (_) {}
-				await loadAndEnterGallery(doorTarget, {
-					pushHistory: true,
-					spawn: { type: 'fromWall', wall: 'south' },
-					loadingDoorId: typeof door.id === 'string' ? door.id : null,
-				})
-				return
-			}
-		})
-	},
-})
-
-window.__engineApi = engineApi
-window.__loadAndEnterGallery = loadAndEnterGallery
-window.__enterlobby = enterlobby
-
-// ---- MULTIPLAYER (avatar sync) ----
-const multiplayer = initMultiplayer({
-	engineApi,
-	selectedAvatar: () => selectedProfile,
-	getRoomKey: () => {
-		try { return engineApi.getRoomKey() } catch { return 'lobby' }
-	},
-	goToRoom(roomKey) {
-		if (!roomKey) return
-		if (roomKey === 'lobby') {
 			enterlobby({ push: true })
-			return
-		}
-		const title = ROOM_KEY_TO_TITLE[roomKey]
-		if (!title) {
-			console.error(`[Navigation] Unknown roomKey "${roomKey}" requested. Staying put.`)
-			return
-		}
-		loadAndEnterGallery(title, {
-			pushHistory: true,
-			spawn: { type: 'fromWall', wall: 'south' },
-		})
-	},
-})
-window.__multiplayer = multiplayer
+		},
+		onPointerLockChange(locked) {
+			if (!hasEntered) {
+				overlayEl.hidden = locked
+			} else {
+				overlayEl.hidden = true
+			}
+			document.body.classList.toggle('locked', locked)
+		},
+		onDoorHover: preloadDoorPhotos,
+		onDoorProximity: preloadDoorPhotos,
+		onDoorTrigger(door) {
+			withFadeTransition(async () => {
+				if (door && (door.target === 'lobby' || door.target === 'back' || door.id === 'entry-door')) {
+					setLoading(false)
+					if (engineApi && typeof engineApi.setInteractionLocked === 'function') {
+						engineApi.setInteractionLocked(false)
+					}
+					await enterlobby({ push: true })
+					return
+				}
 
-if (!initialTitle) {
-	pushGalleryTrail(lobby_title)
+				const doorTarget = (typeof door?.category === 'string' && door.category.length > 0)
+					? door.category
+					: (typeof door?.articleTitle === 'string' && door.articleTitle.trim().length > 0 ? door.articleTitle.trim() : null)
+
+				if (doorTarget) {
+					lastEnteredLobbyCategory = doorTarget
+					lastEnteredLobbyDoorId = typeof door.id === 'string' ? door.id : null
+					try {
+						window.sessionStorage.setItem('ourmuseum:lastSalon', doorTarget)
+						if (lastEnteredLobbyDoorId) {
+							window.sessionStorage.setItem('ourmuseum:lastDoorId', lastEnteredLobbyDoorId)
+						}
+					} catch (_) {}
+					await loadAndEnterGallery(doorTarget, {
+						pushHistory: true,
+						spawn: { type: 'fromWall', wall: 'south' },
+						loadingDoorId: typeof door.id === 'string' ? door.id : null,
+					})
+					return
+				}
+			})
+		},
+	})
+
+	window.__engineApi = engineApi
+	window.__loadAndEnterGallery = loadAndEnterGallery
+	window.__enterlobby = enterlobby
+
+	// ---- MULTIPLAYER (avatar sync) ----
+	multiplayer = initMultiplayer({
+		engineApi,
+		selectedAvatar: () => selectedProfile,
+		getRoomKey: () => {
+			try { return engineApi.getRoomKey() } catch { return 'lobby' }
+		},
+		goToRoom(roomKey) {
+			if (!roomKey) return
+			if (roomKey === 'lobby') {
+				enterlobby({ push: true })
+				return
+			}
+			const title = ROOM_KEY_TO_TITLE[roomKey]
+			if (!title) {
+				console.error(`[Navigation] Unknown roomKey "${roomKey}" requested. Staying put.`)
+				return
+			}
+			loadAndEnterGallery(title, {
+				pushHistory: true,
+				spawn: { type: 'fromWall', wall: 'south' },
+			})
+		},
+	})
+	window.__multiplayer = multiplayer
+
+	if (!initialTitle) {
+		pushGalleryTrail(lobby_title)
+	}
+
+	setUrlAndState(initialTitle ? initialTitle : null, { push: false })
+
+	window.addEventListener('popstate', (e) => {
+		const st = e?.state
+		if (st && st.ourmuseum && typeof st.idx === 'number') {
+			historyIndex = st.idx
+		}
+
+		const p = new URLSearchParams(window.location.search)
+		const title = p.get('exhibit')
+
+		if (title) {
+			loadAndEnterGallery(title, {
+				pushHistory: false,
+				updateUrlState: false,
+				spawn: { type: 'fromWall', wall: 'south' },
+			})
+			return
+		}
+
+		enterlobby({ push: false })
+		setLoading(false)
+	})
+
+	await prepareEntrance()
 }
-
-setUrlAndState(initialTitle ? initialTitle : null, { push: false })
-
-window.addEventListener('popstate', (e) => {
-	const st = e?.state
-	if (st && st.ourmuseum && typeof st.idx === 'number') {
-		historyIndex = st.idx
-	}
-
-	const p = new URLSearchParams(window.location.search)
-	const title = p.get('exhibit')
-
-	if (title) {
-		loadAndEnterGallery(title, {
-			pushHistory: false,
-			updateUrlState: false,
-			spawn: { type: 'fromWall', wall: 'south' },
-		})
-		return
-	}
-
-	enterlobby({ push: false })
-	setLoading(false)
-})
 
 async function prepareEntrance() {
 	try {
@@ -1371,13 +1429,22 @@ async function prepareEntrance() {
 				spawn: { type: 'fromWall', wall: 'south' },
 			})
 		}
-		if (assetsLoading) await new Promise((resolve) => { resolveAssetsLoaded = resolve })
+		if (assetsLoading) {
+			await Promise.race([
+				new Promise((resolve) => { resolveAssetsLoaded = resolve }),
+				new Promise((resolve) => setTimeout(resolve, 4000))
+			])
+		}
 		entranceStatus.textContent = 'Preparing the room for your visit…'
-		await engineApi.renderer.compileAsync(engineApi.scene, engineApi.camera)
+		try {
+			if (typeof engineApi.renderer.compile === 'function') {
+				engineApi.renderer.compile(engineApi.scene, engineApi.camera)
+			}
+		} catch (_) {}
 		engineApi.renderer.render(engineApi.scene, engineApi.camera)
 		entranceReady = true
 		entranceProgress.value = 100
-		document.querySelector('#entrance-loading').setAttribute('aria-busy', 'false')
+		document.querySelector('#entrance-loading')?.setAttribute('aria-busy', 'false')
 		entranceStatus.textContent = 'Your room is ready.'
 		enterButton.hidden = true
 		enterButton.disabled = true
@@ -1386,8 +1453,7 @@ async function prepareEntrance() {
 	} catch (error) {
 		console.error('[Museum] Entrance loading failed:', error)
 		entranceProgress.hidden = true
-		document.querySelector('#entrance-loading').setAttribute('aria-busy', 'false')
+		document.querySelector('#entrance-loading')?.setAttribute('aria-busy', 'false')
 		entranceStatus.textContent = 'The room could not finish loading. Please reload the page to try again.'
 	}
 }
-void prepareEntrance()

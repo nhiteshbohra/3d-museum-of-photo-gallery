@@ -291,10 +291,13 @@ export function startYourEngines({
 	let pitch = 0
 
 	const velocity = new THREE.Vector3(0, 0, 0)
+	let currentVelX = 0
+	let currentVelZ = 0
+	let avatarBodyYaw = 0
 	const gravity = -18
 	const jumpSpeed = 6.2
-	const moveSpeed = 4.2
-	const sprintMultiplier = 1.75
+	const moveSpeed = 2.4
+	const sprintMultiplier = 2.0
 	let grounded = false
 
 	function disposeMany(items) {
@@ -531,8 +534,8 @@ export function startYourEngines({
 				roomCache.set(key, room)
 				evictExcessRooms()
 				try {
-					if (typeof renderer.compileAsync === 'function') {
-						await renderer.compileAsync(room.group, camera)
+					if (typeof renderer.compile === 'function') {
+						renderer.compile(room.group, camera)
 					}
 				} catch (_) {}
 				return room
@@ -608,12 +611,11 @@ export function startYourEngines({
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
 		applyAmbiencePreset()
-		await whenPlacedItemsLoaded()
+		// Phase 4: Stream placed models in background so room shell renders immediately
+		whenPlacedItemsLoaded().catch(err => console.warn('[PlacedItems] Stream warning:', err))
 
 		try {
-			if (typeof renderer.compileAsync === 'function') {
-				await renderer.compileAsync(scene, camera)
-			} else {
+			if (typeof renderer.compile === 'function') {
 				renderer.compile(scene, camera)
 			}
 		} catch (_) {}
@@ -1068,8 +1070,13 @@ export function startYourEngines({
 			moveZ = (-sin * nx + -cos * nz) * speed
 		}
 
-		camera.position.x += moveX * dt
-		camera.position.z += moveZ * dt
+		// Smooth acceleration and deceleration damping
+		const accel = (moveX !== 0 || moveZ !== 0) ? 14.0 : 18.0
+		currentVelX += (moveX - currentVelX) * Math.min(1.0, dt * accel)
+		currentVelZ += (moveZ - currentVelZ) * Math.min(1.0, dt * accel)
+
+		camera.position.x += currentVelX * dt
+		camera.position.z += currentVelZ * dt
 
 		let floorY = 0
 		const px = camera.position.x
@@ -1277,11 +1284,18 @@ export function startYourEngines({
 			return
 		}
 
+		const velMagnitude = Math.hypot(currentVelX, currentVelZ)
 		const distance = Math.hypot(camera.position.x - previousPosition.x, camera.position.z - previousPosition.z)
-		const moving = distance > 0.0001 && (isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0))
+		const moving = (velMagnitude > 0.08 || distance > 0.001) && (isPointerLocked() || isMobileActive || (touchMoveX !== 0 || touchMoveZ !== 0))
+
+		// Turning inertia: avatar rotates towards movement direction when active, settling to camera view
+		const targetYaw = (moving && velMagnitude > 0.15) ? Math.atan2(-currentVelX, -currentVelZ) : (yaw + Math.PI)
+		let diffYaw = ((targetYaw - avatarBodyYaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI
+		avatarBodyYaw += diffYaw * Math.min(1.0, dt * 10)
+
 		playerState = {
 			p: [camera.position.x, camera.position.y - eyeHeight, camera.position.z],
-			ry: yaw + Math.PI,
+			ry: avatarBodyYaw,
 			moving,
 			anim: !grounded ? 'jump' : moving ? ((keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || Math.hypot(touchMoveX, touchMoveZ) > 0.8) ? 'run' : 'walk') : 'idle',
 			mode: 'stand',
@@ -1309,11 +1323,16 @@ export function startYourEngines({
 		followCamera.updateMatrixWorld()
 	}
 
+	let lastClientW = 0
+	let lastClientH = 0
 	function resize() {
 		const width = canvas.clientWidth
 		const height = canvas.clientHeight
 
 		if (width <= 0 || height <= 0) return
+		if (width === lastClientW && height === lastClientH) return
+		lastClientW = width
+		lastClientH = height
 
 		renderer.setSize(width, height, false)
 		const aspect = width / height

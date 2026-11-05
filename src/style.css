@@ -912,9 +912,10 @@ body.in-sanctuary.is-touch-device #mobile-controls {
 
 .hud-animations-drawer {
 	position: fixed;
-	left: 50%;
-	bottom: max(32px, env(safe-area-inset-bottom, 32px));
-	transform: translateX(-50%);
+	left: 20px;
+	top: 50%;
+	transform: translateY(-50%);
+	bottom: auto;
 	z-index: 970;
 	background: rgba(20, 14, 8, 0.94);
 	border: 1.5px solid rgba(216, 176, 106, 0.55);
@@ -924,8 +925,8 @@ body.in-sanctuary.is-touch-device #mobile-controls {
 	backdrop-filter: blur(12px);
 	-webkit-backdrop-filter: blur(12px);
 	pointer-events: auto;
-	max-width: 420px;
-	width: 90vw;
+	max-width: 280px;
+	width: min(280px, 85vw);
 }
 
 .anim-drawer-header {

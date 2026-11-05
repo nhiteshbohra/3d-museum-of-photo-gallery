@@ -63,6 +63,7 @@ export function connectNet(url) {
   try {
     ws = new WebSocket(finalUrl)
   } catch (err) {
+    console.error('[net] WebSocket constructor threw:', err)
     emitNet('status', { kind: 'error', message: 'Could not open WebSocket.' })
     return null
   }
@@ -121,6 +122,7 @@ export function connectNet(url) {
   }
 
   ws.onerror = (ev) => {
+    console.error('[net] ws.onerror fired:', ev)
     emitNet('status', { kind: 'error', event: ev })
   }
 

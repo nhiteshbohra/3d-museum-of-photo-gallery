@@ -201,6 +201,10 @@ export function initMultiplayer({
             appearance: msg.appearance,
             location: msg.location || msg.room,
             room: msg.location || msg.room,
+            p: msg.p,
+            ry: msg.ry,
+            anim: msg.anim,
+            mode: msg.mode,
           }
           ensureWorld().upsertRemote(peer, resolveAvatar()?.model)
           setPartner(peer)
@@ -442,10 +446,11 @@ export function initMultiplayer({
 
   // ---- emotes (MP-04) ---------------------------------------------------
   function doEmote(idx) {
-    if (!state.connected) return
     const emote = getEmoteById(idx)
     if (!emote) return
-    netEmote(idx, true)
+    if (state.connected) {
+      netEmote(idx, true)
+    }
     state.localAvatar?.setEmote(idx, true)
     state.emoteActive = { idx, until: performance.now() + emote.durationMs }
   }
@@ -608,7 +613,6 @@ export function initMultiplayer({
     state.started = true
     buildUI()
     setConnection('connecting')
-    connectNet(wsUrl)
     ensureWorld()
     engineApi.setPlayerAvatar(state.localAvatar)
     engineApi.onStandRequested?.(() => {
@@ -616,23 +620,30 @@ export function initMultiplayer({
     })
     state.seats = buildSeatRegistry(currentRoomKey())
 
-    // Store network unsubscribers
+    function doJoin() {
+      const av = resolveAvatar()
+      const playerState = engineApi?.getPlayerState?.() || {}
+      netJoin({
+        peerId: getPeerId(),
+        name: av?.name || 'Visitor',
+        color: av?.color || '#d8b06a',
+        model: av?.model || '',
+        appearance: av?.appearance,
+        room: currentRoomKey(),
+        p: playerState.p || [0, 1.7, 4],
+        ry: playerState.ry || 0,
+        code: window.__museumPasscode || '',
+        sessionToken: ''
+      })
+    }
+
+    // Store network unsubscribers BEFORE connecting
     state.unsubNet.push(onNet('message', handleMessage))
     state.unsubNet.push(onNet('status', (s) => {
       if (s.kind === 'open') {
         state.connected = true
         setConnection('connected')
-        const av = resolveAvatar()
-        netJoin({
-          peerId: getPeerId(),
-          name: av?.name || 'Visitor',
-          color: av?.color || '#d8b06a',
-          model: av?.model || '',
-          appearance: av?.appearance,
-          room: currentRoomKey(),
-          code: window.__museumPasscode || '',
-          sessionToken: ''
-        })
+        doJoin()
       } else if (s.kind === 'close' || s.kind === 'closed') {
         state.connected = false
         setConnection('disconnected')
@@ -643,6 +654,13 @@ export function initMultiplayer({
         setConnection(s.code)
       }
     }))
+
+    connectNet(wsUrl)
+    if (netConnected()) {
+      state.connected = true
+      setConnection('connected')
+      doJoin()
+    }
 
     window.addEventListener('keydown', onKeyDown, { capture: true })
     startChatListener()
@@ -705,6 +723,8 @@ export function initMultiplayer({
     prepareAvatar,
     stop,
     isConnected: () => state.connected,
+    getPeerCount: () => (state.partner ? 1 : 0) + (state.connected ? 1 : 0),
+    getPartner: () => state.partner,
     getLatency: () => state.latencyMs,
     getState: () => state,
     refreshSeats: () => {

@@ -856,6 +856,11 @@ wss.on('connection', ws => {
         }
       }
 
+      const initialP = Array.isArray(data.p) && data.p.length >= 3
+        ? [clampNum(data.p[0], -MAX_POS, MAX_POS), clampNum(data.p[1], -MAX_POS, MAX_POS), clampNum(data.p[2], -MAX_POS, MAX_POS)]
+        : [0, 1.7, 4];
+      const initialRy = Number.isFinite(data.ry) ? clampNum(data.ry, -Math.PI * 4, Math.PI * 4) : 0;
+
       const profile = {
         peerId,
         name: safeStr(data.name || authenticatedSession?.recipient, 24) || 'Guest',
@@ -864,7 +869,15 @@ wss.on('connection', ws => {
         appearance,
         location,
         seated: seatToRestore,
-        sessionToken: sessKey
+        sessionToken: sessKey,
+        lastState: {
+          p: initialP,
+          ry: initialRy,
+          anim: 'idle',
+          moving: false,
+          mode: seatToRestore ? 'sit' : 'stand',
+          seat: seatToRestore
+        }
       };
 
       sessionPeers.set(ws, profile);
@@ -878,7 +891,11 @@ wss.on('connection', ws => {
         appearance: p.appearance,
         location: p.location,
         room: p.location,
-        seated: p.seated
+        seated: p.seated,
+        p: p.lastState ? p.lastState.p : [0, 1.7, 4],
+        ry: p.lastState ? p.lastState.ry : 0,
+        anim: p.lastState ? p.lastState.anim : 'idle',
+        mode: p.lastState ? p.lastState.mode : 'stand'
       }));
 
       // Snapshot of currently taken seats
@@ -918,6 +935,11 @@ wss.on('connection', ws => {
         appearance: profile.appearance,
         location: profile.location,
         room: profile.location,
+        seated: profile.seated,
+        p: profile.lastState ? profile.lastState.p : [0, 1.7, 4],
+        ry: profile.lastState ? profile.lastState.ry : 0,
+        anim: profile.lastState ? profile.lastState.anim : 'idle',
+        mode: profile.lastState ? profile.lastState.mode : 'stand',
         peerCount: count
       }, ws);
       return;
@@ -929,22 +951,26 @@ wss.on('connection', ws => {
       return;
     }
 
-    // Active session revocation check on incoming messages
+    // Active session revocation check on incoming messages (throttled to 2s to preserve event loop)
     const currentProfile = sessionPeers.get(ws);
     if (currentProfile && currentProfile.sessionToken) {
-      const valid = validateSession(currentProfile.sessionToken);
-      if (!valid) {
-        deny('session-revoked');
-        if (currentProfile.seated) {
-          sessionSeats.delete(currentProfile.seated);
-          broadcast({ t: 'stand', id: currentProfile.peerId }, null);
+      const now = Date.now();
+      if (!currentProfile._lastRevocationCheck || now - currentProfile._lastRevocationCheck > 2000) {
+        currentProfile._lastRevocationCheck = now;
+        const valid = validateSession(currentProfile.sessionToken);
+        if (!valid) {
+          deny('session-revoked');
+          if (currentProfile.seated) {
+            sessionSeats.delete(currentProfile.seated);
+            broadcast({ t: 'stand', id: currentProfile.peerId }, null);
+          }
+          sessionPeers.delete(ws);
+          broadcast({ t: 'peer_left', peerId: currentProfile.peerId, peerCount: sessionPeers.size }, null);
+          try {
+            ws.close(4003, 'session-revoked');
+          } catch {}
+          return;
         }
-        sessionPeers.delete(ws);
-        broadcast({ t: 'peer_left', peerId: currentProfile.peerId, peerCount: sessionPeers.size }, null);
-        try {
-          ws.close(4003, 'session-revoked');
-        } catch {}
-        return;
       }
     }
 
@@ -987,7 +1013,17 @@ wss.on('connection', ws => {
       };
 
       const profile = sessionPeers.get(ws);
-      if (profile) profile.location = location;
+      if (profile) {
+        profile.location = location;
+        profile.lastState = {
+          p: state.p,
+          ry: state.ry,
+          anim: state.anim,
+          moving: state.moving,
+          mode: state.mode,
+          seat: state.seat
+        };
+      }
 
       broadcast(state, ws);
       return;
