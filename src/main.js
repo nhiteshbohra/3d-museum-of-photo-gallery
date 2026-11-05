@@ -196,7 +196,7 @@ let engineApi = null
 let multiplayer = null
 let museumStarted = false
 let hasEntered = false
-let inviteRequired = false
+let inviteRequired = true // Default to true (fail-closed) until server /api/config confirms otherwise
 let inviteConfigChecked = false
 let lastEnteredLobbyCategory = null
 let lastEnteredLobbyDoorId = null
@@ -229,11 +229,25 @@ if (isTouchDevice && mobileNoticeEl) {
 // that cookie is sent automatically on both HTTP requests and the WS upgrade,
 // so gating entrance on a successful redemption protects private content and
 // authenticates the multiplayer join.
+// =========================================================================
+// AUTHENTICATION UI STATE MACHINE (AUTH-NEW-01, AUTH-NEW-02, AUTH-NEW-03, AUTH-NEW-04)
+// Single authoritative click dispatcher, zero credential leakage in DOM,
+// explicit mutual exclusion between verifying, verified, and entered.
+// =========================================================================
 const inviteCodeInput = document.querySelector('#invite-code-input')
 const redeemBtn = document.querySelector('#btn-redeem-invite')
 const inviteStatusEl = document.querySelector('#invite-status')
 let inviteRedeemed = false
 let lastInviteRecipient = null
+
+const AUTH_STATE = {
+	UNVERIFIED: 'UNVERIFIED',
+	VERIFYING: 'VERIFYING',
+	VERIFIED: 'VERIFIED',
+	STARTING: 'STARTING',
+	IN_SANCTUARY: 'IN_SANCTUARY',
+}
+let currentAuthState = AUTH_STATE.UNVERIFIED
 
 function setInviteStatus(msg, ok) {
 	if (!inviteStatusEl) return
@@ -242,16 +256,81 @@ function setInviteStatus(msg, ok) {
 	inviteStatusEl.classList.toggle('error', !ok)
 }
 
+function updateAuthState(newState, payload = {}) {
+	currentAuthState = newState
+	if (!redeemBtn) return
+
+	switch (newState) {
+		case AUTH_STATE.UNVERIFIED:
+			redeemBtn.disabled = false
+			redeemBtn.textContent = 'Verify Pass'
+			if (inviteCodeInput) {
+				inviteCodeInput.removeAttribute('readonly')
+			}
+			break
+
+		case AUTH_STATE.VERIFYING:
+			redeemBtn.disabled = true
+			redeemBtn.textContent = 'Verifying…'
+			break
+
+		case AUTH_STATE.VERIFIED:
+			redeemBtn.disabled = false
+			redeemBtn.textContent = 'Enter Sanctuary →'
+			if (inviteCodeInput) {
+				inviteCodeInput.setAttribute('readonly', 'readonly')
+				if (payload.code) {
+					inviteCodeInput.value = payload.code
+				} else if (!inviteCodeInput.value) {
+					inviteCodeInput.placeholder = '✦ Verified Session Active ✦'
+				}
+			}
+			break
+
+		case AUTH_STATE.STARTING:
+			redeemBtn.disabled = true
+			redeemBtn.textContent = 'Entering…'
+			break
+
+		case AUTH_STATE.IN_SANCTUARY:
+			redeemBtn.disabled = true
+			break
+	}
+}
+
+async function handleRedeemButtonClick() {
+	if (currentAuthState === AUTH_STATE.UNVERIFIED) {
+		await redeemInviteCode()
+	} else if (currentAuthState === AUTH_STATE.VERIFIED) {
+		await enterSanctuaryFromPass()
+	}
+}
+
+async function enterSanctuaryFromPass() {
+	if (museumStarted) return
+	updateAuthState(AUTH_STATE.STARTING)
+	const entranceLoadingEl = document.querySelector('#entrance-loading')
+	if (entranceLoadingEl) {
+		entranceLoadingEl.removeAttribute('hidden')
+		entranceLoadingEl.style.display = 'block'
+	}
+	try {
+		await loadPrivateLetters()
+		await startMuseumExperience()
+	} catch (err) {
+		console.error('[Experience Boot Error]', err)
+		updateAuthState(AUTH_STATE.VERIFIED)
+	}
+}
+
 async function redeemInviteCode() {
+	if (currentAuthState === AUTH_STATE.VERIFYING || currentAuthState === AUTH_STATE.STARTING) return
 	const code = (inviteCodeInput?.value || '').trim()
 	if (!code) {
 		setInviteStatus('Please enter your private pass / invitation code.', false)
 		return
 	}
-	if (redeemBtn) {
-		redeemBtn.disabled = true
-		redeemBtn.textContent = 'Verifying…'
-	}
+	updateAuthState(AUTH_STATE.VERIFYING)
 	let data = null
 	try {
 		const res = await fetch('/api/invite/redeem', {
@@ -262,18 +341,15 @@ async function redeemInviteCode() {
 		data = await res.json().catch(() => ({ ok: false }))
 		if (!res.ok || !data.ok) {
 			inviteRedeemed = false
+			updateAuthState(AUTH_STATE.UNVERIFIED)
 			setInviteStatus((data && data.error) || 'Invitation could not be verified.', false)
 			return
 		}
 	} catch (netErr) {
 		inviteRedeemed = false
+		updateAuthState(AUTH_STATE.UNVERIFIED)
 		setInviteStatus('Could not reach the server. Please check if the server is running on port 8080.', false)
 		return
-	} finally {
-		if (redeemBtn && !inviteRedeemed) {
-			redeemBtn.disabled = false
-			redeemBtn.textContent = 'Verify Pass'
-		}
 	}
 
 	inviteRedeemed = true
@@ -282,19 +358,7 @@ async function redeemInviteCode() {
 	window.__museumSessionToken = true
 	window.__museumPasscode = code
 	setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
-	if (inviteCodeInput) {
-		inviteCodeInput.value = code
-		inviteCodeInput.setAttribute('readonly', 'readonly')
-	}
-	if (redeemBtn) {
-		redeemBtn.textContent = 'Enter Sanctuary →'
-		redeemBtn.disabled = false
-		redeemBtn.onclick = () => {
-			if (!museumStarted) {
-				startMuseumExperience()
-			}
-		}
-	}
+	updateAuthState(AUTH_STATE.VERIFIED, { code })
 
 	// Pre-select avatar matching recipient
 	if (data.recipient && Array.isArray(AVATARS)) {
@@ -310,19 +374,7 @@ async function redeemInviteCode() {
 		}
 	}
 
-	const entranceLoadingEl = document.querySelector('#entrance-loading')
-	if (entranceLoadingEl) {
-		entranceLoadingEl.removeAttribute('hidden')
-		entranceLoadingEl.style.display = 'block'
-		if (entranceStatus) entranceStatus.textContent = 'Preparing museum sanctuary for Maya & Ethan…'
-	}
-
-	try {
-		await loadPrivateLetters()
-		await startMuseumExperience()
-	} catch (err) {
-		console.error('[Experience Boot Error]', err)
-	}
+	await enterSanctuaryFromPass()
 }
 
 async function loadPrivateLetters() {
@@ -350,11 +402,12 @@ async function loadPrivateLetters() {
 	}
 }
 
-redeemBtn?.addEventListener('click', redeemInviteCode)
+// Single authoritative click listener — no duplicate addEventListener vs onclick collisions (AUTH-NEW-01)
+redeemBtn?.addEventListener('click', handleRedeemButtonClick)
 inviteCodeInput?.addEventListener('keydown', (e) => {
 	if (e.key === 'Enter') {
 		e.preventDefault()
-		redeemInviteCode()
+		handleRedeemButtonClick()
 	}
 })
 
@@ -376,19 +429,8 @@ async function checkAuthSession() {
 			              AVATARS.find(a => a.id === 'maya') || AVATARS[0]
 			if (match) selectedAvatarId = match.id
 
-			if (inviteCodeInput) {
-				if (!inviteCodeInput.value) inviteCodeInput.value = '290512'
-				inviteCodeInput.setAttribute('readonly', 'readonly')
-			}
-			if (redeemBtn) {
-				redeemBtn.textContent = 'Enter Sanctuary →'
-				redeemBtn.disabled = false
-				redeemBtn.onclick = () => {
-					if (!museumStarted) {
-						startMuseumExperience()
-					}
-				}
-			}
+			// Do not leak or hardcode passcodes in DOM input (AUTH-NEW-02)
+			updateAuthState(AUTH_STATE.VERIFIED)
 
 			const entranceLoadingEl = document.querySelector('#entrance-loading')
 			if (entranceLoadingEl) {
@@ -400,24 +442,12 @@ async function checkAuthSession() {
 			await loadPrivateLetters()
 			await startMuseumExperience()
 		} else {
+			updateAuthState(AUTH_STATE.UNVERIFIED)
 			setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
-			if (redeemBtn) {
-				redeemBtn.disabled = false
-				redeemBtn.textContent = 'Verify Pass'
-			}
-			if (inviteCodeInput) {
-				inviteCodeInput.removeAttribute('readonly')
-			}
 		}
 	} catch {
+		updateAuthState(AUTH_STATE.UNVERIFIED)
 		setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
-		if (redeemBtn) {
-			redeemBtn.disabled = false
-			redeemBtn.textContent = 'Verify Pass'
-		}
-		if (inviteCodeInput) {
-			inviteCodeInput.removeAttribute('readonly')
-		}
 	}
 }
 
@@ -913,6 +943,7 @@ function enterMuseum() {
 	}
 	document.body.classList.remove('choosing-character')
 	hasEntered = true
+	updateAuthState(AUTH_STATE.IN_SANCTUARY)
 	try { window.sessionStorage.setItem('ourmuseum:entered', '1') } catch {}
 	document.body.classList.add('in-sanctuary')
 	overlayEl.hidden = true
