@@ -1343,7 +1343,7 @@ export function startYourEngines({
 			p: [camera.position.x, camera.position.y - eyeHeight, camera.position.z],
 			ry: avatarBodyYaw,
 			moving,
-			anim: !grounded ? 'jump' : moving ? ((keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || Math.hypot(touchMoveX, touchMoveZ) > 0.8) ? 'run' : 'walk') : 'idle',
+			anim: !grounded ? 'jump' : moving ? ((keysDown.has('ShiftLeft') || keysDown.has('ShiftRight') || Math.hypot(touchMoveX, touchMoveZ) > 0.8) ? 'run' : (lastMovementInputZ < -0.2 ? 'stepBack' : 'walk')) : 'idle',
 			mode: 'stand',
 			seat: null,
 		}

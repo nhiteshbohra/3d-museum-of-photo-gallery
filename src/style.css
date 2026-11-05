@@ -643,6 +643,10 @@ body.choosing-character #top-bar { display: none; }
 	.character-details #avatar-grid { margin-bottom: 18px; }
 	.character-setup-card .ticket-title { font-size: 13px; }
 	#overlay-footer { display: none; }
+	.hud-animations-drawer { width: 100vw; padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)) 14px; }
+	.anim-drawer-close { width: 44px; height: 44px; font-size: 18px; }
+	.anim-card-btn { min-height: 52px; padding: 12px 10px; }
+	.anim-tab-btn { min-height: 40px; padding: 8px 14px; }
 }
 
 #room-curtain {

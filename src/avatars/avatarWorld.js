@@ -81,7 +81,7 @@ const CLIP_FILES = {
   lookLeft: 'turn_head_left.glb',
   lookRight: 'turn_head_right.glb',
 }
-const LOOPING_CLIPS = new Set(['idle', 'walk', 'run', 'dance', 'casualDance', 'sit'])
+const LOOPING_CLIPS = new Set(['idle', 'walk', 'run', 'dance', 'casualDance', 'sit', 'stepBack'])
 
 const NAME_TAG_CONTAINER = (() => {
   let el = document.getElementById('remote-avatar-tags')
@@ -120,6 +120,11 @@ export class RemoteAvatar {
     this.clips = new Map() // logical name -> AnimationClip
     this.actions = new Map() // logical name -> AnimationAction
     this.currentAction = null
+    this.currentBaseLogical = 'idle'
+    this.transitionAction = null
+    this.lastMode = 'stand'
+    this.lastRy = 0
+    this.turnRate = 0
     this.emoteAction = null
     this._animationsLoaded = false
 
@@ -313,11 +318,26 @@ export class RemoteAvatar {
 
     this._registerClip = registerClip
 
-    // Handle clip completion for non-looping emotes
+    // Handle clip completion for non-looping emotes and transitions
     this.mixer.addEventListener('finished', (e) => {
       if (this.emoteAction && this.actions.get(this.emoteAction) === e.action) {
         this.emoteAction = null
         this._applyBaseAnim()
+      }
+      if (this.transitionAction && this.actions.get(this.transitionAction) === e.action) {
+        const finished = this.transitionAction
+        this.transitionAction = null
+        if (finished === 'walkStart') {
+          if (this.target.moving) {
+            this._crossfade(this.target.anim === 'run' ? 'run' : (this.target.anim === 'stepBack' ? 'stepBack' : 'walk'), 0.2)
+          } else {
+            this._applyBaseAnim()
+          }
+        } else if (finished === 'walkStop' || finished === 'standUp') {
+          this._applyBaseAnim()
+        } else if (finished === 'sitDown') {
+          this._crossfade('sit', 0.2)
+        }
       }
     })
 
@@ -329,8 +349,8 @@ export class RemoteAvatar {
       })
       .catch(err => console.warn('[avatars] idle clip load warning:', err.message))
 
-    // Stream essential clips next (walk, run, jump, sit, wave, dance, nod)
-    const essential = ['walk', 'run', 'jump', 'sit', 'wave', 'dance', 'nod']
+    // Stream essential clips next (walk, run, jump, sit, wave, dance, nod, stepBack, walkStart, walkStop, turn, sitDown, standUp)
+    const essential = ['walk', 'run', 'jump', 'sit', 'wave', 'dance', 'nod', 'stepBack', 'walkStart', 'walkStop', 'turn', 'sitDown', 'standUp']
     for (const logical of essential) {
       const file = CLIP_FILES[logical]
       if (file && logical !== 'idle') {
@@ -369,6 +389,7 @@ export class RemoteAvatar {
     if (prev) prev.fadeOut(duration)
     next.reset().fadeIn(duration).play()
     this.currentAction = next
+    this.currentBaseLogical = logical
   }
 
   _disposeGltf(gltf) {
@@ -452,18 +473,93 @@ export class RemoteAvatar {
   }
 
   _applyBaseAnim() {
+    // 1. Seated locomotion / resting
     if (this.target.mode === 'sit') {
-      this._crossfade('sit')
+      if (this.lastMode !== 'sit') {
+        this.lastMode = 'sit'
+        if (this.actions.has('sitDown')) {
+          this.transitionAction = 'sitDown'
+          this._crossfade('sitDown', 0.15)
+          return
+        }
+      }
+      if (!this.transitionAction) {
+        this._crossfade('sit', 0.25)
+      }
       return
     }
+
+    // 2. Standing up from seat transition
+    if (this.lastMode === 'sit' && this.target.mode !== 'sit') {
+      this.lastMode = 'stand'
+      if (this.actions.has('standUp')) {
+        this.transitionAction = 'standUp'
+        this._crossfade('standUp', 0.15)
+        return
+      }
+    }
+    this.lastMode = this.target.mode || 'stand'
+
+    // 3. Jump (in-air)
     if (this.target.anim === 'jump') {
-      this._crossfade('jump')
+      this.transitionAction = null
+      this._crossfade('jump', 0.15)
       return
     }
+
+    // 4. Moving locomotion (sprint, step-back, walk-start, walk)
     if (this.target.moving) {
-      this._crossfade(this.target.anim === 'run' ? 'run' : 'walk', 0.25)
+      if (this.target.anim === 'run') {
+        this.transitionAction = null
+        this._crossfade('run', 0.2)
+        return
+      }
+
+      if (this.target.anim === 'stepBack') {
+        this.transitionAction = null
+        this._crossfade('stepBack', 0.2)
+        return
+      }
+
+      // Default walk
+      if (this.currentBaseLogical === 'idle' && !this.transitionAction) {
+        if (this.actions.has('walkStart')) {
+          this.transitionAction = 'walkStart'
+          this._crossfade('walkStart', 0.12)
+          return
+        }
+      }
+
+      if (this.transitionAction === 'walkStart') {
+        return
+      }
+
+      this.transitionAction = null
+      this._crossfade('walk', 0.2)
       return
     }
+
+    // 5. Stationary stopping transition
+    if (this.currentBaseLogical === 'walk' || this.currentBaseLogical === 'run') {
+      if (this.actions.has('walkStop') && !this.transitionAction) {
+        this.transitionAction = 'walkStop'
+        this._crossfade('walkStop', 0.12)
+        return
+      }
+    }
+
+    if (this.transitionAction === 'walkStop' || this.transitionAction === 'standUp') {
+      return
+    }
+
+    // 6. Turn-in-place when rotating rapidly while stationary
+    if (this.turnRate > 1.2 && this.actions.has('turn') && !this.transitionAction) {
+      this._crossfade('turn', 0.18)
+      return
+    }
+
+    // 7. Neutral idle
+    this.transitionAction = null
     this._crossfade('idle', 0.25)
   }
 
@@ -501,6 +597,13 @@ export class RemoteAvatar {
   update(now, dt) {
     if (!this.alive) return
     this._interpolate(now)
+
+    if (Number.isFinite(this.group.rotation.y) && dt > 0) {
+      if (this.lastRy === undefined) this.lastRy = this.group.rotation.y
+      const diff = Math.abs(((this.group.rotation.y - this.lastRy + Math.PI * 3) % (Math.PI * 2)) - Math.PI)
+      this.turnRate = diff / dt
+      this.lastRy = this.group.rotation.y
+    }
 
     if (this.mixer && this.root) {
       this.mixer.update(dt)
