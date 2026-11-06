@@ -657,7 +657,7 @@ export function initMultiplayer({
         room: currentRoomKey(),
         p: playerState.p || [0, 1.7, 4],
         ry: playerState.ry || 0,
-        code: window.__museumPasscode || '',
+        code: '',
         sessionToken: ''
       })
     }
@@ -717,6 +717,7 @@ export function initMultiplayer({
       state.pingInterval = null
     }
 
+    try { netLeave() } catch {}
     disconnectNet()
     engineApi.setPlayerAvatar(null)
     state.localAvatar?.dispose()
@@ -769,5 +770,7 @@ export function initMultiplayer({
     trySit: () => trySit(),
     standUp: () => standUp(),
     openChat: () => openChat(),
+    leave: () => { try { netLeave() } catch {} },
+    destroy: () => destroy(),
   }
 }

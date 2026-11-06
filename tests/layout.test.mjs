@@ -6,6 +6,8 @@ import test from 'node:test'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { build } from 'esbuild'
+import { buildSeatRegistry } from '../src/avatars/seatRegistry.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
@@ -73,5 +75,92 @@ test('Lobby contains seating, and non-lobby rooms obey simplification rule (only
       )
     }
   }
+})
+
+test('Runtime buildRoom() traversal validates that non-lobby salons contain no benches, sofas, chandeliers, bookcases or seats', async () => {
+  const context = new Proxy({
+    measureText: text => ({ width: String(text).length * 12 }),
+    createLinearGradient: () => ({ addColorStop() {} }),
+    createRadialGradient: () => ({ addColorStop() {} }),
+    getImageData: () => ({ data: new Uint8ClampedArray(512 * 512 * 4) }),
+  }, { get: (target, key) => target[key] ?? (() => {}) })
+  const originalDocument = globalThis.document
+  globalThis.document = { createElement: () => ({ width: 512, height: 512, getContext: () => context, toDataURL: () => 'data:image/png;base64,' }) }
+
+  try {
+    const bundle = await build({
+      entryPoints: ['src/game/room.js'],
+      bundle: true,
+      write: false,
+      format: 'esm',
+      platform: 'node',
+      loader: { '.png': 'dataurl' },
+      plugins: [{
+        name: 'omit-model-downloads',
+        setup(builder) {
+          builder.onLoad({ filter: /[\\/]placedItems\.js$/ }, () => ({
+            contents: 'export function applyPlacedItems() {} export function spawnGlbItem() { return Promise.resolve(null) } export function getPlantsConfig() { return { overrides: [] } }'
+          }))
+        }
+      }],
+    })
+    const { buildRoom } = await import(`data:text/javascript;base64,${Buffer.from(bundle.outputFiles[0].text + '\n//# sourceURL=layout-runtime-test.mjs').toString('base64')}`)
+
+    const nonLobbyRooms = ['fireside', 'music', 'library', 'paris', 'orangery', 'alcove']
+    const forbiddenKeywords = ['bench', 'sofa', 'couch', 'chandelier', 'bookcase']
+
+    for (const roomKey of nonLobbyRooms) {
+      const room = buildRoom({
+        width: 21,
+        length: 18,
+        height: 4,
+        mode: 'gallery',
+        roomKey,
+        gallery: { title: roomKey, photos: [] },
+        lobby: { categories: [] }
+      })
+
+      // 1. Group traversal check: no forbidden furniture or lighting fixtures
+      const forbiddenFound = []
+      room.group.traverse(obj => {
+        const name = (obj.name || '').toLowerCase()
+        for (const kw of forbiddenKeywords) {
+          if (name.includes(kw)) {
+            forbiddenFound.push({ name: obj.name, kw })
+          }
+        }
+      })
+      assert.deepEqual(forbiddenFound, [], `Non-lobby room "${roomKey}" contains forbidden runtime objects: ${JSON.stringify(forbiddenFound)}`)
+
+      // 2. Obstacles check: no bench/sofa collision obstacles
+      const benchObstacles = (room.obstacles || []).filter(obs => {
+        const obsName = (obs.name || obs.id || '').toLowerCase()
+        return forbiddenKeywords.some(kw => obsName.includes(kw))
+      })
+      assert.deepEqual(benchObstacles, [], `Non-lobby room "${roomKey}" contains forbidden obstacles: ${JSON.stringify(benchObstacles)}`)
+
+      // 3. Plants verification: non-lobby room must have botanical decor groups
+      const plantsFound = []
+      room.group.traverse(obj => {
+        if ((obj.name || '').toLowerCase().includes('plant')) {
+          plantsFound.push(obj.name)
+        }
+      })
+      assert.ok(plantsFound.length > 0, `Non-lobby room "${roomKey}" must contain botanical planters`)
+    }
+  } finally {
+    globalThis.document = originalDocument
+  }
+})
+
+test('Seat registry contains seats in lobby but zero seats in non-lobby rooms', () => {
+  const nonLobbyRooms = ['fireside', 'music', 'library', 'paris', 'orangery', 'alcove']
+  for (const roomKey of nonLobbyRooms) {
+    const seats = buildSeatRegistry(roomKey)
+    assert.equal(seats.size, 0, `Non-lobby room "${roomKey}" must have 0 registered seats, found ${seats.size}`)
+  }
+
+  const lobbySeats = buildSeatRegistry('lobby')
+  assert.ok(lobbySeats.size > 0, `Lobby must have registered seating anchors, found ${lobbySeats.size}`)
 })
 

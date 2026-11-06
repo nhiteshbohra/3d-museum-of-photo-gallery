@@ -279,11 +279,8 @@ function updateAuthState(newState, payload = {}) {
 			redeemBtn.textContent = 'Enter Sanctuary →'
 			if (inviteCodeInput) {
 				inviteCodeInput.setAttribute('readonly', 'readonly')
-				if (payload.code) {
-					inviteCodeInput.value = payload.code
-				} else if (!inviteCodeInput.value) {
-					inviteCodeInput.placeholder = '✦ Verified Session Active ✦'
-				}
+				inviteCodeInput.value = ''
+				inviteCodeInput.placeholder = '✦ Verified Session Active ✦'
 			}
 			break
 
@@ -356,9 +353,8 @@ async function redeemInviteCode() {
 	lastInviteRecipient = data.recipient || null
 	window.__museumAuthenticated = true
 	window.__museumSessionToken = true
-	window.__museumPasscode = code
 	setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
-	updateAuthState(AUTH_STATE.VERIFIED, { code })
+	updateAuthState(AUTH_STATE.VERIFIED)
 
 	// Pre-select avatar matching recipient
 	if (data.recipient && Array.isArray(AVATARS)) {

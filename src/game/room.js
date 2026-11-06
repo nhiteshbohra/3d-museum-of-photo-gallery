@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl, fitPhotoToFrame } from '../misc/helper.js'
-import { buildLobbyRoom, createRealisticGalleryPlant, createRealisticGalleryBench } from './room/lobby.js'
+import { buildLobbyRoom, createRealisticGalleryPlant } from './room/lobby.js'
 import { applyRoomDecorations } from './room/decorations.js'
 import { applyPlacedItems } from './room/placedItems.js'
 import { addDoor as addDoorToRoom } from './room/doors.js'
@@ -1060,24 +1060,9 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 	} else {
 		if (imagePhotos.length === 0 && !localPhotoPath(5)) {
 			const innerEastX = halfW - wallThickness / 2
-			const decoEastZ = 0
 			const decoEast = new THREE.Group()
 			decoEast.name = 'deco-east'
 			group.add(decoEast)
-
-			createRealisticGalleryBench({
-				x: innerEastX - 0.45,
-				y: 0,
-				z: decoEastZ,
-				rotationY: -Math.PI / 2,
-				targetGroup: decoEast,
-				disposables,
-				obstacles,
-				hasBenchTex: Boolean(benchWoodMap && benchWoodBump),
-				benchWoodMap,
-				benchWoodBump,
-				name: 'bench-east',
-			})
 
 			const plantZ = 2.0
 			createRealisticGalleryPlant({
@@ -1153,7 +1138,6 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 	if (mode !== 'lobby') {
 		{
 			const innerNorthZ = -halfL + wallThickness / 2
-			const benchZ = innerNorthZ + 0.45
 			const plantZ = innerNorthZ + 0.40
 
 			const decoNorth = new THREE.Group()
@@ -1163,25 +1147,6 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 			const decoSouth = new THREE.Group()
 			decoSouth.name = 'deco-south'
 			group.add(decoSouth)
-
-			const hasBenchTex = Boolean(benchWoodMap && benchWoodBump)
-			const isFireside = (gallery.title || '').toLowerCase().includes('fireside')
-
-			if (!isFireside) {
-				createRealisticGalleryBench({
-					x: 0,
-					y: 0,
-					z: benchZ,
-					rotationY: 0,
-					targetGroup: decoNorth,
-					disposables,
-					obstacles,
-					hasBenchTex,
-					benchWoodMap,
-					benchWoodBump,
-					name: 'bench-north',
-				})
-			}
 
 			const plantX = Math.max(2.2, halfW - 0.65)
 			createRealisticGalleryPlant({
@@ -1205,47 +1170,8 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 
 			{
 				const innerSouthZ = halfL - wallThickness / 2
-				const benchZSouth = innerSouthZ - 0.45
 				const plantZSouth = innerSouthZ - 0.40
-
-				const doorW = 1.25
-				const doorHalf = doorW / 2
-				const benchSpan = 2.4
-				const benchGap = 0.6
-
-				const maxBenchCenterX = halfW - benchSpan / 2 - 0.35
-				const benchCenterX = clamp(doorHalf + benchSpan / 2 + benchGap, 1.8, Math.max(1.8, maxBenchCenterX))
-
 				const plantXSouth = Math.max(2.5, halfW - 0.65)
-
-				const hasBenchTex = Boolean(benchWoodMap && benchWoodBump)
-
-				createRealisticGalleryBench({
-					x: -benchCenterX,
-					y: 0,
-					z: benchZSouth,
-					rotationY: Math.PI,
-					targetGroup: decoSouth,
-					disposables,
-					obstacles,
-					hasBenchTex,
-					benchWoodMap,
-					benchWoodBump,
-					name: 'bench-south-left',
-				})
-				createRealisticGalleryBench({
-					x: benchCenterX,
-					y: 0,
-					z: benchZSouth,
-					rotationY: Math.PI,
-					targetGroup: decoSouth,
-					disposables,
-					obstacles,
-					hasBenchTex,
-					benchWoodMap,
-					benchWoodBump,
-					name: 'bench-south-right',
-				})
 
 				createRealisticGalleryPlant({
 					x: -plantXSouth,

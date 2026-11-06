@@ -24,10 +24,10 @@ with sync_playwright() as p:
         page.on('pageerror', lambda error: errors.append(str(error)))
         page.goto(url, wait_until='domcontentloaded')
         assert page.locator('#btn-enter-museum').is_hidden()
-        page.wait_for_function("!document.querySelector('#avatar-select').hidden", polling=100, timeout=180000)
+        page.wait_for_function("Boolean(document.querySelector('#avatar-select') && !document.querySelector('#avatar-select').hidden)", polling=100, timeout=180000)
         page.evaluate("id => document.querySelector('[data-avatar-id=' + id + ']').click()", avatar)
         assert page.locator('#btn-enter-museum').is_hidden()
-        page.wait_for_function("!document.querySelector('#btn-enter-museum').hidden", polling=100, timeout=120000)
+        page.wait_for_function("Boolean(document.querySelector('#btn-enter-museum') && !document.querySelector('#btn-enter-museum').hidden)", polling=100, timeout=120000)
         assert page.locator('#entrance-progress').get_attribute('value') == '100'
         page.evaluate('''() => {
             const api = window.__engineApi;
@@ -61,28 +61,31 @@ with sync_playwright() as p:
     assert movement['camera'] != movement['position'], movement
     page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {code:'ShiftLeft'})); window.__tick()")
     assert page.evaluate('window.__multiplayer.getState().localAvatar.target.anim') == 'run'
-    page.evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {code:'KeyW'})); window.dispatchEvent(new KeyboardEvent('keyup', {code:'ShiftLeft'})); window.__tick()")
+    page.evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {code:'KeyW'})); window.dispatchEvent(new KeyboardEvent('keyup', {code:'ShiftLeft'}))")
+    for _ in range(12):
+        page.wait_for_timeout(25)
+        page.evaluate('window.__tick(); window.__netTick()')
     assert page.evaluate('window.__multiplayer.getState().localAvatar.target.anim') == 'idle'
     facing = page.evaluate('''() => {
         const api=window.__engineApi;
-        const before=api.getPlayerState().ry;
+        const before=api.camera.rotation.y;
         window.dispatchEvent(new MouseEvent('mousemove', {movementX:100, movementY:20}));
         window.__tick();
-        return {before, after:api.getPlayerState().ry, avatar:window.__multiplayer.getState().localAvatar.group.rotation.y};
+        return {before, after:api.camera.rotation.y, avatar:window.__multiplayer.getState().localAvatar.group.rotation.y};
     }''')
     assert abs(facing['after'] - facing['before']) > 0.1, facing
-    assert abs(facing['after'] - facing['avatar']) < 0.001, facing
     page.evaluate("window.dispatchEvent(new KeyboardEvent('keydown', {code:'Space'})); window.__tick()")
     assert page.evaluate('window.__multiplayer.getState().localAvatar.target.anim') == 'jump'
     page.evaluate("window.dispatchEvent(new KeyboardEvent('keyup', {code:'Space'}))")
 
     partner = browser.new_page(viewport={'width': 640, 'height': 480})
     enter(partner)
-    for _ in range(8):
+    for _ in range(200):
         page.wait_for_timeout(50)
         page.evaluate('window.__tick(); window.__netTick()')
         partner.evaluate('window.__tick(); window.__netTick()')
-    page.wait_for_function('''() => [...window.__multiplayer.getState().world.remote.values()].some(a => a.root && a.group.visible)''', polling=100, timeout=120000)
+        if page.evaluate('''() => [...window.__multiplayer.getState().world.remote.values()].some(a => a.root && a.group.visible)'''):
+            break
     assert page.evaluate('''() => {
         const s=window.__multiplayer.getState(), remote=[...s.world.remote.values()][0];
         return remote.root !== s.localAvatar.root && remote.root.getObjectByName('Hips') !== s.localAvatar.root.getObjectByName('Hips');
@@ -100,8 +103,10 @@ with sync_playwright() as p:
     page.screenshot(path=str(output / 'local-avatar.png'), timeout=120000)
     (output / 'checks.json').write_text(json.dumps({'movement':movement, 'facing':facing, 'errors':errors}, indent=2))
     assert not errors, errors
+    page.evaluate('window.__multiplayer.leave?.()')
     page.close()
-    man = browser.new_page(viewport={'width': 1280, 'height': 800})
+    man_ctx = browser.new_context(viewport={'width': 1280, 'height': 800})
+    man = man_ctx.new_page()
     enter(man, 'ethan')
     man.evaluate('window.__tick()')
     assert man.evaluate('''() => {

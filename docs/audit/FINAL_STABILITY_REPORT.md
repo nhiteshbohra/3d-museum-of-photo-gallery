@@ -59,3 +59,4 @@
 - **Core Stability:** PASS. All critical auth, photo frame, and room simplification defects are completely resolved and verified.
 - **Sofa Compression (Milestone F):** The 51.9 MB curved sofa is now isolated strictly to the Grand Lobby (zero impact on salon transitions). Preparing compressed Draco variant with `gltf-transform` is scheduled for mobile optimization.
 - **Museum Readiness:** The museum is **production-ready and stable** for desktop and mobile private visits for Maya & Ethan.
+

@@ -76,7 +76,26 @@ Before modifying `src/data/museumLayout.json`, every item was traced across all 
 
 ---
 
-## 4. Verification Check
+## 4. Procedural Bench Removal in `src/game/room.js` (DECOR-01)
+In addition to the JSON layout items above, `src/game/room.js` previously built procedural wooden benches in all non-lobby rooms:
+- `bench-east` (fallback when photos were absent): **REMOVED**
+- `bench-north` (in non-fireside galleries): **REMOVED**
+- `bench-south-left` & `bench-south-right` (flanking the entrance gate): **REMOVED**
+- Obsolete bench obstacle boxes and wood texture pass-throughs: **REMOVED**
+- Botanical planters (`plant-north-corner-nw`, `plant-north-corner-ne`, `plant-south-left`, `plant-south-right`): **RETAINED**
+
+---
+
+## 5. Architectural Lighting Policy (DECOR-03)
+The six ceiling downlights in each gallery (`src/game/room.js:155–180`) are functional recessed ceiling pots emitting SpotLight and PointLight downwards onto the photo walls. They are flush architectural fixtures necessary for artwork visibility, not decorative hanging chandeliers. All decorative hanging chandeliers (`lighting_chandelier_*.glb`) have been removed from non-lobby salons and restricted strictly to the Grand Rotunda Lobby.
+
+---
+
+## 6. Verification Check
 - Layout passes `scripts/validate_layout.mjs`.
-- Automated test `tests/layout.test.mjs` verifies lobby seating and strict plant-only decor in salons.
+- Automated test `tests/layout.test.mjs` verifies:
+  1. JSON layout rules: lobby seating present; only plants in non-lobby rooms.
+  2. Runtime `buildRoom()` traversal: 0 benches, 0 sofas, 0 chandeliers, 0 bookcases, 0 bench collision obstacles across all 6 non-lobby galleries.
+  3. Seat registry: 0 seats registered for any non-lobby room; lobby has valid seating anchors.
 - Production build succeeds.
+

@@ -73,3 +73,4 @@ Verified across 4 distinct aspect ratio archetypes in `tests/photo_frames.test.m
 ## 4. Test Evidence
 - `node --test tests/photo_frames.test.mjs`: **4/4 PASSED (100%)**
 - Status: **VERIFIED & OPERATIONAL.**
+

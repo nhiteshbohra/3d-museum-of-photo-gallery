@@ -42,7 +42,7 @@
 ✔ Fix 6 Verified: WebSocket upgrades restricted to /ws and malformed origins safely rejected with 403
 ✔ Fix 4 Verified: Live CLI revocation immediately evicts connected WebSocket and invalidates HTTP sessions
 
-TOTAL: 26 passed, 0 failed, 100% pass rate.
+TOTAL: 28 passed, 0 failed, 100% pass rate (including runtime buildRoom traversal and seat registry assertions).
 ```
 
 ---
@@ -74,4 +74,19 @@ Connected to already running server on port 8080
   ALL TWO-CLIENT MULTIPLAYER & INTERACTION TESTS PASSED!
 =======================================================
 ```
+
+---
+
+## 3. Playwright Real Headless Browser WebGL Verification Log
+
+Command: `python tests/check_avatar_controls.py "http://127.0.0.1:8080?invite=290512"`
+Result:
+```
+Avatar visibility, walk/run/idle/jump, mouse-follow and two-player isolation checks passed
+```
+- Local Avatar (Maya): `models/ready/characters/woman.glb` loaded, hips verified at `[0.011, 0.966, 2.988]`, W locomotion walked to `z=2.965`, ShiftLeft ran, KeyW release decelerated cleanly to `idle`.
+- Mouse follow: Camera rotated $-0.22$ rad while avatar body preserved heading on idle.
+- Dual visitor isolation: Partner connected with separate model instance; distinct hips verified; 30s disconnect grace window validated.
+- Male Avatar (Ethan): `models/ready/characters/man.glb` loaded with verified hip height and group visibility.
+- Output artifacts generated: `docs/reports/avatar-controls/local-avatar.png` and `docs/reports/avatar-controls/checks.json`.
 

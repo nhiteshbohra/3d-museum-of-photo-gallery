@@ -177,12 +177,11 @@ async function runTests() {
     console.log('\n--- 4. Testing SEAT-03: Authoritative Seat Reservation ---');
 
     // Alice claims seat 'sofa_seat_1'
+    const pAliceSit = nextMessage(ws1, m => m.t === 'sit_ok');
+    const pBobSeeSit = nextMessage(ws2, m => m.t === 'sit');
     ws1.send(JSON.stringify({ t: 'sit', seat: 'sofa_seat_1' }));
-    const msgAliceSit = await nextMessage(ws1, m => m.t === 'sit_ok');
+    const [msgAliceSit, msgBobSeeSit] = await Promise.all([pAliceSit, pBobSeeSit]);
     assert.strictEqual(msgAliceSit.t, 'sit_ok', 'Alice receives sit_ok confirmation');
-    
-    // Bob receives Alice sit broadcast
-    const msgBobSeeSit = await nextMessage(ws2, m => m.t === 'sit');
     assert.strictEqual(msgBobSeeSit.t, 'sit', 'Bob sees Alice sit');
     assert.strictEqual(msgBobSeeSit.seat, 'sofa_seat_1');
     console.log('  ✓ Alice successfully claimed sofa_seat_1');
@@ -194,10 +193,11 @@ async function runTests() {
     console.log('  ✓ Bob seat collision correctly rejected with sit_denied');
 
     // Alice stands up
+    const pAliceStandOk = nextMessage(ws1, m => m.t === 'stand_ok');
+    const pBobStand = nextMessage(ws2, m => m.t === 'stand');
     ws1.send(JSON.stringify({ t: 'stand' }));
-    const msgAliceStandOk = await nextMessage(ws1, m => m.t === 'stand_ok');
+    const [msgAliceStandOk, msgBobSeeStand] = await Promise.all([pAliceStandOk, pBobStand]);
     assert.strictEqual(msgAliceStandOk.t, 'stand_ok');
-    const msgBobSeeStand = await nextMessage(ws2, m => m.t === 'stand');
     assert.strictEqual(msgBobSeeStand.t, 'stand');
     console.log('  ✓ Alice stood up; seat released');
 
@@ -208,8 +208,9 @@ async function runTests() {
     console.log('  ✓ Bob successfully claimed previously released seat');
 
     // Alice leaves / disconnects
+    const pBobPeerLeft = nextMessage(ws2, m => m.t === 'peer_left');
     ws1.close();
-    const msgBobPeerLeft = await nextMessage(ws2, m => m.t === 'peer_left');
+    const msgBobPeerLeft = await pBobPeerLeft;
     assert.strictEqual(msgBobPeerLeft.t, 'peer_left');
     assert.strictEqual(msgBobPeerLeft.peerCount, 1);
     console.log('  ✓ Alice disconnect broadcasted to Bob (peers remaining: 1)');
