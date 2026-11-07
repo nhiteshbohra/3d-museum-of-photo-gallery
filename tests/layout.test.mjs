@@ -58,7 +58,7 @@ test('Every placed GLB item points to an existing file in public/', () => {
   }
 })
 
-test('Lobby contains seating, and non-lobby rooms obey simplification rule (furnishings limited to plants; architectural partition sconces added programmatically)', () => {
+test('Lobby contains seating, and non-lobby rooms obey simplification rule (furnishings limited to plants; zero decorative GLB wall lights in non-lobby rooms)', () => {
   const rooms = layout.rooms || {}
   // 1. Lobby must contain seating (sofas)
   const lobbyItems = rooms.lobby || []
@@ -67,7 +67,7 @@ test('Lobby contains seating, and non-lobby rooms obey simplification rule (furn
 
   // 2. Non-lobby rooms must contain only plants from decorative furnishings in museumLayout.json.
   // Note: Static layout checks in museumLayout.json apply to placed furnishings (no sofas, no bookcases/artifacts, no chandeliers),
-  // while architectural partition sconces (antique wall lights) are added programmatically in src/game/room.js.
+  // and non-lobby salons contain zero decorative GLB wall lights to conform to the plants-only decorative policy.
   for (const [roomKey, items] of Object.entries(rooms)) {
     if (roomKey === 'lobby') continue
     for (const itm of items) {
@@ -170,19 +170,14 @@ test('Runtime buildRoom() traversal validates that non-lobby salons contain no b
       })
       assert.ok(plantsFound.length > 0, `Non-lobby room "${roomKey}" must contain botanical planters`)
 
-      // 4. Wall lights verification: every non-lobby room must contain exactly 4 antique wall lights on partition walls
+      // 4. Wall lights verification: every non-lobby room must contain exactly 0 antique wall lights on partition walls (plants-only decorative policy)
       const wallLights = []
       room.group.traverse(obj => {
         if (obj.userData?.glbPath === 'models/ready/lighting/antique_wall_light.glb') {
           wallLights.push(obj)
         }
       })
-      assert.equal(wallLights.length, 4, `Non-lobby room "${roomKey}" must contain exactly 4 antique wall lights, found ${wallLights.length}`)
-      for (const light of wallLights) {
-        assert.equal(light.userData.contact, 'wall', `Wall light "${light.userData.id}" in "${roomKey}" must have contact: 'wall'`)
-        assert.equal(light.position.y, 2.20, `Wall light "${light.userData.id}" in "${roomKey}" must have position.y === 2.20`)
-        assert.equal(Math.abs(light.position.x), 2.10, `Wall light "${light.userData.id}" in "${roomKey}" must have |position.x| === 2.10`)
-      }
+      assert.equal(wallLights.length, 0, `Non-lobby room "${roomKey}" must contain 0 antique wall lights (plants-only policy), found ${wallLights.length}`)
     }
   } finally {
     globalThis.document = originalDocument

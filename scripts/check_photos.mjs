@@ -8,7 +8,22 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, '..')
-const photosDir = path.join(rootDir, 'public/photos')
+
+const custIdx = process.argv.indexOf('--customer') !== -1
+  ? process.argv.indexOf('--customer')
+  : process.argv.indexOf('-c')
+const customerSlug = custIdx !== -1 && process.argv[custIdx + 1] ? process.argv[custIdx + 1].trim().toLowerCase() : null
+
+let photosDir = path.join(rootDir, 'public/photos')
+if (customerSlug) {
+  const customerDir = path.join(rootDir, 'data/customers', customerSlug)
+  if (!fs.existsSync(customerDir)) {
+    console.error(`❌ Customer folder '${customerDir}' does not exist.`)
+    process.exit(1)
+  }
+  photosDir = path.join(customerDir, 'photos')
+  console.log(`[Photo Checker] Auditing customer '${customerSlug}' at: ${photosDir}`)
+}
 
 const SALON_SLOTS = [
   '01_partition_front_highlight',

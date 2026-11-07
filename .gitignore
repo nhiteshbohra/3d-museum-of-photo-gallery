@@ -25,6 +25,10 @@ cert.pem
 data/invites*.json
 data/letters*.json
 !data/letters.example.json
+data/master*.json
+data/audit_log*.json
+data/customers/
+data/customers/**/*
 data/*.tmp
 data/*.bak
 data/*.backup

@@ -263,9 +263,10 @@ export function revokeInvite(code) {
 
 /**
  * Redeem an invitation code and issue a cryptographically signed session token.
- * Returns { success, sessionToken, recipient, error }
+ * Optionally binds the session to a specific customerSlug.
+ * Returns { success, sessionToken, recipient, customerSlug, error }
  */
-export function redeemInvite(inputCode) {
+export function redeemInvite(inputCode, customerSlug = null) {
   if (!inputCode || typeof inputCode !== 'string') {
     return { success: false, error: 'Invalid invitation code.' }
   }
@@ -300,14 +301,30 @@ export function redeemInvite(inputCode) {
     return { success: false, error: 'This invitation has expired.' }
   }
 
+  const cleanSlug = customerSlug && typeof customerSlug === 'string' ? customerSlug.trim().toLowerCase() : null
+
+  // Customer invite binding check:
+  // If the invite is bound to a specific customer slug, require matching cleanSlug.
+  // Un-scoped/default sanctuary invites cannot be redeemed with an arbitrary customer slug.
+  if (inv.customerSlug) {
+    if (!cleanSlug || cleanSlug !== inv.customerSlug) {
+      return { success: false, error: 'Invitation not valid for this customer gallery.' }
+    }
+  } else if (cleanSlug) {
+    return { success: false, error: 'Invitation code cannot be redeemed for customer galleries. Please authenticate with your gallery passcode.' }
+  }
+
   // Issue a fresh unique session token for each client session
   const sessionToken = generateToken('sess', 16)
   inv.sessionToken = sessionToken
   inv.redeemed = true
 
+  const authoritativeSlug = inv.customerSlug || null
+
   store.sessions[sessionToken] = {
     token: sessionToken,
     code: inv.code,
+    customerSlug: authoritativeSlug,
     recipient: inv.recipient,
     createdAt: getISTTimestamp(now),
     lastSeen: getISTTimestamp(now),
@@ -319,7 +336,62 @@ export function redeemInvite(inputCode) {
     success: true,
     sessionToken,
     recipient: inv.recipient,
+    customerSlug: authoritativeSlug,
   }
+}
+
+/**
+ * Issue a session token for an authenticated customer visitor.
+ */
+export function createCustomerSession({ customerSlug, recipient = 'Visitor', ttlHours = 24 } = {}) {
+  if (!customerSlug || typeof customerSlug !== 'string') {
+    throw new Error('customerSlug is required for customer session')
+  }
+  const cleanSlug = customerSlug.trim().toLowerCase()
+  const store = loadStore(true)
+  const now = Date.now()
+  const ttlMs = (Number(ttlHours) || 24) * 60 * 60 * 1000
+  const sessionToken = generateToken('sess_cust', 16)
+
+  store.sessions[sessionToken] = {
+    token: sessionToken,
+    code: `cust_${cleanSlug}`,
+    customerSlug: cleanSlug,
+    recipient: (recipient && String(recipient).trim()) || 'Visitor',
+    createdAt: getISTTimestamp(now),
+    expiresAt: now + ttlMs,
+    expiresAtIST: getISTTimestamp(now + ttlMs),
+    lastSeen: getISTTimestamp(now),
+  }
+
+  saveStore(store)
+
+  return {
+    token: sessionToken,
+    customerSlug: cleanSlug,
+    recipient: store.sessions[sessionToken].recipient,
+    expiresAt: store.sessions[sessionToken].expiresAt,
+  }
+}
+
+/**
+ * Revoke all active sessions belonging to a specific customer slug.
+ */
+export function revokeCustomerSessions(customerSlug) {
+  if (!customerSlug || typeof customerSlug !== 'string') return 0
+  const cleanSlug = customerSlug.trim().toLowerCase()
+  const store = loadStore(true)
+  let count = 0
+  for (const [token, session] of Object.entries(store.sessions)) {
+    if (session && session.customerSlug === cleanSlug) {
+      delete store.sessions[token]
+      count++
+    }
+  }
+  if (count > 0) {
+    saveStore(store)
+  }
+  return count
 }
 
 /**
@@ -360,6 +432,17 @@ export function validateSession(token) {
   const session = store.sessions[token]
   if (!session || typeof session !== 'object' || session.token !== token) {
     return null
+  }
+
+  // Handle customer sessions
+  if (session.customerSlug) {
+    if (session.expiresAt && Date.now() > toEpoch(session.expiresAt)) {
+      delete store.sessions[token]
+      saveStore(store)
+      return null
+    }
+    session.lastSeen = getISTTimestamp(Date.now())
+    return session
   }
 
   // Check if underlying invite was revoked or expired

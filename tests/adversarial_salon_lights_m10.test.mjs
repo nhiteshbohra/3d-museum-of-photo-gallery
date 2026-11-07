@@ -146,37 +146,9 @@ test('M10-ADV-01: Wall light quantity, naming, and coordinate invariants across 
     } else {
       assert.equal(
         wallLights.length,
-        4,
-        `Salon "${roomKey}" must contain exactly 4 antique wall lights, found ${wallLights.length}`
+        0,
+        `Salon "${roomKey}" must contain 0 decorative antique wall lights (plants-only decorative policy), found ${wallLights.length}`
       )
-
-      const ids = wallLights.map(l => l.userData.id).sort()
-      assert.deepEqual(
-        ids,
-        ['sconce_back_left', 'sconce_back_right', 'sconce_front_left', 'sconce_front_right'],
-        `Salon "${roomKey}" must have four correctly named semantic sconce IDs`
-      )
-
-      for (const light of wallLights) {
-        assert.equal(light.userData.contact, 'wall', `Sconce ${light.userData.id} in ${roomKey} must specify contact: 'wall'`)
-        assert.equal(light.position.y, 2.20, `Sconce ${light.userData.id} in ${roomKey} must be mounted at y = 2.20m`)
-        assert.equal(Math.abs(light.position.x), 2.10, `Sconce ${light.userData.id} in ${roomKey} must be mounted at |x| = 2.10m`)
-        assert.equal(light.userData.scale, 0.35, `Sconce ${light.userData.id} in ${roomKey} must have scale = 0.35`)
-        assert.equal(light.userData.targetHeight, 0.70, `Sconce ${light.userData.id} in ${roomKey} must have targetHeight = 0.70`)
-
-        // Front vs Back face orientation checks
-        if (light.userData.id.startsWith('sconce_front_')) {
-          assert.ok(light.position.z > 0, `Front sconce ${light.userData.id} must be on south face (z > 0), got z = ${light.position.z}`)
-          assert.equal(light.rotation.y, 0, `Front sconce ${light.userData.id} rotation.y must be 0`)
-          if (light.userData.id === 'sconce_front_left') assert.equal(light.position.x, -2.10)
-          if (light.userData.id === 'sconce_front_right') assert.equal(light.position.x, 2.10)
-        } else if (light.userData.id.startsWith('sconce_back_')) {
-          assert.ok(light.position.z < 0, `Back sconce ${light.userData.id} must be on north face (z < 0), got z = ${light.position.z}`)
-          assert.equal(light.rotation.y, Math.PI, `Back sconce ${light.userData.id} rotation.y must be Math.PI`)
-          if (light.userData.id === 'sconce_back_left') assert.equal(light.position.x, -2.10)
-          if (light.userData.id === 'sconce_back_right') assert.equal(light.position.x, 2.10)
-        }
-      }
     }
   }
 })

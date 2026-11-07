@@ -1,7 +1,7 @@
 # 3D Museum — Changelog & File Ownership
 
 **Branch:** `fix/production-hardening`  
-**Current HEAD SHA:** `36ad81302a50f190768b86e3d37a061d7a2f9d24`  
+**Current HEAD SHA:** `0b2ac1229fcfe60fc42060bbdff42a766101c723`  
 **Coordinator:** Antigravity Engineering Lead  
 
 ---
@@ -10,16 +10,27 @@
 
 | File | Current Assignee | Permitted Action | Current Modification State |
 |---|---|---|---|
-| `src/main.js` | Senior Developer | Auth state machine, startup flow | Modified in `80e0e2e` / `893e0c3` |
+| `scripts/customerStore.js` | Senior Developer (M1) | Multi-customer filesystem storage, master catalog, auth hashing | Created in M1 |
+| `server.js` | Senior Developer (M1) | Multi-tenant HTTP/WS routing, `/gallery/:slug`, `/api/admin/*`, scoped `/photos/*` | Hardened in M1 |
+| `src/main.js` | Senior Developer (M2) | Auth state machine, startup flow, dynamic import of character setup | Hardened in M2 (`R-02`) |
+| `src/game/room.js` | Senior Developer (M2) | Non-lobby salon wall light removal | Updated in M2 (`R-01`) |
+| `vite.config.js` | Senior Developer (M2) | Chunk splitting, bundle isolation | Hardened in M2 (`R-02`) |
+| `tools/organize_photos.py` | Senior Developer (M1) | `--customer <slug>` support | Hardened in M1 |
+| `package.json` | Senior Developer (M3) | Serialized test execution (`--test-concurrency=1`) and full check pipeline | Hardened in M3 |
 | `src/style.css` | Senior Developer (M4 Iteration 6) | Style sheets, mobile button styling, drawer layout | Fixed in M4 Iteration 6 (`BUILD-CSS-01`) |
-| `server.js` | Senior Developer | Config endpoint, session validation, rate limiting | Modified in `80e0e2e` |
-| `src/game/room.js` | Senior Developer | Photo frame & outline scaling, decor simplification | Modified in `80e0e2e` / `36ad813` |
 | `src/game/room/artifactRegistry.js` | Senior Developer | Real-meter seat offsets (SEAT-01) | Modified in `36ad813` |
 | `src/avatars/avatarWorld.js` | Senior Researcher (Audit) / Senior Developer | Rig orientation, clip transitions | Audited / verified |
 | `src/engine/engine.js` | Senior Developer (M3/M3-2) | Adaptive DPR cap (1.5), photo LRU cache (max 35), in-flight/deferred texture protection, explicit texture disposal | Hardened in M3 & M3.2 |
 | `public/models/ready/furniture/3d_pbr_curved_sofa.glb` | Senior Developer (M3) | gltf-transform optimization (Draco + WebP 2048px) | Compressed in M3 (51.98 MB -> 6.13 MB, 88.21% reduction) |
 | `public/models/ready/furniture/lod/3d_pbr_curved_sofa_lod.glb` | Senior Developer (M3) | gltf-transform LOD generation (Draco + WebP 1024px) | Created in M3 (1.40 MB, 97.32% reduction) |
 | `scripts/inviteStore.js` | Senior Developer (M1/M2) | Prototype defense (AUTH-SEC-01), early strict string guard in redeemInvite | Modified in M1 & M2 |
+| `tests/multi_customer_isolation.test.mjs` | Senior Tester (M1) | Multi-customer access control and route scoping tests | Created in M1 |
+| `tests/customer_admin_api.test.mjs` | Senior Tester (M1) | Admin API CRUD, auth, and session eviction tests | Created in M1 |
+| `tests/adversarial_customer_isolation.test.mjs` | Challenger / Tester (M1) | Adversarial path traversal and customer spoofing suite | Created in M1 |
+| `tests/adversarial_challenger_m1_2.test.mjs` | Challenger 2 / Senior Tester (M1) | Boundary, rate limiting, and multi-tenant WS stress tests | Created in M1 |
+| `tests/adversarial_r02_bundle.test.mjs` | Senior Tester (M2) | Pre-auth entry bundle Three.js chunk independence test | Created in M2 |
+| `tests/adversarial_salon_lights_m10.test.mjs` | Senior Developer (M2) | Salon wall light removal assertions (0 lights in salons) | Updated in M2 (`R-01`) |
+| `tests/layout.test.mjs` | Senior Developer (M2) | Layout item count validation | Updated in M2 (`R-01`) |
 | `tests/check_avatar_controls.py` | Senior Tester (M4) | WebGL avatar locomotion, heading retention, 30s grace, dual isolation | Verified in M4 |
 | `tests/check_character_setup.py` | Senior Developer (M2/M4) | 20 actions invariant, clap exclusion, wave/dance/nod, canvas palette color change | Modified in M2, verified in M4 |
 | `tests/boundary_stress.test.mjs` | Challenger 2 / Senior Developer (M2) | Boundary stress, prototype/malformed tokens, fail-closed assertions | Created in M1, aligned in M2 |
@@ -33,13 +44,27 @@
 | `tests/two_client_test.mjs` | Senior Developer (M4) | Multi-client dual-visitor sync, emotes, seating | Verified in M4 |
 | `docs/agent-work/ISSUES.md` | Senior Developer (M4) | Issue register and status tracking | Updated in M4 |
 | `docs/agent-work/TEST_MATRIX.md` | Senior Developer (M4) | Test matrix & execution logging | Updated in M4 |
-| `docs/agent-work/CHANGES.md` | Senior Developer (M4) | File ownership & changelog governance | Updated in M4 |
-| `docs/agent-work/VERIFICATION.md` | Senior Developer (M4) | Empirical verification evidence & test logs | Updated in M4 |
+| `docs/agent-work/CHANGES.md` | Senior Developer (M4/M3) | File ownership & changelog governance | Updated in M3 |
+| `docs/agent-work/VERIFICATION.md` | Senior Developer (M2/M3) | Empirical verification evidence & test logs | Updated in M2/M3 (`R-05`) |
 | `docs/agent-work/DECISIONS.md` | Senior Developer (M4) | Architecture Decision Records (ADRs) | Updated in M4 |
 
 ---
 
 ## Commit History on Branch `fix/production-hardening`
+
+- `feat(customer)`: `multi-customer photo management and audit recheck fixes (R-01, R-02, R-05)`
+  - **Multi-Customer Photo Management Architecture (M1 / `MULTI_CUSTOMER_PHOTO_MANAGEMENT.md`)**:
+    - `scripts/customerStore.js`: Implemented filesystem-backed customer storage engine with `data/master.json` customer registry, atomic writes (`.tmp` + rename), and caching with mtime invalidation. Handles scrypt password hashing, session revocation, folder hierarchy initialization (`photos/00_grand_lobby`, `photos/01_salon_whispering_pines`..`06_salon_twilight_serenade`), and quotes/config management.
+    - `server.js`: Added `/gallery/:slug` dynamic routing with customer metadata injection; scoped `/photos/*` strictly to authenticated customer directory via `session.customerSlug` (falling back to `public/photos/` for legacy/test sessions); implemented path traversal prevention and cross-tenant access barriers (HTTP 403/404); partitioned real-time multiplayer WebSocket rooms by customer slug (`customerRooms.get(slug)`); implemented complete Admin API suite (`/api/admin/auth/*`, `/api/admin/customers/*`) with rate limiting, bearer/cookie dual auth, session eviction, and audit logging.
+    - `tools/organize_photos.py`: Added `--customer <slug>` support to ingest photos directly into `data/customers/<slug>/photos/` while preserving the exact 75-slot layout.
+    - `.gitignore`: Hardened git ignore patterns to protect `data/master*.json`, `data/customers/`, `data/audit_log*.json`, and private media assets from repository tracking.
+    - `tests/multi_customer_isolation.test.mjs`, `tests/customer_admin_api.test.mjs`, `tests/adversarial_customer_isolation.test.mjs`, `tests/adversarial_challenger_m1_2.test.mjs`: Created comprehensive automated and adversarial test suites verifying 75-slot boundaries, path traversal immunity, cross-customer isolation, admin role authorization, and concurrent session eviction.
+  - **Audit Recheck Discrepancy Resolutions (M2 / `MUSEUM_INDEPENDENT_RECHECK_0b2ac12_2026-11-07.md`)**:
+    - **R-01 (`src/game/room.js`)**: Removed decorative antique wall light GLBs from non-lobby salon partition walls to strictly adhere to the plants-only decorative policy. Updated `tests/adversarial_salon_lights_m10.test.mjs` and `tests/layout.test.mjs` to assert 0 wall lights in salons (4 in lobby).
+    - **R-02 (`src/main.js`, `vite.config.js`)**: Deferred loading of `characterSetup` in `src/main.js` via dynamic import so Three.js and avatar subsystems are never loaded prior to authentication. Configured Rollup manual chunks in `vite.config.js` (`vendor-three`, `engine-3d`, `avatars-multiplayer`, `characterSetup`), keeping the pre-auth main entry bundle under 50.3 kB (14.9 kB gzip). Verified with `tests/adversarial_r02_bundle.test.mjs`.
+    - **R-05 (`docs/agent-work/VERIFICATION.md`)**: Corrected wall sconce coordinates, IDs, duplicate sections, and aligned decorative asset inventory with the verified runtime layout.
+  - **Test Suite Hardening (M3)**:
+    - `package.json`: Serialized Node test runner concurrency (`--test-concurrency=1`) across `test`, `check`, and `check:code` scripts to eliminate concurrent server port collisions on ports 8994 and 8996. Integrated layout validation, photo audit (75/75), model reference verification (13/13), test suites (68/68 passing), and Vite production build into unified `npm run check`.
 
 - `M12`: `perf(mobile,net,build): complete avatar WebP textures, room LRU budgeting, single RAF loop, adaptive delta net sync, and pre-auth code splitting (MOB-P0-03, MOB-P1-05, MOB-P1-06, MOB-P2-08, MOB-P2-09)`
   - `public/models/ready/characters/textures/**` & `src/avatars/avatarWorld.js`: converted 8 avatar PNGs to WebP (17.85 MB -> 2.40 MB, 86.6% reduction) with PNG fallback; disposed overwritten GLB base textures and intermediate `color`/`mask` source textures after canvas extraction; reused single `workImage` buffer; throttled nametag DOM coordinate updates.

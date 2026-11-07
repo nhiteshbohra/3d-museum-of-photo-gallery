@@ -22,12 +22,98 @@ import path from 'path';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { WebSocketServer, WebSocket } from 'ws';
-import { validateSession, redeemInvite, createInvite, listInvites, revokeInvite, getStorePath } from './scripts/inviteStore.js';
+import {
+  validateSession,
+  redeemInvite,
+  createInvite,
+  listInvites,
+  revokeInvite,
+  getStorePath,
+  createCustomerSession,
+  revokeCustomerSessions,
+} from './scripts/inviteStore.js';
+import {
+  loadMaster,
+  findMasterCustomer,
+  isCustomerActive,
+  getCustomer,
+  getCustomerConfig,
+  getCustomerQuotes,
+  createCustomer,
+  updateCustomerIdentity,
+  updateCustomerAccess,
+  updateCustomerWindow,
+  updateCustomerQuotes,
+  deleteCustomer,
+  listCustomerPhotos,
+  saveCustomerPhoto,
+  deleteCustomerPhoto,
+  verifyPasscode as verifyCustomerPasscode,
+  getAuditLogs,
+  appendAuditLog,
+  validateSlug,
+  getCustomersDir,
+  CANONICAL_ROOMS,
+} from './scripts/customerStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const LETTERS_FILE = path.join(__dirname, 'data', 'letters.json');
 const CONFIG_FILE = path.join(__dirname, 'data', 'museum_config.json');
+const customersDir = getCustomersDir();
+
+// Founder Admin Auth & Session Management
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || 'founder').trim();
+const ADMIN_PASSWORD = (process.env.ADMIN_PASSWORD || 'museum-founder-2026').trim();
+const adminSessions = new Map();
+const adminLoginAttempts = new Map();
+
+function checkAdminRate(ip) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const attempts = adminLoginAttempts.get(ip) || [];
+  const valid = attempts.filter(t => now - t < windowMs);
+  if (valid.length >= 10) return false;
+  valid.push(now);
+  adminLoginAttempts.set(ip, valid);
+  return true;
+}
+
+function extractAdminToken(req) {
+  if (!req) return null;
+  const authHeader = req.headers && req.headers['authorization'];
+  if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+  const cookieHeader = req.headers && req.headers['cookie'];
+  if (cookieHeader && typeof cookieHeader === 'string') {
+    const match = /(?:^|;\s*)admin_session=([^;]+)/.exec(cookieHeader);
+    if (match) return decodeURIComponent(match[1].trim());
+  }
+  return null;
+}
+
+function validateAdmin(req) {
+  const token = extractAdminToken(req);
+  if (!token) return null;
+  const session = adminSessions.get(token);
+  if (!session) return null;
+  if (Date.now() > session.expiresAt) {
+    adminSessions.delete(token);
+    return null;
+  }
+  return session;
+}
+
+function requireAdmin(req, res) {
+  const admin = validateAdmin(req);
+  if (!admin) {
+    res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
+    res.end(JSON.stringify({ ok: false, error: 'Unauthorized: founder admin credentials required' }));
+    return null;
+  }
+  return admin;
+}
 
 // Port & Host configuration
 const PORT = parseInt(process.env.PORT || '8080', 10);
@@ -196,46 +282,39 @@ function parseJsonBody(req, maxBytes = 16384) {
   });
 }
 
-// =========================================================================
-// 2. HTTP SERVER WITH CRASH-PROOF RANGE & STREAM HANDLING
-// =========================================================================
-
-const server = http.createServer(async (req, res) => {
-  try {
-    // CORS headers
-    const origin = req.headers.origin || '*';
-    res.setHeader('Access-Control-Allow-Origin', origin);
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization, Cookie');
-
-    if (req.method === 'OPTIONS') {
-      res.writeHead(204);
-      res.end();
-      return;
-    }
-
-    const hostHeader = req.headers.host || 'localhost';
-    const parsedUrl = new URL(req.url, `http://${hostHeader}`);
-    const pathname = parsedUrl.pathname;
-
-    // Health endpoint
-    if (pathname === '/healthz') {
-      const activeCount = sessionPeers.size;
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: true, peers: activeCount, grace: graceSessions.size, uptime: Math.round(process.uptime()) }));
-      return;
-    }
+// Buffer request body parser (for image uploads up to 20MB)
+function parseBufferBody(req, maxBytes = 20 * 1024 * 1024) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let bytes = 0;
+    req.on('data', chunk => {
+      bytes += chunk.length;
+      if (bytes > maxBytes) {
+        reject(new Error('Payload too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => {
+      resolve(Buffer.concat(chunks));
+    });
+    req.on('error', reject);
+  });
+}
 
 // Central client customization and template interpolation helper
-function getResolvedCustomization() {
+function getResolvedCustomization(slug = null) {
   let customConfig = null;
-  try {
-    if (fs.existsSync(CONFIG_FILE)) {
-      customConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+  if (slug) {
+    customConfig = getCustomerConfig(slug);
+  } else {
+    try {
+      if (fs.existsSync(CONFIG_FILE)) {
+        customConfig = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+      }
+    } catch (err) {
+      console.warn('[API /api/config] Failed to load museum_config.json:', err.message);
     }
-  } catch (err) {
-    console.warn('[API /api/config] Failed to load museum_config.json:', err.message);
   }
 
   if (!customConfig) return { customConfig: null, templateMap: {}, interpolate: s => s };
@@ -244,7 +323,7 @@ function getResolvedCustomization() {
   const p2 = customConfig.couple?.partner2?.name || 'Ethan';
   const date = customConfig.couple?.anniversaryDate || 'October 30, 2026';
   const year = customConfig.couple?.celebrationYear || '2026';
-  const museumName = customConfig.museum?.name || 'OUR MUSEUM';
+  const museumName = customConfig.museum?.name || (slug ? slug : 'OUR MUSEUM');
 
   const templateMap = {
     partner1: p1,
@@ -259,20 +338,20 @@ function getResolvedCustomization() {
     return val.replace(/\{(\w+)\}/g, (_, key) => (templateMap[key] !== undefined ? templateMap[key] : `{${key}}`));
   };
 
-  if (customConfig.museum) {
-    for (const [k, v] of Object.entries(customConfig.museum)) {
-      if (typeof v === 'string') customConfig.museum[k] = interpolate(v);
+  const cloned = JSON.parse(JSON.stringify(customConfig));
+  if (cloned.museum) {
+    for (const [k, v] of Object.entries(cloned.museum)) {
+      if (typeof v === 'string') cloned.museum[k] = interpolate(v);
     }
   }
 
-  // Strictly strip all credentials, passcodes, and secrets from configuration
-  delete customConfig.access;
-  delete customConfig.masterPasscode;
-  if (customConfig.couple?.partner1) delete customConfig.couple.partner1.inviteCode;
-  if (customConfig.couple?.partner2) delete customConfig.couple.partner2.inviteCode;
+  delete cloned.access;
+  delete cloned.masterPasscode;
+  if (cloned.couple?.partner1) delete cloned.couple.partner1.inviteCode;
+  if (cloned.couple?.partner2) delete cloned.couple.partner2.inviteCode;
 
-  if (customConfig.salons) {
-    for (const salon of Object.values(customConfig.salons)) {
+  if (cloned.salons) {
+    for (const salon of Object.values(cloned.salons)) {
       if (!salon.author) salon.author = p2;
       if (!salon.recipient) salon.recipient = p1;
       for (const [k, v] of Object.entries(salon)) {
@@ -281,20 +360,124 @@ function getResolvedCustomization() {
     }
   }
 
-  return { customConfig, templateMap, interpolate };
+  return { customConfig: cloned, templateMap, interpolate };
 }
 
-    // Public client config endpoint (zero credentials or passcodes exposed)
-    if (pathname === '/api/config') {
-      const { customConfig } = getResolvedCustomization();
-      const safeCustomization = customConfig ? JSON.parse(JSON.stringify(customConfig)) : null;
-      if (safeCustomization) {
-        delete safeCustomization.access;
-        delete safeCustomization.masterPasscode;
-        if (safeCustomization.couple?.partner1) delete safeCustomization.couple.partner1.inviteCode;
-        if (safeCustomization.couple?.partner2) delete safeCustomization.couple.partner2.inviteCode;
+// =========================================================================
+// 2. HTTP SERVER WITH CRASH-PROOF RANGE & STREAM HANDLING
+// =========================================================================
+
+const server = http.createServer(async (req, res) => {
+  try {
+    // CORS headers
+    const origin = req.headers.origin || '*';
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, PUT, DELETE, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization, Cookie');
+
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    const hostHeader = req.headers.host || 'localhost';
+    const parsedUrl = new URL(req.url, `http://${hostHeader}`);
+    const pathname = parsedUrl.pathname;
+
+    // Health endpoint
+    if (pathname === '/healthz') {
+      let totalActivePeers = 0;
+      let totalGrace = 0;
+      for (const room of customerRooms.values()) {
+        totalActivePeers += room.sessionPeers.size;
+        totalGrace += room.graceSessions.size;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, peers: totalActivePeers, grace: totalGrace, uptime: Math.round(process.uptime()) }));
+      return;
+    }
+
+    // Customer public gallery route: GET /gallery/:slug
+    if (pathname.startsWith('/gallery/')) {
+      const parts = pathname.split('/').filter(Boolean);
+      const slug = parts[1] ? parts[1].toLowerCase() : null;
+      if (!slug) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 Not Found');
+        return;
       }
 
+      try {
+        validateSlug(slug);
+      } catch {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 Not Found');
+        return;
+      }
+
+      const customer = findMasterCustomer(slug);
+      if (!customer) {
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 Gallery Not Found');
+        return;
+      }
+
+      if (customer.status !== 'active') {
+        res.writeHead(customer.status === 'draft' ? 404 : 403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end(customer.status === 'draft' ? '404 Gallery Not Found' : '403 Gallery Paused');
+        return;
+      }
+
+      const nowStr = new Date().toISOString().slice(0, 10);
+      if (customer.activeFrom && nowStr < customer.activeFrom) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('403 Gallery Exhibition has not started yet');
+        return;
+      }
+      if (customer.activeUntil && nowStr > customer.activeUntil) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('403 Gallery Exhibition has ended');
+        return;
+      }
+
+      const resolved = resolveStatic('/index.html');
+      if (resolved) {
+        serveFile(req, res, resolved.filePath, resolved.stats);
+        return;
+      }
+      res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+      res.end('404 Not Found');
+      return;
+    }
+
+    // Client config endpoint (zero credentials or passcodes exposed)
+    if (pathname === '/api/config') {
+      const token = extractSessionToken(req);
+      const session = validateSession(token);
+      const slugQuery = parsedUrl.searchParams.get('slug');
+      const targetSlug = slugQuery || session?.customerSlug || null;
+
+      if (targetSlug) {
+        const masterEntry = findMasterCustomer(targetSlug);
+        if (masterEntry) {
+          const { customConfig } = getResolvedCustomization(targetSlug);
+          const cust = getCustomer(targetSlug, true);
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+          res.end(JSON.stringify({
+            customerSlug: masterEntry.slug,
+            displayName: masterEntry.displayName,
+            passcodeRequired: Boolean(cust?.passcodeHash || cust?.hasPasscode),
+            maxPlayers: MAX_PLAYERS_PER_SESSION,
+            protocol: PROTOCOL_VERSION,
+            customization: customConfig
+          }));
+          return;
+        }
+      }
+
+      const { customConfig } = getResolvedCustomization();
       const hasActiveInvites = listInvites().some(inv => !inv.revoked && Date.now() <= inv.expiresAt);
       const passcodeRequired = Boolean(MUSEUM_PASSCODE || hasActiveInvites);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
@@ -302,14 +485,18 @@ function getResolvedCustomization() {
         passcodeRequired,
         maxPlayers: MAX_PLAYERS_PER_SESSION,
         protocol: PROTOCOL_VERSION,
-        customization: safeCustomization
+        customization: customConfig
       }));
       return;
     }
 
-    // Real-time Sanctuary Occupancy & Character Claim status endpoint
+    // Real-time Sanctuary Occupancy endpoint
     if (pathname === '/api/occupancy') {
-      const activePeers = Array.from(sessionPeers.values());
+      const token = extractSessionToken(req);
+      const session = validateSession(token);
+      const targetSlug = parsedUrl.searchParams.get('slug') || session?.customerSlug || 'default';
+      const room = getCustomerRoom(targetSlug);
+      const activePeers = Array.from(room.sessionPeers.values());
       const claimedCharacters = [];
       for (const p of activePeers) {
         const id = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : 'ethan');
@@ -317,7 +504,7 @@ function getResolvedCustomization() {
           claimedCharacters.push(id);
         }
       }
-      for (const grace of graceSessions.values()) {
+      for (const grace of room.graceSessions.values()) {
         const p = grace.profile;
         if (p) {
           const id = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : 'ethan');
@@ -327,17 +514,112 @@ function getResolvedCustomization() {
         }
       }
 
-      const totalOccupants = sessionPeers.size + graceSessions.size;
+      const totalOccupants = room.sessionPeers.size + room.graceSessions.size;
       const isFull = totalOccupants >= MAX_PLAYERS_PER_SESSION;
 
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       res.end(JSON.stringify({
         ok: true,
+        room: targetSlug === 'default' ? 'our-home' : `customer_${targetSlug}`,
         count: totalOccupants,
         max: MAX_PLAYERS_PER_SESSION,
         full: isFull,
         claimedCharacters,
         availableCharacters: ['maya', 'ethan'].filter(id => !claimedCharacters.includes(id))
+      }));
+      return;
+    }
+
+    // Customer Photo Catalog Endpoint (75 slots fill status)
+    if (pathname === '/api/customer/photos' && req.method === 'GET') {
+      const token = extractSessionToken(req);
+      const session = validateSession(token);
+      if (!session) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized: valid session required' }));
+        return;
+      }
+      if (session.customerSlug) {
+        const report = listCustomerPhotos(session.customerSlug);
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-cache' });
+        res.end(JSON.stringify({ ok: true, ...report }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-cache' });
+      res.end(JSON.stringify({ ok: true, customerSlug: null, totalSlots: 75 }));
+      return;
+    }
+
+    // POST /api/museum/auth (Customer Passcode Authentication)
+    if (pathname === '/api/museum/auth' && req.method === 'POST') {
+      let body;
+      try {
+        body = await parseJsonBody(req);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Malformed JSON payload' }));
+        return;
+      }
+
+      const clientIp = getClientIp(req);
+      if (!checkPasscodeRate(clientIp)) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Too many authentication attempts. Please wait 60 seconds.' }));
+        return;
+      }
+
+      const slug = body && body.slug ? String(body.slug).trim().toLowerCase() : null;
+      const passcode = body && body.passcode ? String(body.passcode) : null;
+
+      if (!slug || !passcode) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Customer slug and passcode are required' }));
+        return;
+      }
+
+      const customer = getCustomer(slug, true);
+      if (!customer) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Customer gallery not found' }));
+        return;
+      }
+
+      if (!isCustomerActive(customer)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Customer gallery is inactive or exhibition window closed' }));
+        return;
+      }
+
+      const valid = verifyCustomerPasscode(passcode, customer.passcodeHash, customer.passcodeSalt);
+      if (!valid) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid customer passcode' }));
+        return;
+      }
+
+      const session = createCustomerSession({
+        customerSlug: slug,
+        recipient: customer.displayName || 'Visitor',
+        ttlHours: customer.sessionDurationHours || 24,
+      });
+
+      const isHttps = Boolean(
+        req.socket.encrypted ||
+        req.headers['x-forwarded-proto'] === 'https' ||
+        (typeof req.headers['cf-visitor'] === 'string' && req.headers['cf-visitor'].includes('https'))
+      );
+      const secureFlag = isHttps ? '; Secure' : '';
+      const cookieVal = `museum_session=${encodeURIComponent(session.token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400${secureFlag}`;
+
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': cookieVal,
+        'Cache-Control': 'no-store'
+      });
+      res.end(JSON.stringify({
+        ok: true,
+        recipient: session.recipient,
+        customer: { slug: customer.slug, displayName: customer.displayName }
       }));
       return;
     }
@@ -354,6 +636,12 @@ function getResolvedCustomization() {
       }
 
       const code = body && body.code;
+      const slug = body && body.slug ? String(body.slug).trim().toLowerCase() : null;
+      if (slug) {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Customer galleries authenticate via passcode, not invitation redemption.' }));
+        return;
+      }
       const redemption = redeemInvite(code);
       if (!redemption.success) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
@@ -374,11 +662,342 @@ function getResolvedCustomization() {
         'Set-Cookie': cookieVal,
         'Cache-Control': 'no-store'
       });
-      // Never expose session token directly to frontend JS
       res.end(JSON.stringify({
         ok: true,
-        recipient: redemption.recipient
+        recipient: redemption.recipient,
+        customerSlug: redemption.customerSlug
       }));
+      return;
+    }
+
+    // ── Founder Admin Authentication API ──────────────────────────────
+    if (pathname === '/api/admin/auth/login' && req.method === 'POST') {
+      const clientIp = getClientIp(req);
+      if (!checkAdminRate(clientIp)) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Too many admin login attempts. Please wait 60 seconds.' }));
+        return;
+      }
+
+      let body;
+      try {
+        body = await parseJsonBody(req);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Malformed JSON payload' }));
+        return;
+      }
+
+      const user = body && body.username ? String(body.username).trim() : '';
+      const pass = body && body.password ? String(body.password) : '';
+
+      let valid = false;
+      if (user === ADMIN_USERNAME && pass) {
+        const a = Buffer.from(pass);
+        const b = Buffer.from(ADMIN_PASSWORD);
+        if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
+          valid = true;
+        }
+      }
+
+      if (!valid) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Invalid admin credentials' }));
+        return;
+      }
+
+      const token = `adm_${Date.now().toString(36)}_${crypto.randomBytes(16).toString('hex')}`;
+      adminSessions.set(token, {
+        username: ADMIN_USERNAME,
+        createdAt: Date.now(),
+        expiresAt: Date.now() + 24 * 3600 * 1000,
+      });
+
+      const cookieVal = `admin_session=${encodeURIComponent(token)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=86400`;
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': cookieVal,
+        'Cache-Control': 'no-store'
+      });
+      res.end(JSON.stringify({ ok: true, admin: { username: ADMIN_USERNAME }, token }));
+      return;
+    }
+
+    if (pathname === '/api/admin/auth/session' && req.method === 'GET') {
+      const admin = validateAdmin(req);
+      if (!admin) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Unauthorized' }));
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, user: admin.username }));
+      return;
+    }
+
+    if (pathname === '/api/admin/auth/logout' && req.method === 'POST') {
+      const token = extractAdminToken(req);
+      if (token) adminSessions.delete(token);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Set-Cookie': 'admin_session=; Path=/; Expires=Thu, 01 Jan 1970 00:00:00 GMT; HttpOnly; SameSite=Lax',
+        'Cache-Control': 'no-store'
+      });
+      res.end(JSON.stringify({ ok: true }));
+      return;
+    }
+
+    // ── Founder Admin Management API ──────────────────────────────────
+    if (pathname === '/api/admin/customers' && req.method === 'GET') {
+      if (!requireAdmin(req, res)) return;
+      const master = loadMaster();
+      const enriched = master.customers.map(c => {
+        const stats = listCustomerPhotos(c.slug);
+        return {
+          ...c,
+          totalSlots: 75,
+          filledSlots: stats.filledSlots,
+          missingSlots: stats.missingSlots
+        };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, customers: enriched }));
+      return;
+    }
+
+    if (pathname === '/api/admin/customers' && req.method === 'POST') {
+      if (!requireAdmin(req, res)) return;
+      let body;
+      try {
+        body = await parseJsonBody(req);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: 'Malformed JSON payload' }));
+        return;
+      }
+      try {
+        const created = createCustomer(body);
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, customer: created }));
+      } catch (err) {
+        const isConflict = err.message.includes('already exists');
+        res.writeHead(isConflict ? 409 : 400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      }
+      return;
+    }
+
+    if (pathname === '/api/admin/audit-logs' && req.method === 'GET') {
+      if (!requireAdmin(req, res)) return;
+      const logs = getAuditLogs(100);
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, logs }));
+      return;
+    }
+
+    // Parameterized Admin Customer Routes: /api/admin/customers/:slug/*
+    const adminCustomerMatch = pathname.match(/^\/api\/admin\/customers\/([a-z0-9-]+)(.*)$/i);
+    if (adminCustomerMatch) {
+      const slug = adminCustomerMatch[1].toLowerCase();
+      const sub = adminCustomerMatch[2] || '';
+
+      if (sub === '' || sub === '/') {
+        if (req.method === 'GET') {
+          if (!requireAdmin(req, res)) return;
+          const cust = getCustomer(slug);
+          if (!cust) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: 'Customer not found' }));
+            return;
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            ok: true,
+            customer: cust,
+            config: getCustomerConfig(slug),
+            quotes: getCustomerQuotes(slug),
+            photos: listCustomerPhotos(slug)
+          }));
+          return;
+        }
+
+        if (req.method === 'DELETE') {
+          if (!requireAdmin(req, res)) return;
+          revokeCustomerSessions(slug);
+          const room = customerRooms.get(slug);
+          if (room) {
+            for (const [ws] of room.sessionPeers) {
+              try { ws.send(JSON.stringify({ t: 'error', msg: 'customer-deleted' })); } catch {}
+              try { ws.close(4003, 'customer-deleted'); } catch {}
+            }
+            customerRooms.delete(slug);
+          }
+          try {
+            const delRes = deleteCustomer(slug);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, message: 'Customer deleted', ...delRes }));
+          } catch (err) {
+            res.writeHead(404, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+          }
+          return;
+        }
+      }
+
+      if (sub === '/identity' && req.method === 'PUT') {
+        if (!requireAdmin(req, res)) return;
+        const body = await parseJsonBody(req);
+        try {
+          const updated = updateCustomerIdentity(slug, body);
+          if (updated && (updated.status === 'paused' || updated.status === 'draft')) {
+            revokeCustomerSessions(slug);
+            const room = customerRooms.get(slug);
+            if (room) {
+              for (const [ws] of room.sessionPeers) {
+                try { ws.send(JSON.stringify({ t: 'error', msg: 'session-revoked' })); } catch {}
+                try { ws.close(4003, 'session-revoked'); } catch {}
+              }
+              room.sessionPeers.clear();
+              room.sessionSeats.clear();
+              room.graceSessions.clear();
+            }
+          }
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, customer: updated }));
+        } catch (err) {
+          res.writeHead(err.message.includes('not found') ? 404 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        }
+        return;
+      }
+
+      if (sub === '/access' && req.method === 'PUT') {
+        if (!requireAdmin(req, res)) return;
+        const body = await parseJsonBody(req);
+        try {
+          const updated = updateCustomerAccess(slug, body);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, message: 'Access updated', ...updated }));
+        } catch (err) {
+          res.writeHead(err.message.includes('not found') ? 404 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        }
+        return;
+      }
+
+      if (sub === '/access/sessions' && req.method === 'DELETE') {
+        if (!requireAdmin(req, res)) return;
+        const revokedCount = revokeCustomerSessions(slug);
+        const room = customerRooms.get(slug);
+        if (room) {
+          for (const [ws] of room.sessionPeers) {
+            try { ws.send(JSON.stringify({ t: 'error', msg: 'session-revoked' })); } catch {}
+            try { ws.close(4003, 'session-revoked'); } catch {}
+          }
+          room.sessionPeers.clear();
+          room.sessionSeats.clear();
+          room.graceSessions.clear();
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, revokedCount }));
+        return;
+      }
+
+      if (sub === '/window' && req.method === 'PUT') {
+        if (!requireAdmin(req, res)) return;
+        const body = await parseJsonBody(req);
+        try {
+          const updated = updateCustomerWindow(slug, body);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, window: updated }));
+        } catch (err) {
+          res.writeHead(err.message.includes('not found') ? 404 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        }
+        return;
+      }
+
+      if (sub === '/quotes' && req.method === 'PUT') {
+        if (!requireAdmin(req, res)) return;
+        const body = await parseJsonBody(req);
+        try {
+          updateCustomerQuotes(slug, body.quotes || body);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true }));
+        } catch (err) {
+          res.writeHead(err.message.includes('not found') ? 404 : 400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: err.message }));
+        }
+        return;
+      }
+
+      if (sub === '/photos' && req.method === 'GET') {
+        if (!requireAdmin(req, res)) return;
+        const cust = findMasterCustomer(slug);
+        if (!cust) {
+          res.writeHead(404, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: false, error: 'Customer not found' }));
+          return;
+        }
+        const report = listCustomerPhotos(slug);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, ...report }));
+        return;
+      }
+
+      const photoSlotMatch = sub.match(/^\/photos\/([^\/]+)\/([^\/]+)$/);
+      if (photoSlotMatch) {
+        const roomParam = photoSlotMatch[1];
+        const slotParam = photoSlotMatch[2];
+
+        if (req.method === 'POST') {
+          if (!requireAdmin(req, res)) return;
+          const cType = req.headers['content-type'] || '';
+          let imgBuffer;
+          if (cType.includes('application/json')) {
+            const body = await parseJsonBody(req, 20 * 1024 * 1024);
+            let rawImage = body.image || body.data || body.buffer;
+            if (!rawImage) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ ok: false, error: 'Missing image data in body' }));
+              return;
+            }
+            if (typeof rawImage === 'string' && rawImage.includes(',')) {
+              rawImage = rawImage.split(',')[1];
+            }
+            imgBuffer = Buffer.from(rawImage, 'base64');
+          } else {
+            imgBuffer = await parseBufferBody(req, 20 * 1024 * 1024);
+          }
+          try {
+            const saved = saveCustomerPhoto(slug, roomParam, slotParam, imgBuffer);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, ...saved }));
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+          }
+          return;
+        }
+
+        if (req.method === 'DELETE') {
+          if (!requireAdmin(req, res)) return;
+          try {
+            const delRes = deleteCustomerPhoto(slug, roomParam, slotParam);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: true, ...delRes }));
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ ok: false, error: err.message }));
+          }
+          return;
+        }
+      }
+    }
+
+    if (pathname.startsWith('/api/admin/')) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Admin endpoint not found' }));
       return;
     }
 
@@ -400,15 +1019,19 @@ function getResolvedCustomization() {
       }
 
       let rawLetters = {};
-      try {
-        if (fs.existsSync(LETTERS_FILE)) {
-          rawLetters = JSON.parse(fs.readFileSync(LETTERS_FILE, 'utf8'));
+      const { templateMap, interpolate } = getResolvedCustomization(session.customerSlug || null);
+      if (session.customerSlug) {
+        rawLetters = getCustomerQuotes(session.customerSlug);
+      } else {
+        try {
+          if (fs.existsSync(LETTERS_FILE)) {
+            rawLetters = JSON.parse(fs.readFileSync(LETTERS_FILE, 'utf8'));
+          }
+        } catch (err) {
+          console.error('[API /api/letters] Failed to read letters.json:', err.message);
         }
-      } catch (err) {
-        console.error('[API /api/letters] Failed to read letters.json:', err.message);
       }
 
-      const { templateMap, interpolate } = getResolvedCustomization();
       const defaultAuthor = interpolate(rawLetters._defaults?.author) || templateMap.partner2 || 'Ethan';
       const defaultRecipient = interpolate(rawLetters._defaults?.recipient) || templateMap.partner1 || 'Maya';
 
@@ -452,6 +1075,56 @@ function getResolvedCustomization() {
       if (!session) {
         res.writeHead(401, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify({ ok: false, error: 'Unauthorized: private museum photos require invitation pass' }));
+        return;
+      }
+
+      if (session.customerSlug) {
+        const custMaster = findMasterCustomer(session.customerSlug);
+        if (!custMaster || !isCustomerActive(custMaster)) {
+          res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
+          res.end(JSON.stringify({ ok: false, error: 'Customer gallery is inactive or exhibition window closed' }));
+          return;
+        }
+
+        const customerDir = path.join(customersDir, session.customerSlug);
+        const customerPhotosDir = path.join(customerDir, 'photos');
+
+        let decoded;
+        try {
+          decoded = decodeURIComponent(pathname);
+        } catch {
+          res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('400 Bad Request');
+          return;
+        }
+
+        if (decoded.includes('\0')) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('404 Not Found');
+          return;
+        }
+
+        const subPath = decoded.replace(/^\/photos[\/\\]*/, '');
+        const candidate = path.resolve(customerPhotosDir, '.' + path.sep + subPath);
+
+        if (!candidate.startsWith(customerPhotosDir + path.sep)) {
+          res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+          res.end('404 Not Found');
+          return;
+        }
+
+        try {
+          if (fs.existsSync(candidate)) {
+            const stats = fs.statSync(candidate);
+            if (stats.isFile()) {
+              serveFile(req, res, candidate, stats);
+              return;
+            }
+          }
+        } catch {}
+
+        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('404 Not Found');
         return;
       }
     }
@@ -588,14 +1261,28 @@ const MSG_TYPES = new Set(['join', 'leave', 'state', 'emote', 'sit', 'stand', 'c
 // Allowed character model assets
 const ALLOWED_MODELS = new Set(['man.glb', 'woman.glb', 'models/ready/characters/man.glb', 'models/ready/characters/woman.glb']);
 
-// Active session state: Map<ws, peerProfile>
-const sessionPeers = new Map();
+// Customer-scoped multiplayer rooms: Map<slug, { sessionPeers, sessionSeats, graceSessions }>
+const customerRooms = new Map();
 
-// Authoritative seat locks (SEAT-03 & STATE-01): Map<seatId, peerId>
-const sessionSeats = new Map();
+function getCustomerRoom(slug = 'default') {
+  const key = (slug && typeof slug === 'string' ? slug.trim().toLowerCase() : null) || 'default';
+  let room = customerRooms.get(key);
+  if (!room) {
+    room = {
+      sessionPeers: new Map(),
+      sessionSeats: new Map(),
+      graceSessions: new Map(),
+    };
+    customerRooms.set(key, room);
+  }
+  return room;
+}
 
-// 30-second disconnection grace (Q3): Map<sessionToken, { profile, seatId, timer, disconnectedAt }>
-const graceSessions = new Map();
+// Default room reference for legacy single-tenant compatibility
+const defaultRoom = getCustomerRoom('default');
+const sessionPeers = defaultRoom.sessionPeers;
+const sessionSeats = defaultRoom.sessionSeats;
+const graceSessions = defaultRoom.graceSessions;
 
 // Per-IP socket connection tracker
 const ipConnections = new Map();
@@ -605,25 +1292,37 @@ const wss = new WebSocketServer({
   maxPayload: MAX_PAYLOAD_BYTES
 });
 
-// Evict revoked active sessions immediately across process boundaries
+function broadcast(message, senderWs, targetRoom = null) {
+  const room = targetRoom || (senderWs && senderWs._roomState) || defaultRoom;
+  const raw = typeof message === 'string' ? message : JSON.stringify(message);
+  for (const [clientWs] of room.sessionPeers) {
+    if (clientWs !== senderWs && clientWs.readyState === WebSocket.OPEN) {
+      try { clientWs.send(raw); } catch {}
+    }
+  }
+}
+
+// Evict revoked active sessions immediately across all customer rooms
 function evictRevokedSessions() {
-  for (const [ws, profile] of sessionPeers) {
-    if (profile && profile.sessionToken) {
-      const valid = validateSession(profile.sessionToken);
-      if (!valid) {
-        console.log(`[WS] Evicting revoked session for peer ${profile.peerId} (${profile.name})`);
-        try {
-          ws.send(JSON.stringify({ t: 'error', msg: 'session-revoked' }));
-        } catch {}
-        if (profile.seated) {
-          sessionSeats.delete(profile.seated);
-          broadcast({ t: 'stand', id: profile.peerId }, null);
+  for (const [slug, room] of customerRooms) {
+    for (const [ws, profile] of room.sessionPeers) {
+      if (profile && profile.sessionToken) {
+        const valid = validateSession(profile.sessionToken);
+        if (!valid) {
+          console.log(`[WS] Evicting revoked session in room '${slug}' for peer ${profile.peerId} (${profile.name})`);
+          try {
+            ws.send(JSON.stringify({ t: 'error', msg: 'session-revoked' }));
+          } catch {}
+          if (profile.seated) {
+            room.sessionSeats.delete(profile.seated);
+            broadcast({ t: 'stand', id: profile.peerId }, null, room);
+          }
+          room.sessionPeers.delete(ws);
+          broadcast({ t: 'peer_left', peerId: profile.peerId, peerCount: room.sessionPeers.size }, null, room);
+          try {
+            ws.close(4003, 'session-revoked');
+          } catch {}
         }
-        sessionPeers.delete(ws);
-        broadcast({ t: 'peer_left', peerId: profile.peerId, peerCount: sessionPeers.size }, null);
-        try {
-          ws.close(4003, 'session-revoked');
-        } catch {}
       }
     }
   }
@@ -646,9 +1345,7 @@ try {
 
 // Periodic check backup (every 400ms) to guarantee fast eviction across process boundaries
 const storeEvictionInterval = setInterval(() => {
-  if (sessionPeers.size > 0) {
-    evictRevokedSessions();
-  }
+  evictRevokedSessions();
 }, 400);
 storeEvictionInterval.unref();
 
@@ -741,6 +1438,17 @@ wss.on('connection', ws => {
   let joined = false;
   ws.isAlive = true;
 
+  // Initial room binding from session token (defaults to 'default')
+  const initialToken = ws._sessionToken;
+  const initialSession = validateSession(initialToken);
+  let currentSlug = initialSession?.customerSlug || 'default';
+  let roomState = getCustomerRoom(currentSlug);
+  ws._customerSlug = currentSlug;
+  ws._roomState = roomState;
+  let roomPeers = roomState.sessionPeers;
+  let roomSeats = roomState.sessionSeats;
+  let roomGrace = roomState.graceSessions;
+
   ws.on('pong', () => {
     ws.isAlive = true;
   });
@@ -812,6 +1520,13 @@ wss.on('connection', ws => {
       }
 
       if (!authenticatedSession) {
+        if (data.customerSlug) {
+          // Customer WebSocket connections must use a session token authenticated for that customer
+          deny('unauthorized');
+          ws.close(4003, 'unauthorized');
+          return;
+        }
+
         if (data.code) {
           const redemption = redeemInvite(data.code);
           if (redemption.success) {
@@ -822,7 +1537,7 @@ wss.on('connection', ws => {
               return;
             }
             if (verifyPasscode(data.code)) {
-              authenticatedSession = { recipient: 'Passcode Guest', token: null };
+              authenticatedSession = { recipient: 'Passcode Guest', token: null, customerSlug: null };
             } else {
               deny('bad-code');
               ws.close(4003, 'bad-code');
@@ -841,24 +1556,42 @@ wss.on('connection', ws => {
         }
       }
 
+      if (authenticatedSession && authenticatedSession.customerSlug) {
+        const custMaster = findMasterCustomer(authenticatedSession.customerSlug);
+        if (!custMaster || !isCustomerActive(custMaster)) {
+          deny('gallery-inactive');
+          ws.close(4003, 'gallery-inactive');
+          return;
+        }
+      }
+
       if (!authenticatedSession) {
         deny('unauthorized');
         ws.close(4003, 'unauthorized');
         return;
       }
 
+      // Re-bind to authoritative customer room
+      currentSlug = authenticatedSession.customerSlug || 'default';
+      roomState = getCustomerRoom(currentSlug);
+      ws._customerSlug = currentSlug;
+      ws._roomState = roomState;
+      roomPeers = roomState.sessionPeers;
+      roomSeats = roomState.sessionSeats;
+      roomGrace = roomState.graceSessions;
+
       // Check 30s disconnection grace (Q3): reconnecting partner?
       const sessKey = authenticatedSession ? authenticatedSession.token : null;
       let reconnectedGrace = null;
-      if (sessKey && graceSessions.has(sessKey)) {
-        reconnectedGrace = graceSessions.get(sessKey);
+      if (sessKey && roomGrace.has(sessKey)) {
+        reconnectedGrace = roomGrace.get(sessKey);
         clearTimeout(reconnectedGrace.timer);
-        graceSessions.delete(sessKey);
-        console.log(`[WS Grace] Participant ${reconnectedGrace.profile.name} reconnected within grace window!`);
+        roomGrace.delete(sessKey);
+        console.log(`[WS Grace] Participant ${reconnectedGrace.profile.name} in room '${currentSlug}' reconnected within grace window!`);
       }
 
-      // Enforce global 2-player capacity for the museum session (NET-01 & Q1)
-      const effectivePeers = sessionPeers.size + (reconnectedGrace ? 0 : graceSessions.size);
+      // Enforce 2-player capacity for this customer room (NET-01 & Q1)
+      const effectivePeers = roomPeers.size + (reconnectedGrace ? 0 : roomGrace.size);
       if (effectivePeers >= MAX_PLAYERS_PER_SESSION) {
         deny('room-full');
         ws.close(4002, 'room-full');
@@ -884,11 +1617,11 @@ wss.on('connection', ws => {
 
       if (resolvedCharId) {
         const charConflict =
-          Array.from(sessionPeers.values()).some(p => {
+          Array.from(roomPeers.values()).some(p => {
             const pCharId = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : (p.model === 'man.glb' || (p.name && p.name.toLowerCase().includes('ethan')) ? 'ethan' : null));
             return pCharId === resolvedCharId;
           }) ||
-          Array.from(graceSessions.values()).some(g => {
+          Array.from(roomGrace.values()).some(g => {
             if (sessKey && g.profile?.sessionToken === sessKey) return false;
             const p = g.profile;
             if (!p) return false;
@@ -909,7 +1642,7 @@ wss.on('connection', ws => {
       let seatToRestore = null;
       if (reconnectedGrace && reconnectedGrace.seatId) {
         seatToRestore = reconnectedGrace.seatId;
-        sessionSeats.set(seatToRestore, peerId);
+        roomSeats.set(seatToRestore, peerId);
       }
 
       // Color hex validation
@@ -952,10 +1685,10 @@ wss.on('connection', ws => {
         }
       };
 
-      sessionPeers.set(ws, profile);
+      roomPeers.set(ws, profile);
 
-      const count = sessionPeers.size;
-      const peers = Array.from(sessionPeers.values()).map(p => ({
+      const count = roomPeers.size;
+      const peers = Array.from(roomPeers.values()).map(p => ({
         peerId: p.peerId,
         name: p.name,
         color: p.color,
@@ -971,17 +1704,18 @@ wss.on('connection', ws => {
       }));
 
       // Snapshot of currently taken seats
-      const seatsSnapshot = Array.from(sessionSeats.entries()).map(([seatId, ownerId]) => ({
+      const seatsSnapshot = Array.from(roomSeats.entries()).map(([seatId, ownerId]) => ({
         seatId,
         occupiedBy: ownerId
       }));
 
-      console.log(`[WS] ${peerId} (${profile.name}) joined session. Total peers: ${count}`);
+      console.log(`[WS] ${peerId} (${profile.name}) joined room '${currentSlug}'. Total peers in room: ${count}`);
 
       // Reply with full session state
+      const roomLabel = currentSlug === 'default' ? 'our-home' : `customer_${currentSlug}`;
       sendTo({
         t: 'room_state',
-        room: 'our-home',
+        room: roomLabel,
         peerCount: count,
         peers,
         seats: seatsSnapshot,
@@ -994,10 +1728,10 @@ wss.on('connection', ws => {
           t: 'peer_status',
           peerId,
           status: 'reconnected'
-        }, ws);
+        }, ws, roomState);
       }
 
-      // Broadcast newcomer to partner
+      // Broadcast newcomer to partner in this customer room
       broadcast({
         t: 'peer_joined',
         peerId,
@@ -1013,7 +1747,7 @@ wss.on('connection', ws => {
         anim: profile.lastState ? profile.lastState.anim : 'idle',
         mode: profile.lastState ? profile.lastState.mode : 'stand',
         peerCount: count
-      }, ws);
+      }, ws, roomState);
       return;
     }
 
@@ -1023,8 +1757,8 @@ wss.on('connection', ws => {
       return;
     }
 
-    // Active session revocation check on incoming messages (throttled to 2s to preserve event loop)
-    const currentProfile = sessionPeers.get(ws);
+    // Active session revocation check on incoming messages
+    const currentProfile = roomPeers.get(ws);
     if (currentProfile && currentProfile.sessionToken) {
       const now = Date.now();
       if (!currentProfile._lastRevocationCheck || now - currentProfile._lastRevocationCheck > 2000) {
@@ -1033,11 +1767,11 @@ wss.on('connection', ws => {
         if (!valid) {
           deny('session-revoked');
           if (currentProfile.seated) {
-            sessionSeats.delete(currentProfile.seated);
-            broadcast({ t: 'stand', id: currentProfile.peerId }, null);
+            roomSeats.delete(currentProfile.seated);
+            broadcast({ t: 'stand', id: currentProfile.peerId }, null, roomState);
           }
-          sessionPeers.delete(ws);
-          broadcast({ t: 'peer_left', peerId: currentProfile.peerId, peerCount: sessionPeers.size }, null);
+          roomPeers.delete(ws);
+          broadcast({ t: 'peer_left', peerId: currentProfile.peerId, peerCount: roomPeers.size }, null, roomState);
           try {
             ws.close(4003, 'session-revoked');
           } catch {}
@@ -1084,7 +1818,7 @@ wss.on('connection', ws => {
         seat: data.seat ? safeStr(String(data.seat), 64) : null
       };
 
-      const profile = sessionPeers.get(ws);
+      const profile = roomPeers.get(ws);
       if (profile) {
         profile.location = location;
         profile.lastState = {
@@ -1097,19 +1831,19 @@ wss.on('connection', ws => {
         };
       }
 
-      broadcast(state, ws);
+      broadcast(state, ws, roomState);
       return;
     }
 
-    // 5. EMOTE (Approved emotes & actions 1..7)
+    // 5. EMOTE
     if (type === 'emote') {
       const idx = clampNum(data.e, 1, 7);
       const start = Boolean(data.start);
-      broadcast({ t: 'emote', id: peerId, e: idx, start }, ws);
+      broadcast({ t: 'emote', id: peerId, e: idx, start }, ws, roomState);
       return;
     }
 
-    // 6. SIT (Authoritative Seat Lock - SEAT-03 & STATE-01 single seat invariant)
+    // 6. SIT
     if (type === 'sit') {
       const seatId = safeStr(String(data.seat || ''), 64);
       if (!seatId) {
@@ -1117,42 +1851,38 @@ wss.on('connection', ws => {
         return;
       }
 
-      const profile = sessionPeers.get(ws);
+      const profile = roomPeers.get(ws);
       if (!profile) return;
 
-      // Single-seat invariant (STATE-01): vacate old seat if different
       if (profile.seated && profile.seated !== seatId) {
-        sessionSeats.delete(profile.seated);
-        broadcast({ t: 'stand', id: peerId }, ws);
+        roomSeats.delete(profile.seated);
+        broadcast({ t: 'stand', id: peerId }, ws, roomState);
         profile.seated = null;
       }
 
-      const existingOwner = sessionSeats.get(seatId);
+      const existingOwner = roomSeats.get(seatId);
       if (existingOwner && existingOwner !== peerId) {
-        // Seat already occupied by another participant
         sendTo({ t: 'sit_denied', seat: seatId, reason: 'occupied' });
         return;
       }
 
-      // Claim seat atomically
-      sessionSeats.set(seatId, peerId);
+      roomSeats.set(seatId, peerId);
       profile.seated = seatId;
 
-      // Confirm to sender and broadcast to partner
       sendTo({ t: 'sit_ok', seat: seatId });
-      broadcast({ t: 'sit', id: peerId, seat: seatId }, ws);
+      broadcast({ t: 'sit', id: peerId, seat: seatId }, ws, roomState);
       return;
     }
 
-    // 7. STAND (Release Seat)
+    // 7. STAND
     if (type === 'stand') {
-      const profile = sessionPeers.get(ws);
+      const profile = roomPeers.get(ws);
       if (profile && profile.seated) {
-        sessionSeats.delete(profile.seated);
+        roomSeats.delete(profile.seated);
         profile.seated = null;
       }
       sendTo({ t: 'stand_ok' });
-      broadcast({ t: 'stand', id: peerId }, ws);
+      broadcast({ t: 'stand', id: peerId }, ws, roomState);
       return;
     }
 
@@ -1160,18 +1890,18 @@ wss.on('connection', ws => {
     if (type === 'chat') {
       const msg = safeStr(data.m, MAX_CHAT_LEN);
       if (!msg) return;
-      const profile = sessionPeers.get(ws);
+      const profile = roomPeers.get(ws);
       const senderName = (profile && profile.name) || 'Partner';
-      broadcast({ t: 'chat', id: peerId, name: senderName, m: msg }, ws);
+      broadcast({ t: 'chat', id: peerId, name: senderName, m: msg }, ws, roomState);
       return;
     }
   });
 
   ws.on('close', () => {
-    const profile = sessionPeers.get(ws);
-    sessionPeers.delete(ws);
+    const targetRoom = ws._roomState || roomState || defaultRoom;
+    const profile = targetRoom.sessionPeers.get(ws);
+    targetRoom.sessionPeers.delete(ws);
 
-    // Decrement per-IP connection count
     if (ws._clientIp && ipConnections.has(ws._clientIp)) {
       const cur = ipConnections.get(ws._clientIp) - 1;
       if (cur <= 0) ipConnections.delete(ws._clientIp);
@@ -1180,39 +1910,36 @@ wss.on('connection', ws => {
 
     if (profile) {
       if (ws._explicitLeave || !profile.sessionToken) {
-        // Explicit leave or unauthenticated test client: release immediately
         if (profile.seated) {
-          sessionSeats.delete(profile.seated);
-          broadcast({ t: 'stand', id: peerId }, null);
+          targetRoom.sessionSeats.delete(profile.seated);
+          broadcast({ t: 'stand', id: peerId }, null, targetRoom);
         }
-        const count = sessionPeers.size;
-        console.log(`[WS] ${peerId} left permanently. Remaining peers: ${count}`);
-        broadcast({ t: 'peer_left', peerId, peerCount: count }, null);
+        const count = targetRoom.sessionPeers.size;
+        console.log(`[WS] ${peerId} left permanently from room '${ws._customerSlug || 'default'}'. Remaining: ${count}`);
+        broadcast({ t: 'peer_left', peerId, peerCount: count }, null, targetRoom);
       } else {
-        // 30-second disconnection grace (Q3):
-        // Reserve slot and seat for 30 seconds so partner can reconnect.
         const sessKey = profile.sessionToken;
         const currentSeat = profile.seated;
-        console.log(`[WS Grace] ${peerId} (${profile.name}) disconnected. Holding slot & seat for 30s grace.`);
+        console.log(`[WS Grace] ${peerId} (${profile.name}) disconnected in room '${ws._customerSlug || 'default'}'. Holding 30s grace.`);
 
         broadcast({
           t: 'peer_status',
           peerId,
           status: 'reconnecting',
           graceSeconds: 30
-        }, null);
+        }, null, targetRoom);
 
         const timer = setTimeout(() => {
-          graceSessions.delete(sessKey);
-          if (currentSeat && sessionSeats.get(currentSeat) === peerId) {
-            sessionSeats.delete(currentSeat);
-            broadcast({ t: 'stand', id: peerId }, null);
+          targetRoom.graceSessions.delete(sessKey);
+          if (currentSeat && targetRoom.sessionSeats.get(currentSeat) === peerId) {
+            targetRoom.sessionSeats.delete(currentSeat);
+            broadcast({ t: 'stand', id: peerId }, null, targetRoom);
           }
-          console.log(`[WS Grace] 30s grace expired for ${profile.name}. Slot & seat freed.`);
-          broadcast({ t: 'peer_left', peerId, peerCount: sessionPeers.size }, null);
+          console.log(`[WS Grace] 30s grace expired for ${profile.name} in room '${ws._customerSlug || 'default'}'. Slot freed.`);
+          broadcast({ t: 'peer_left', peerId, peerCount: targetRoom.sessionPeers.size }, null, targetRoom);
         }, 30000);
 
-        graceSessions.set(sessKey, {
+        targetRoom.graceSessions.set(sessKey, {
           profile,
           seatId: currentSeat,
           timer,
@@ -1227,31 +1954,24 @@ wss.on('connection', ws => {
   });
 });
 
-function broadcast(message, senderWs) {
-  const raw = typeof message === 'string' ? message : JSON.stringify(message);
-  for (const [clientWs] of sessionPeers) {
-    if (clientWs !== senderWs && clientWs.readyState === WebSocket.OPEN) {
-      try { clientWs.send(raw); } catch {}
-    }
-  }
-}
-
-// 30-second ping/pong heartbeat to detect dead connections and free slots
+// 30-second ping/pong heartbeat to detect dead connections across all rooms
 const heartbeatInterval = setInterval(() => {
   evictRevokedSessions();
-  for (const [ws, profile] of sessionPeers) {
-    if (!ws.isAlive) {
-      console.log(`[WS Heartbeat] Terminating inactive connection: ${profile.peerId}`);
-      if (profile.seated) {
-        sessionSeats.delete(profile.seated);
-        broadcast({ t: 'stand', id: profile.peerId }, null);
+  for (const [slug, room] of customerRooms) {
+    for (const [ws, profile] of room.sessionPeers) {
+      if (!ws.isAlive) {
+        console.log(`[WS Heartbeat] Terminating inactive connection in room '${slug}': ${profile.peerId}`);
+        if (profile.seated) {
+          room.sessionSeats.delete(profile.seated);
+          broadcast({ t: 'stand', id: profile.peerId }, null, room);
+        }
+        room.sessionPeers.delete(ws);
+        broadcast({ t: 'peer_left', peerId: profile.peerId, peerCount: room.sessionPeers.size }, null, room);
+        ws.terminate();
+      } else {
+        ws.isAlive = false;
+        try { ws.ping(); } catch {}
       }
-      sessionPeers.delete(ws);
-      broadcast({ t: 'peer_left', peerId: profile.peerId, peerCount: sessionPeers.size }, null);
-      ws.terminate();
-    } else {
-      ws.isAlive = false;
-      try { ws.ping(); } catch {}
     }
   }
 }, 30000);

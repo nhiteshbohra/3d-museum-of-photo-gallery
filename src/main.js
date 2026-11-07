@@ -3,7 +3,6 @@ import { coupleSalons, coupleCategories, ROOM_KEY_TO_TITLE } from './data/couple
 import { getArtworkSizes } from './config/artworkSizes.js'
 import charactersJson from './data/characters.json'
 import { disconnectNet } from './net/wsClient.js'
-import { createCharacterSetup } from './avatars/characterSetup.js'
 import { ACTION_CATEGORIES, ACTIONS, getActionById, getActionsByCategory } from './avatars/actionManifest.js'
 
 // Build the avatar roster from characters.json
@@ -622,10 +621,11 @@ async function syncOccupancy() {
 	} catch (_) {}
 }
 
-function showAvatarSelection() {
+async function showAvatarSelection() {
 	if (!avatarSelectEl) return
 	const defaultId = selectedAvatarId || (AVATARS.length > 0 ? AVATARS[0].id : null)
 	if (!characterSetup) {
+		const { createCharacterSetup } = await import('./avatars/characterSetup.js')
 		characterSetup = createCharacterSetup(avatarSelectEl, AVATARS, {
 			onSelect: selectAvatar,
 			onChange: updateVisitor,
@@ -2204,7 +2204,7 @@ async function prepareEntrance() {
 		entranceStatus.textContent = 'Your room is ready.'
 		enterButton.hidden = true
 		enterButton.disabled = true
-		showAvatarSelection()
+		await showAvatarSelection()
 		queuePrebuildSalons(coupleCategories)
 	} catch (error) {
 		console.error('[Museum] Entrance loading failed:', error)

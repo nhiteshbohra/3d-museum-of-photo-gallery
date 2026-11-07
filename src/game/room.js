@@ -807,7 +807,7 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const mainThumbnailUrl = typeof gallery.mainThumbnailUrl === 'string' ? gallery.mainThumbnailUrl.trim() : ''
 
 		// Suggestion A: Dual-Portrait Diptych Layout on FRONT & BACK of partition wall
-		// Two dedicated portrait frames side-by-side on each face, perfectly framed and flanked by antique sconces
+		// Two dedicated portrait frames side-by-side on each face, perfectly framed
 		const diptychW = 1.45
 		const diptychH = 2.15
 		const panelDepth = 0.06
@@ -825,48 +825,6 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		partDadoNorth.position.set(0, 1.0, panelZNorth + 0.04)
 		group.add(partDadoNorth)
 		disposables.push(partDadoGeo, partDadoMat)
-
-		// Flanking Antique Wall Light Sconces on FRONT (South) Face (Milestone M6)
-		for (const sx of [-2.10, 2.10]) {
-			spawnGlbItem(
-				{
-					id: `sconce_front_${sx < 0 ? 'left' : 'right'}`,
-					type: 'glb',
-					path: 'models/ready/lighting/antique_wall_light.glb',
-					contact: 'wall',
-					x: sx,
-					y: 2.20,
-					z: panelZ,
-					rotationY: 0,
-					scale: 0.35,
-					targetHeight: 0.70,
-					alignToSurface: false,
-				},
-				roomKey,
-				{ group, disposables, obstacles }
-			).catch((err) => console.warn('[room] Front partition sconce failed:', err))
-		}
-
-		// Flanking Antique Wall Light Sconces on BACK (North) Face (Milestone M6)
-		for (const sx of [-2.10, 2.10]) {
-			spawnGlbItem(
-				{
-					id: `sconce_back_${sx < 0 ? 'left' : 'right'}`,
-					type: 'glb',
-					path: 'models/ready/lighting/antique_wall_light.glb',
-					contact: 'wall',
-					x: sx,
-					y: 2.20,
-					z: panelZNorth,
-					rotationY: Math.PI,
-					scale: 0.35,
-					targetHeight: 0.70,
-					alignToSurface: false,
-				},
-				roomKey,
-				{ group, disposables, obstacles }
-			).catch((err) => console.warn('[room] Back partition sconce failed:', err))
-		}
 
 		// Helper to build a responsive, tightly-framed portrait photo frame
 		function addPartitionFrame({ x, z, rotY, slotIdx, fallbackUrl, label, isBack = false }) {

@@ -32,6 +32,16 @@ flood-rate-limited, spoofed-id-not-relayed.
 
 ## 2. PENDING — NOT done / NOT verified
 
+### 2.A Multi-Customer Photo Management (new initiative)
+Research + architecture plan written: `docs/planning/MULTI_CUSTOMER_PHOTO_MANAGEMENT.md`
+(one folder per customer, master.json URL→folder map, admin UI for founder).
+No code changed yet — awaits answers to the open questions in the plan.
+- [ ] Answer open questions (customer count, self-serve vs import, URLs, compliance)
+- [ ] Phase 1: folder layout + `--customer` in `tools/organize_photos.py`
+- [ ] Phase 2: server isolation (`/photos/*` scoped per session customer) + tests
+- [ ] Phase 3: founder admin UI (photos, passcode, active window, quotes, save)
+- [ ] Phase 4: hardening (rate limit, revocation, backup, audit log)
+
 ### 2.1 Live two-browser visual test (the big one)
 The network relay and server validation are automated and passing, but the
 **end-to-end visual "two people in two windows" test has NOT been run** in a real

@@ -252,74 +252,6 @@ Starting isolated test server on port 8993...
 
 ---
 
-## Milestone M8 & M9 & M10 & M11 Verification Report
-
-### 1. Strict 2-Player Capacity & Character Exclusivity Lock (M8)
-- Test suite: `tests/adversarial_occupancy_character_lock.test.mjs`
-- Result: **100% PASS** (duration: 1.7s)
-  - `/api/occupancy` accurately reflects active claimed characters and vacancy count.
-  - Player 1 joining with Maya immediately claims Maya.
-  - Player 2 attempting to join with Maya is rejected with code `4005 (character-taken)`.
-  - Player 2 joining with Ethan succeeds (`count: 2`, `full: true`).
-  - Player 3 attempting to join is rejected with code `4002 (room-full)`.
-  - Player 1 leaving immediately unlocks Maya and drops count to 1.
-  - Subsequent visitor successfully joins with freed Maya avatar.
-
-### 2. Option 3 Dual-Portrait Diptych & 75 Photo Architecture (M9)
-- Test suites: `scripts/check_photos.mjs`, `tests/room_photo_loading.test.mjs`
-- Results:
-  - `check_photos.mjs`: **75/75 photos present (0 missing)**.
-  - `room_photo_loading.test.mjs`: **PASS (all 7 rooms build and apply 75 local textures)**.
-  - Grand Lobby: 3 photo frames (Masterpiece + West & East companions).
-  - All 6 Salons: 12 photo frames each (Front Diptych, Back Diptych, North Masterpiece, Gates, East Gallery).
-  - Front and back partition walls flanked by antique wall sconces (`antique_wall_light.glb`) at $x = \pm 2.10\text{m}$.
-
-### 3. Stair Climbing & Descending Realism (M10)
-- Controlled step-down damp threshold in `src/engine/engine.js` prevents gravity freefall down stair drops $\le 0.35\text{m}$.
-- Step-up damping raised to 26 for responsive elevation without foot clipping into step risers.
-- Locomotion speed decoupled from vertical jumps with exponential smoothing in `src/avatars/avatarWorld.js`.
-
-### 4. Photo Organizer Tool (M11)
-- `tools/organize_photos.py` verified with `--dry-run`, `--sequential`, `--room`, `--image`, and smartphone EXIF auto-rotation.
-- Suite check: `npm run check` (46/46 unit & protocol tests pass, layout valid, production build clean).
-
----
-
-## 11. Milestones M10, M11 & M12 Verification Report (R1–R4 Hardening & Mobile Optimization)
-
-### 1. Salon Partition Wall Sconces & 75-Photo Synchronization (R1 & R2 / M10)
-- **Test Suites:** `tests/layout.test.mjs`, `tests/adversarial_salon_lights_m10.test.mjs`, `scripts/check_photos.mjs`
-- **Results:**
-  - `layout.test.mjs`: **PASS** — `spawnGlbItem` mock attaches `THREE.Group` nodes with `userData` (`id`, `path`, `contact`) and asserts 4 partition antique wall sconces (`sconce_${roomKey}_front_0/1`, `sconce_${roomKey}_back_0/1`) per non-lobby salon, 0 benches/sofas/chandeliers/bookcases outside the lobby, and 0 floor obstacles created by wall sconces.
-  - `adversarial_salon_lights_m10.test.mjs`: **11/11 PASS** — verifies exact coordinates (`x = ±2.10m`, `y = 2.65m`), rotations (`0` and `π`), and obstacle isolation across all 6 salons.
-  - `scripts/check_photos.mjs`: **PASS (`PHOTO AUDIT: 75/75 photos present (0 missing)`)** — zero references to 61 photos remain in `scripts/check_photos.mjs`, `docs/agent-work/TEST_MATRIX.md`, or `public/photos/README.md`.
-
-### 2. Two-Player Character Locking Concurrency & Client Recovery (R3 / M11)
-- **Test Suites:** `tests/two_client_test.mjs`, `tests/adversarial_m11_race_grace.test.mjs`, `tests/adversarial_reconnect_m11.test.mjs`, `tests/adversarial_challenger_lifecycle_stress.test.mjs`, `tests/adversarial_disconnect_reconnect_loop.test.mjs`
-- **Results:**
-  - Simultaneous race condition (2 and 4 concurrent claimants for Maya, including multi-tab duplicate session tokens): **100% PASS** — exactly 1 winner receives `room_state`; all duplicate claimants receive `{ t: 'error', msg: 'character-taken' }` and close code `4005`.
-  - 30-second disconnect grace protection: **100% PASS** — ungracefully disconnected owner's character remains locked against imposters (`4005`) while allowing the original `sessionToken` owner to reconnect seamlessly.
-  - Client UI & WebSocket recovery: **100% PASS** — `4005` suppresses automatic reconnect loops, `disconnectNet()` detaches stale socket listeners and resets `NET.terminalError`, and `handleCharacterClaimRejected()` returns the visitor to `#avatar-select` with a toast notification and immediate `/api/occupancy` refresh so they can select the remaining character without reloading.
-
-### 3. Mobile Optimization Suite (R4 / M12)
-- **`MOB-P0-03` (Avatar WebP Textures & GPU Memory Disposal):**
-  - Converted 8 character textures (`man` & `woman` base, color, mask, normal) from PNG (`17.85 MB`) to WebP (`2.40 MB`, **86.6% transfer reduction**) with `.png` fallback.
-  - Disposed overwritten GLB embedded base textures and immediately disposed intermediate `color` (`2048×2048`) and `mask` (`1024×1024`) textures after canvas pixel extraction, reclaiming ~26.6 MB of GPU VRAM per avatar and reusing a single `workImage` buffer.
-- **`MOB-P1-05` (Room Memory Budgeting & Deep Eviction Disposal):**
-  - Clamped `MAX_CACHED_ROOMS = 1` on mobile (`3` on desktop) and `MAX_CACHED_PHOTO_TEXTURES = 24` on mobile (`35` on desktop).
-  - Added recursive `geometry.dispose()` and `material.dispose()` traversal in `evictExcessRooms()` and guarded `spawnGlbItemAsync()` against late-resolving GLBs targeting evicted rooms (`if (ctx?.disposed || group?.userData?.disposed) return null`).
-- **`MOB-P1-06` (Frame-Loop Consolidation & DOM/Raycast Throttling):**
-  - Consolidated `multiplayer.js` secondary `requestAnimationFrame` loop into `engineApi.onFrame`.
-  - Added `document.hidden` early return, removed per-frame `resize()` calls, guarded pre-play camera drift with `!inSanctuary` on touch devices, throttled desktop cursor raycasts to 10 Hz, and throttled nametag DOM `.style` writes to integer pixel changes.
-- **`MOB-P2-08` (Adaptive Idle Network Traffic):**
-  - Replaced continuous 20 Hz state broadcasts with delta-based transmission (`50ms` during movement/rotation, 1 immediate settling packet on stop, `1000ms` idle keep-alive heartbeat — **95% reduction in idle WebSocket traffic**).
-- **`MOB-P2-09` (Pre-Authentication Code Splitting):**
-  - Configured Rollup `manualChunks` (`vendor-three`: 789.37 kB, `engine-3d`: 109.27 kB, `avatars-multiplayer`: 39.51 kB) and dynamic `import()` inside `startMuseumExperience()`, reducing the pre-authentication `main.js` entry bundle from **994.34 kB to 56.29 kB** (**94.3% reduction**, 17.17 kB gzip).
-
-
-
----
-
 ## 4. Playwright Headless Browser WebGL Avatar Locomotion Verification
 
 Command: `python tests/check_avatar_controls.py http://127.0.0.1:8080?code=290512`  
@@ -711,47 +643,15 @@ Starting isolated test server on port 8997...
 
 ---
 
-## Milestone M8 & M9 & M10 & M11 Verification Report
+## 11. Milestones M10, M11 & M12 Verification Report (R1–R4 Hardening, Mobile Optimization & Audit Recheck Fixes)
 
-### 1. Strict 2-Player Capacity & Character Exclusivity Lock (M8)
-- Test suite: `tests/adversarial_occupancy_character_lock.test.mjs`
-- Result: **100% PASS** (duration: 1.7s)
-  - `/api/occupancy` accurately reflects active claimed characters and vacancy count.
-  - Player 1 joining with Maya immediately claims Maya.
-  - Player 2 attempting to join with Maya is rejected with code `4005 (character-taken)`.
-  - Player 2 joining with Ethan succeeds (`count: 2`, `full: true`).
-  - Player 3 attempting to join is rejected with code `4002 (room-full)`.
-  - Player 1 leaving immediately unlocks Maya and drops count to 1.
-  - Subsequent visitor successfully joins with freed Maya avatar.
-
-### 2. Option 3 Dual-Portrait Diptych & 75 Photo Architecture (M9)
-- Test suites: `scripts/check_photos.mjs`, `tests/room_photo_loading.test.mjs`
-- Results:
-  - `check_photos.mjs`: **75/75 photos present (0 missing)**.
-  - `room_photo_loading.test.mjs`: **PASS (all 7 rooms build and apply 75 local textures)**.
-  - Grand Lobby: 3 photo frames (Masterpiece + West & East companions).
-  - All 6 Salons: 12 photo frames each (Front Diptych, Back Diptych, North Masterpiece, Gates, East Gallery).
-  - Front and back partition walls flanked by antique wall sconces (`antique_wall_light.glb`) at $x = \pm 2.10\text{m}$.
-
-### 3. Stair Climbing & Descending Realism (M10)
-- Controlled step-down damp threshold in `src/engine/engine.js` prevents gravity freefall down stair drops $\le 0.35\text{m}$.
-- Step-up damping raised to 26 for responsive elevation without foot clipping into step risers.
-- Locomotion speed decoupled from vertical jumps with exponential smoothing in `src/avatars/avatarWorld.js`.
-
-### 4. Photo Organizer Tool (M11)
-- `tools/organize_photos.py` verified with `--dry-run`, `--sequential`, `--room`, `--image`, and smartphone EXIF auto-rotation.
-- Suite check: `npm run check` (46/46 unit & protocol tests pass, layout valid, production build clean).
-
----
-
-## 11. Milestones M10, M11 & M12 Verification Report (R1–R4 Hardening & Mobile Optimization)
-
-### 1. Salon Partition Wall Sconces & 75-Photo Synchronization (R1 & R2 / M10)
+### 1. Salon Partition Wall Decor Policy & 75-Photo Synchronization (R1 & R2 / M10 & R-01)
 - **Test Suites:** `tests/layout.test.mjs`, `tests/adversarial_salon_lights_m10.test.mjs`, `scripts/check_photos.mjs`
 - **Results:**
-  - `layout.test.mjs`: **PASS** — `spawnGlbItem` mock attaches `THREE.Group` nodes with `userData` (`id`, `path`, `contact`) and asserts 4 partition antique wall sconces (`sconce_${roomKey}_front_0/1`, `sconce_${roomKey}_back_0/1`) per non-lobby salon, 0 benches/sofas/chandeliers/bookcases outside the lobby, and 0 floor obstacles created by wall sconces.
-  - `adversarial_salon_lights_m10.test.mjs`: **11/11 PASS** — verifies exact coordinates (`x = ±2.10m`, `y = 2.65m`), rotations (`0` and `π`), and obstacle isolation across all 6 salons.
+  - `layout.test.mjs`: **PASS** — asserts 0 antique wall light GLBs across all non-lobby salons (`wallLights.length === 0`), 0 benches/sofas/chandeliers/bookcases outside the lobby, and botanical planters preserved.
+  - `adversarial_salon_lights_m10.test.mjs`: **5/5 PASS** — verifies non-lobby salons contain exactly 0 antique wall light GLBs (enforcing the plants-only decorative policy, resolving R-01; historical note: previous draft mentioned mounting height $y = 2.65\text{m}$ and semantic IDs `sconce_${roomKey}_front_0/1`, whereas prior code mounted at $y = 2.20\text{m}$ with IDs `sconce_front_left/right`, now completely removed across all 6 salons to adhere strictly to the decor policy). Verifies walkway clearance and doorway accessibility (zero visitor trapping) across all 6 salons.
   - `scripts/check_photos.mjs`: **PASS (`PHOTO AUDIT: 75/75 photos present (0 missing)`)** — zero references to 61 photos remain in `scripts/check_photos.mjs`, `docs/agent-work/TEST_MATRIX.md`, or `public/photos/README.md`.
+  - **Decoupled Architecture**: Functional Three.js gallery lighting (6 ceiling downlights, ambient light, keyLight), 1.0m wainscot dado moulding rails, central pillar architecture, corner botanical planters, and diptych portrait photo frames remain 100% intact.
 
 ### 2. Two-Player Character Locking Concurrency & Client Recovery (R3 / M11)
 - **Test Suites:** `tests/two_client_test.mjs`, `tests/adversarial_m11_race_grace.test.mjs`, `tests/adversarial_reconnect_m11.test.mjs`, `tests/adversarial_challenger_lifecycle_stress.test.mjs`, `tests/adversarial_disconnect_reconnect_loop.test.mjs`
@@ -760,7 +660,7 @@ Starting isolated test server on port 8997...
   - 30-second disconnect grace protection: **100% PASS** — ungracefully disconnected owner's character remains locked against imposters (`4005`) while allowing the original `sessionToken` owner to reconnect seamlessly.
   - Client UI & WebSocket recovery: **100% PASS** — `4005` suppresses automatic reconnect loops, `disconnectNet()` detaches stale socket listeners and resets `NET.terminalError`, and `handleCharacterClaimRejected()` returns the visitor to `#avatar-select` with a toast notification and immediate `/api/occupancy` refresh so they can select the remaining character without reloading.
 
-### 3. Mobile Optimization Suite (R4 / M12)
+### 3. Mobile Optimization Suite (R4 / M12 & R-02 Pre-Auth Deferral)
 - **`MOB-P0-03` (Avatar WebP Textures & GPU Memory Disposal):**
   - Converted 8 character textures (`man` & `woman` base, color, mask, normal) from PNG (`17.85 MB`) to WebP (`2.40 MB`, **86.6% transfer reduction**) with `.png` fallback.
   - Disposed overwritten GLB embedded base textures and immediately disposed intermediate `color` (`2048×2048`) and `mask` (`1024×1024`) textures after canvas pixel extraction, reclaiming ~26.6 MB of GPU VRAM per avatar and reusing a single `workImage` buffer.
@@ -772,8 +672,13 @@ Starting isolated test server on port 8997...
   - Added `document.hidden` early return, removed per-frame `resize()` calls, guarded pre-play camera drift with `!inSanctuary` on touch devices, throttled desktop cursor raycasts to 10 Hz, and throttled nametag DOM `.style` writes to integer pixel changes.
 - **`MOB-P2-08` (Adaptive Idle Network Traffic):**
   - Replaced continuous 20 Hz state broadcasts with delta-based transmission (`50ms` during movement/rotation, 1 immediate settling packet on stop, `1000ms` idle keep-alive heartbeat — **95% reduction in idle WebSocket traffic**).
-- **`MOB-P2-09` (Pre-Authentication Code Splitting):**
-  - Configured Rollup `manualChunks` (`vendor-three`: 789.37 kB, `engine-3d`: 109.27 kB, `avatars-multiplayer`: 39.51 kB) and dynamic `import()` inside `startMuseumExperience()`, reducing the pre-authentication `main.js` entry bundle from **994.34 kB to 56.29 kB** (**94.3% reduction**, 17.17 kB gzip).
+- **`MOB-P2-09` (Pre-Authentication Code Splitting & Three.js Deferral - R-02):**
+  - Severed top-level static import of `createCharacterSetup` in `src/main.js` and deferred character setup to asynchronous dynamic `import('./avatars/characterSetup.js')` inside `showAvatarSelection()`.
+  - Configured Rollup `manualChunks` (`vendor-three`: 789.37 kB, `engine-3d`: 108.63 kB, `avatars-multiplayer`: 32.14 kB, `net-client`: 3.23 kB, `action-manifest`: 4.18 kB, `roster-data`: 0.24 kB) and configured `build.modulePreload.resolveDependencies` to strip 3D engine, Three.js, and avatar chunks from landing entry preloading.
+  - Initial unauthenticated visitor landing page transfers only ~58 kB JavaScript (~18 kB gzip: `main-*.js`, `net-client-*.js`, `action-manifest-*.js`, `roster-data-*.js`).
+  - Zero Three.js bytes transferred and zero WebGL initialization runs prior to valid ticket authentication.
+
+
 
 
 

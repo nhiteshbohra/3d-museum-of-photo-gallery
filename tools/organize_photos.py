@@ -417,6 +417,7 @@ Examples:
     )
     parser.add_argument("--source", "-s", help="Folder containing images to organize")
     parser.add_argument("--image", "-i", help="Place a single specific image file")
+    parser.add_argument("--customer", "-c", help="Target customer slug (writes to data/customers/<slug>/photos/)")
     parser.add_argument("--room", "-r", help="Target room (0-6 or name: lobby, fireside, music, library, paris, orangery, alcove)")
     parser.add_argument("--slot", help="Target slot number (1-12, or 1-3 for lobby)")
     parser.add_argument("--out", "-o", default="public/photos", help="Destination root folder (default: public/photos)")
@@ -427,6 +428,16 @@ Examples:
 
     args = parser.parse_args()
 
+    out_root = args.out
+    if args.customer:
+        slug = args.customer.strip().lower()
+        customer_dir = Path("data") / "customers" / slug
+        if not customer_dir.exists():
+            print(f"[error] Customer folder '{customer_dir}' not found. Create customer first via admin API or customerStore.", file=sys.stderr)
+            sys.exit(1)
+        out_root = str(customer_dir / "photos")
+        print(f"[notice] Targeting customer '{slug}' photos: {out_root}")
+
     target_room = resolve_room(args.room) if args.room is not None else None
     target_slot = int(args.slot) if args.slot is not None and args.slot.isdigit() else None
 
@@ -434,12 +445,12 @@ Examples:
     if args.image:
         plan, skipped = build_placement_plan(
             source="",
-            out_root=args.out,
+            out_root=out_root,
             target_room=target_room,
             target_slot=target_slot,
             single_image=args.image,
         )
-        execute_plan(plan, skipped, args.out, dry_run=args.dry_run)
+        execute_plan(plan, skipped, out_root, dry_run=args.dry_run)
         return
 
     source = args.source
@@ -462,7 +473,7 @@ Examples:
 
     plan, skipped = build_placement_plan(
         source=source,
-        out_root=args.out,
+        out_root=out_root,
         target_room=target_room,
         target_slot=target_slot,
         folder_mode=args.folder_mode,
@@ -484,14 +495,14 @@ Examples:
         if choice in ("", "y", "yes"):
             plan, skipped = build_placement_plan(
                 source=source,
-                out_root=args.out,
+                out_root=out_root,
                 target_room=target_room,
                 target_slot=target_slot,
                 folder_mode=args.folder_mode,
                 sequential=True,
             )
 
-    execute_plan(plan, skipped, args.out, dry_run=args.dry_run)
+    execute_plan(plan, skipped, out_root, dry_run=args.dry_run)
 
 
 if __name__ == "__main__":

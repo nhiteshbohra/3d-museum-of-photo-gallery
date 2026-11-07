@@ -28,6 +28,17 @@ export default defineConfig({
     build: {
         minify: 'esbuild',
         chunkSizeWarningLimit: 1200,
+        modulePreload: {
+            resolveDependencies(filename, deps) {
+                // Prevent preloading heavy 3D / game chunks on initial landing page load
+                return deps.filter(dep =>
+                    !dep.includes('vendor-three') &&
+                    !dep.includes('engine-3d') &&
+                    !dep.includes('avatars-multiplayer') &&
+                    !dep.includes('characterSetup')
+                )
+            }
+        },
         rollupOptions: {
             input: {
                 main: resolve(__dirname, 'index.html'),
@@ -36,6 +47,9 @@ export default defineConfig({
                 manualChunks(id) {
                     if (id.includes('node_modules/three')) return 'vendor-three'
                     if (id.includes('/src/engine/') || id.includes('\\src\\engine\\') || id.includes('/src/game/') || id.includes('\\src\\game\\')) return 'engine-3d'
+                    if (id.includes('/src/net/') || id.includes('\\src\\net\\')) return 'net-client'
+                    if (id.includes('actionManifest')) return 'action-manifest'
+                    if (id.includes('characters.json')) return 'roster-data'
                     if (id.includes('avatarWorld') || id.includes('multiplayer')) return 'avatars-multiplayer'
                 },
             },
