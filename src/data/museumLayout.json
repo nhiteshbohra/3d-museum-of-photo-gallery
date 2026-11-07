@@ -43,6 +43,19 @@
         "targetHeight": 1.5,
         "alignToSurface": true,
         "sinkY": 0.001
+      },
+      {
+        "id": "itm_lobby_chinese_commode",
+        "type": "glb",
+        "path": "models/ready/furniture/furniture_chinese_commode.glb",
+        "contact": "floor",
+        "x": 0,
+        "y": 0,
+        "z": 8.35,
+        "rotationY": 3.14159,
+        "scale": 0.445,
+        "targetHeight": 0.9,
+        "alignToSurface": true
       }
     ],
     "fireside": [

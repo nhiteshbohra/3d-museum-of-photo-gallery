@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { runInNewContext } from 'node:vm'
 import { coupleSalons, ROOM_KEY_TO_TITLE } from '../src/data/coupleMuseum.js'
 
-test('all seven rooms build and apply all 61 local photo textures', async () => {
+test('all seven rooms build and apply all 75 local photo textures', async () => {
 	const context = new Proxy({
 		measureText: text => ({ width: String(text).length * 12 }),
 		createLinearGradient: () => ({ addColorStop() {} }),
@@ -27,7 +27,7 @@ test('all seven rooms build and apply all 61 local photo textures', async () => 
 		let total = 0
 		for (const [roomKey, title] of [['lobby', 'Lobby'], ...Object.entries(ROOM_KEY_TO_TITLE)]) {
 			const room = buildRoom({ width: 21, length: 18, height: 4, mode: roomKey === 'lobby' ? 'lobby' : 'gallery', roomKey, gallery: coupleSalons[title] || {}, lobby: { categories: Object.values(ROOM_KEY_TO_TITLE) } })
-			const expected = roomKey === 'lobby' ? 1 : 10
+			const expected = roomKey === 'lobby' ? 3 : 12
 			assert.equal(room.deferredTextureLoads.length, expected, roomKey + ' load requests')
 			assert.equal(room.pickableMeshes.filter(mesh => mesh.userData.isPhoto).length, expected, roomKey + ' photo meshes')
 			for (const job of room.deferredTextureLoads) {
@@ -41,7 +41,7 @@ test('all seven rooms build and apply all 61 local photo textures', async () => 
 				total++
 			}
 		}
-		assert.equal(total, 61)
+		assert.equal(total, 75)
 	} finally {
 		globalThis.document = originalDocument
 	}

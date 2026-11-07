@@ -2,9 +2,22 @@
 import json
 import sys
 from pathlib import Path
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 from playwright.sync_api import sync_playwright
 
-url = sys.argv[1] if len(sys.argv) > 1 else 'http://127.0.0.1:8096'
+raw_url = sys.argv[1] if len(sys.argv) > 1 else 'http://127.0.0.1:8096'
+parsed = urlparse(raw_url)
+qs = parse_qs(parsed.query)
+if 'code' not in qs and 'invite' not in qs:
+    qs['code'] = ['290512']
+    parsed = parsed._replace(query=urlencode(qs, doseq=True))
+    url = urlunparse(parsed)
+else:
+    url = raw_url
+
+invite_code = qs.get('code', [None])[0] or qs.get('invite', [None])[0] or '290512'
+base_origin = f"{parsed.scheme}://{parsed.netloc}"
+probe_url = f"{base_origin}/__relay_probe__"
 output = Path(__file__).resolve().parents[1] / 'docs/reports/character-setup'
 output.mkdir(parents=True, exist_ok=True)
 init = '''window.requestIdleCallback=()=>0;window.requestAnimationFrame=cb=>{
@@ -16,7 +29,7 @@ init = '''window.requestIdleCallback=()=>0;window.requestAnimationFrame=cb=>{
 };'''
 
 with sync_playwright() as p:
-    browser = p.chromium.launch(headless=True)
+    browser = p.chromium.launch(headless=True, args=['--disable-web-security', '--disable-features=BlockInsecurePrivateNetworkRequests'])
     context = browser.new_context(viewport={'width': 1440, 'height': 1050})
     page = context.new_page()
     errors = []
@@ -25,15 +38,19 @@ with sync_playwright() as p:
 
     def choose(id):
         page.evaluate("id=>document.querySelector('[data-avatar-id='+id+']').click()", id)
-        page.wait_for_function("!document.querySelector('#btn-enter-museum').hidden", polling=100, timeout=120000)
+        page.wait_for_function("Boolean(document.querySelector('#btn-enter-museum') && !document.querySelector('#btn-enter-museum').hidden)", polling=100, timeout=120000)
 
     page.goto(url, wait_until='domcontentloaded')
-    page.wait_for_function("!document.querySelector('#avatar-select').hidden", polling=100, timeout=180000)
+    page.wait_for_function("Boolean(document.querySelector('#avatar-select') && !document.querySelector('#avatar-select').hidden)", polling=100, timeout=180000)
     assert page.locator('#btn-enter-museum').is_hidden()
     assert page.locator('[data-anim]').count() == 0
     choose('maya')
-    assert page.evaluate('window.__multiplayer.getState().localAvatar.actions.size') == 21
-    assert page.evaluate("window.__multiplayer.getState().localAvatar.actions.get('clap').repetitions") == 1
+    page.wait_for_function('window.__multiplayer?.getState()?.localAvatar?.actions?.size === 20', polling=200, timeout=30000)
+    assert page.evaluate('window.__multiplayer.getState().localAvatar.actions.size') == 20
+    assert page.evaluate("window.__multiplayer.getState().localAvatar.actions.get('clap')") is None
+    assert page.evaluate("window.__multiplayer.getState().localAvatar.actions.has('wave')") is True
+    assert page.evaluate("window.__multiplayer.getState().localAvatar.actions.has('dance')") is True
+    assert page.evaluate("window.__multiplayer.getState().localAvatar.actions.has('nod')") is True
     page.locator('#visitor-name').fill('Asha')
     before = page.evaluate('''() => {
         const s=window.__multiplayer.getState().localAvatar.appearanceTexture;
@@ -59,7 +76,7 @@ with sync_playwright() as p:
     page.locator('#btn-enter-museum').scroll_into_view_if_needed()
     page.screenshot(path=str(output / 'mobile-controls.png'), timeout=120000)
     page.reload(wait_until='domcontentloaded')
-    page.wait_for_function("!document.querySelector('#avatar-select').hidden", polling=100, timeout=180000)
+    page.wait_for_function("Boolean(document.querySelector('#avatar-select') && !document.querySelector('#avatar-select').hidden)", polling=100, timeout=180000)
     choose('maya')
     assert page.locator('#visitor-name').input_value() == 'Asha'
     assert page.locator('#look-top').input_value() == '#22aa66'
@@ -73,17 +90,32 @@ with sync_playwright() as p:
     }''')
     assert page.evaluate('window.__multiplayer.getState().localAvatar.group.parent === window.__engineApi.scene')
     assert page.evaluate("window.__multiplayer.getState().localAvatar.appearance.top") == '#22aa66'
-    observer = browser.new_page()
-    observer.route('**/__relay_probe__', lambda route: route.fulfill(content_type='text/html', body='<!doctype html><title>Relay check</title>'))
-    observer.goto(url + '/__relay_probe__', wait_until='domcontentloaded')
+    page.wait_for_function('window.__multiplayer?.getState()?.connected === true', polling=100, timeout=15000)
+    observer = context.new_page()
+    observer.route('**/__relay_probe__', lambda route: route.fulfill(content_type='text/html', headers={'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Private-Network': 'true'}, body='<!doctype html><title>Relay check</title>'))
+    observer.goto(probe_url, wait_until='domcontentloaded')
     # Observe the actual relay profile without loading another full 3D scene.
-    relay = observer.evaluate('''() => new Promise((resolve,reject)=>{
+    relay = observer.evaluate('''code => new Promise((resolve,reject)=>{
+        let resolved = false;
         const ws=new WebSocket(location.origin.replace('http','ws')+'/ws');
-        ws.onopen=()=>ws.send(JSON.stringify({t:'join',room:'lobby',name:'Observer',model:'man.glb'}));
-        ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.t==='room_state'){ws.close();resolve(m.peers)}};
-        ws.onerror=()=>reject(new Error('Relay connection failed'));
-    })''')
+        ws.onopen=()=>ws.send(JSON.stringify({t:'join',proto:2,room:'lobby',name:'Observer',model:'man.glb',code:code||undefined}));
+        ws.onmessage=e=>{
+            try {
+                const m=JSON.parse(e.data);
+                if(m.t==='room_state'){
+                    resolved = true;
+                    try { ws.close(1000, 'done'); } catch {}
+                    resolve(m.peers);
+                }
+            } catch(err) {
+                if(!resolved) reject(err);
+            }
+        };
+        ws.onerror=e=>{ if(!resolved) reject(new Error('Relay connection failed: onerror fired')); };
+        ws.onclose=e=>{ if(!resolved && e.code!==1000 && e.code!==1005) reject(new Error(`Relay closed unexpectedly: code=${e.code} reason=${e.reason}`)); };
+    })''', invite_code)
     assert any(peer['name'] == 'Asha' and peer.get('appearance', {}).get('top') == '#22aa66' for peer in relay), relay
+    observer.close()
     page.set_viewport_size({'width': 1280, 'height': 800})
     page.evaluate('''() => {
         const api=window.__engineApi;

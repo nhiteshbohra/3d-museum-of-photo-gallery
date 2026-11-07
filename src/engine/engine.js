@@ -29,8 +29,18 @@ export function startYourEngines({
 	galleryVideoUrl,
 	galleryLongExtract,
 }) {
+	function getTargetPixelRatio() {
+		const isMobile = typeof window !== 'undefined' && (
+			(typeof window.innerWidth === 'number' && window.innerWidth <= 768) ||
+			(typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+			('ontouchstart' in window)
+		)
+		const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) ? window.devicePixelRatio : 1
+		return Math.min(dpr, isMobile ? 1.5 : 2)
+	}
+
 	const renderer = new THREE.WebGLRenderer({ canvas, antialias: true })
-	renderer.setPixelRatio(Math.min(window.devicePixelRatio ?? 1, 2))
+	renderer.setPixelRatio(getTargetPixelRatio())
 
 	if ('outputColorSpace' in renderer) {
 		renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -80,27 +90,147 @@ export function startYourEngines({
 
 	let deferredTextureLoadToken = 0
 	let lastDoorTriggerTime = 0
+
+	// Room LRU Cache (max 3 cached rooms)
+	const MAX_CACHED_ROOMS = 3
+	const roomCache = new Map()
+	const prebuildingPromises = new Map()
+
+	// Photo Texture LRU Cache (max 35 textures bounded to prevent mobile GPU memory exhaustion)
+	const MAX_CACHED_PHOTO_TEXTURES = 35
 	const loadedPhotoTextureCache = new Map()
+	const inFlightTextures = new Set()
+	const inFlightPromises = new Map()
+	const textureUrlMap = new WeakMap()
+
+	function isTextureInUse(tex) {
+		if (!tex || typeof tex !== 'object') return false
+		if (inFlightTextures.has(tex)) return true
+
+		let texUrl = textureUrlMap.get(tex)
+		if (!texUrl && typeof tex.name === 'string' && tex.name) {
+			texUrl = tex.name.trim()
+		}
+		if (!texUrl) {
+			for (const [k, v] of loadedPhotoTextureCache.entries()) {
+				if (v === tex) {
+					texUrl = k
+					break
+				}
+			}
+		}
+
+		if (currentRoom) {
+			if (Array.isArray(currentRoom.disposables) && currentRoom.disposables.includes(tex)) return true
+			if (Array.isArray(currentRoom.deferredTextureLoads)) {
+				for (const job of currentRoom.deferredTextureLoads) {
+					const u = typeof job?.url === 'string' ? job.url.trim() : ''
+					if (u && (u === texUrl || loadedPhotoTextureCache.get(u) === tex)) {
+						return true
+					}
+				}
+			}
+			let inGroup = false
+			currentRoom.group?.traverse((child) => {
+				if (inGroup) return
+				if (child.isMesh && child.material) {
+					const mats = Array.isArray(child.material) ? child.material : [child.material]
+					for (const m of mats) {
+						if (m.map === tex) { inGroup = true; return }
+					}
+				}
+			})
+			if (inGroup) return true
+		}
+
+		if (roomCache && typeof roomCache.values === 'function') {
+			for (const cachedRoom of roomCache.values()) {
+				if (!cachedRoom) continue
+				if (Array.isArray(cachedRoom.disposables) && cachedRoom.disposables.includes(tex)) {
+					return true
+				}
+				if (Array.isArray(cachedRoom.deferredTextureLoads)) {
+					for (const job of cachedRoom.deferredTextureLoads) {
+						const u = typeof job?.url === 'string' ? job.url.trim() : ''
+						if (u && (u === texUrl || loadedPhotoTextureCache.get(u) === tex)) {
+							return true
+						}
+					}
+				}
+				if (cachedRoom.group) {
+					let inCachedGroup = false
+					cachedRoom.group.traverse((child) => {
+						if (inCachedGroup) return
+						if (child.isMesh && child.material) {
+							const mats = Array.isArray(child.material) ? child.material : [child.material]
+							for (const m of mats) {
+								if (m.map === tex) { inCachedGroup = true; return }
+							}
+						}
+					})
+					if (inCachedGroup) return true
+				}
+			}
+		}
+
+		return false
+	}
+
+	function evictExcessPhotoTextures() {
+		if (loadedPhotoTextureCache.size <= MAX_CACHED_PHOTO_TEXTURES) return
+		for (const [url, tex] of loadedPhotoTextureCache.entries()) {
+			if (loadedPhotoTextureCache.size <= MAX_CACHED_PHOTO_TEXTURES) break
+			if (!isTextureInUse(tex)) {
+				loadedPhotoTextureCache.delete(url)
+				if (tex && typeof tex.dispose === 'function') {
+					tex.dispose()
+				}
+			}
+		}
+	}
 
 	function loadTextureAsync(url) {
 		const key = String(url || '').trim()
 		if (!key) return Promise.reject(new Error('Empty url'))
 		if (loadedPhotoTextureCache.has(key)) {
-			return Promise.resolve(loadedPhotoTextureCache.get(key))
+			const tex = loadedPhotoTextureCache.get(key)
+			loadedPhotoTextureCache.delete(key)
+			loadedPhotoTextureCache.set(key, tex)
+			return Promise.resolve(tex)
+		}
+		if (inFlightPromises.has(key)) {
+			return inFlightPromises.get(key)
 		}
 		const loader = new THREE.TextureLoader()
 		if (typeof loader.setCrossOrigin === 'function') loader.setCrossOrigin('anonymous')
-		return new Promise((resolve, reject) => {
+		const promise = new Promise((resolve, reject) => {
 			loader.load(
 				key,
 				(tex) => {
+					inFlightPromises.delete(key)
+					if (tex && typeof tex === 'object') {
+						inFlightTextures.add(tex)
+						textureUrlMap.set(tex, key)
+						if (!tex.name) tex.name = key
+					}
 					loadedPhotoTextureCache.set(key, tex)
+					evictExcessPhotoTextures()
+					Promise.resolve().then(() => {
+						setTimeout(() => {
+							if (tex) inFlightTextures.delete(tex)
+						}, 0)
+					})
 					resolve(tex)
 				},
 				undefined,
-				reject
+				(err) => {
+					inFlightPromises.delete(key)
+					reject(err)
+				}
 			)
 		})
+		inFlightPromises.set(key, promise)
+		return promise
 	}
 
 	async function runDeferredTextureLoads(room, token) {
@@ -298,7 +428,15 @@ export function startYourEngines({
 	function disposeMany(items) {
 		for (const d of items) {
 			if (d && typeof d.dispose === 'function') {
-				if (d.isTexture && Array.from(loadedPhotoTextureCache.values()).includes(d)) continue
+				if (d.isTexture) {
+					if (isTextureInUse(d)) continue
+					for (const [k, tex] of loadedPhotoTextureCache.entries()) {
+						if (tex === d) {
+							loadedPhotoTextureCache.delete(k)
+							break
+						}
+					}
+				}
 				d.dispose()
 			}
 		}
@@ -439,11 +577,6 @@ export function startYourEngines({
 
 	let lastLoadedRoomParams = null
 
-	// Room LRU Cache (max 3 cached rooms)
-	const MAX_CACHED_ROOMS = 3
-	const roomCache = new Map()
-	const prebuildingPromises = new Map()
-
 	function getRoomCacheKey(params) {
 		if (!params || params.mode === 'lobby') return 'lobby'
 		const t = params.galleryTitle || params.seedTitle || ''
@@ -467,6 +600,7 @@ export function startYourEngines({
 				disposeMany(evicted.disposables)
 			}
 		}
+		evictExcessPhotoTextures()
 	}
 
 	function buildRoomInstance(params) {
@@ -606,20 +740,25 @@ export function startYourEngines({
 			evictExcessRooms()
 		}
 
-		if (currentRoom) {
+		const prevRoom = currentRoom
+		if (prevRoom) {
 			if (held) releaseHeld()
-			scene.remove(currentRoom.group)
-			let isCached = false
-			for (const r of roomCache.values()) {
-				if (r === currentRoom) { isCached = true; break }
-			}
-			if (!isCached) {
-				disposeMany(currentRoom.disposables)
-			}
+			scene.remove(prevRoom.group)
 		}
 
 		currentRoom = nextRoom
 		scene.add(currentRoom.group)
+
+		if (prevRoom) {
+			let isCached = false
+			for (const r of roomCache.values()) {
+				if (r === prevRoom) { isCached = true; break }
+			}
+			if (!isCached) {
+				disposeMany(prevRoom.disposables)
+				evictExcessPhotoTextures()
+			}
+		}
 		applyAmbiencePreset()
 		// Phase 4: Stream placed models in background so room shell renders immediately
 		whenPlacedItemsLoaded().catch(err => console.warn('[PlacedItems] Stream warning:', err))
@@ -1157,12 +1296,25 @@ export function startYourEngines({
 
 		const targetFloorY = floorY + eyeHeight
 
-		if (targetFloorY > camera.position.y && targetFloorY <= camera.position.y + maxStepHeight) {
-			camera.position.y = targetFloorY
+		// Smooth vertical step height transitions on stairs/inclines (Milestone M7)
+		const stepDownThreshold = maxStepHeight * 0.95
+		if (grounded && !jumpRequested && targetFloorY < camera.position.y && (camera.position.y - targetFloorY) <= stepDownThreshold) {
+			// Controlled step down stairs/incline: eliminate freefall thumping & maintain grounded walking
+			camera.position.y = THREE.MathUtils.damp(camera.position.y, targetFloorY, 24, dt)
+			if (Math.abs(camera.position.y - targetFloorY) < 0.004) {
+				camera.position.y = targetFloorY
+			}
+			velocity.y = 0
+			grounded = true
+		} else if (targetFloorY > camera.position.y && targetFloorY <= camera.position.y + maxStepHeight) {
+			// Controlled step up stairs/incline: responsive step up without sinking into steps
+			camera.position.y = THREE.MathUtils.damp(camera.position.y, targetFloorY, 26, dt)
+			if (Math.abs(camera.position.y - targetFloorY) < 0.004) {
+				camera.position.y = targetFloorY
+			}
 			velocity.y = 0
 			grounded = true
 		} else {
-
 			velocity.y += gravity * dt
 			if (jumpRequested && grounded) {
 				velocity.y = jumpSpeed
@@ -1173,7 +1325,10 @@ export function startYourEngines({
 			camera.position.y += velocity.y * dt
 
 			if (camera.position.y <= targetFloorY) {
-				camera.position.y = targetFloorY
+				camera.position.y = THREE.MathUtils.damp(camera.position.y, targetFloorY, 26, dt)
+				if (Math.abs(camera.position.y - targetFloorY) < 0.004) {
+					camera.position.y = targetFloorY
+				}
 				velocity.y = 0
 				grounded = true
 			}
@@ -1357,13 +1512,16 @@ export function startYourEngines({
 
 		const effectiveStandingYaw = yaw + cameraYawOffset
 		followTarget.copy(camera.position).y -= 0.6
-		followOffset.set(0, 0.7, currentZoomDistance).applyEuler(new THREE.Euler(effectivePitch, effectiveStandingYaw, 0, 'YXZ'))
+		const effectiveDist = (followCamera.aspect && followCamera.aspect < 1.0) ? Math.max(3.6, currentZoomDistance) : currentZoomDistance
+		followOffset.set(0, 0.7, effectiveDist).applyEuler(new THREE.Euler(effectivePitch, effectiveStandingYaw, 0, 'YXZ'))
 		followRay.set(followTarget, followOffset.clone().normalize())
 		followRay.far = followOffset.length()
-		// ponytail: camera obstruction checks room architecture; detailed furniture
-		// camera occlusion can use dedicated low-poly proxies if needed later.
-		const hit = followRay.intersectObjects(currentRoom?.group.children.filter(o => o.isMesh) || [], false)[0]
-		if (hit) followOffset.setLength(Math.max(0.25, hit.distance - 0.15))
+		// ponytail: camera obstruction checks room architecture; ignore floor/carpet planes so camera never zooms into avatar
+		const hit = followRay.intersectObjects(
+			currentRoom?.group.children.filter(o => o.isMesh && o.geometry?.type !== 'PlaneGeometry' && !o.name?.toLowerCase().includes('floor') && !o.name?.toLowerCase().includes('carpet')) || [],
+			false
+		)[0]
+		if (hit) followOffset.setLength(Math.max(0.35, hit.distance - 0.15))
 		followCamera.position.copy(followTarget).add(followOffset)
 		followCamera.lookAt(followTarget)
 		followCamera.updateMatrixWorld()
@@ -1380,11 +1538,21 @@ export function startYourEngines({
 		lastClientW = width
 		lastClientH = height
 
+		renderer.setPixelRatio(getTargetPixelRatio())
 		renderer.setSize(width, height, false)
 		const aspect = width / height
 		camera.aspect = aspect
-		camera.updateProjectionMatrix()
 		followCamera.aspect = aspect
+
+		if (aspect < 1.0) {
+			// Portrait mobile screens: widen vertical FOV to 82 degrees for spacious viewing
+			followCamera.fov = 82
+			camera.fov = 82
+		} else {
+			followCamera.fov = 70
+			camera.fov = 70
+		}
+		camera.updateProjectionMatrix()
 		followCamera.updateProjectionMatrix()
 
 		if (activeCamera && activeCamera.isOrthographicCamera) {
@@ -1617,6 +1785,7 @@ export function startYourEngines({
 		triggerResize() {
 			resize()
 		},
+		getTargetPixelRatio,
 		setCameraPosition(x, y, z, newYaw = 0, newPitch = 0) {
 			if (typeof x === 'number') camera.position.x = x
 			if (typeof y === 'number') camera.position.y = y
@@ -1735,6 +1904,13 @@ export function startYourEngines({
 				disposeMany(currentRoom.disposables)
 				currentRoom = null
 			}
+
+			for (const tex of loadedPhotoTextureCache.values()) {
+				if (tex && typeof tex.dispose === 'function') tex.dispose()
+			}
+			loadedPhotoTextureCache.clear()
+			inFlightTextures.clear()
+			inFlightPromises.clear()
 
 			disposeMany(staticDisposables)
 			disposeStaticCache()

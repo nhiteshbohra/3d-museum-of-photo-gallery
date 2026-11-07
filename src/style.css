@@ -63,13 +63,20 @@ body.in-sanctuary #scene-container,
 	right: 28px;
 	display: none;
 	align-items: center;
-	gap: 14px;
+	gap: 12px;
 	z-index: 100;
-	transition: opacity 0.5s ease, transform 0.5s ease;
+	transition: opacity 0.3s ease, transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+	pointer-events: auto;
 }
 
 body.in-sanctuary #top-bar {
 	display: flex;
+}
+
+/* When either drawer is open on desktop, shift #top-bar left of the drawer so they NEVER overlap */
+body.drawer-open #top-bar,
+body.chat-open #top-bar {
+	transform: translateX(calc(-1 * min(390px, 92vw) - 16px));
 }
 
 .top-bar-btn {
@@ -398,6 +405,25 @@ body.in-sanctuary #overlay {
 	box-shadow: 0 0 0 1px var(--gold-bright), 0 0 24px rgba(212, 175, 55, 0.3);
 }
 
+.avatar-card.claimed,
+.avatar-card:disabled {
+	opacity: 0.42;
+	cursor: not-allowed;
+	pointer-events: none;
+	border-color: rgba(255, 255, 255, 0.12) !important;
+	background: rgba(0, 0, 0, 0.35) !important;
+	transform: none !important;
+	box-shadow: none !important;
+}
+
+.avatar-card .claimed-badge {
+	font-size: 10px;
+	color: #d8b06a;
+	font-style: italic;
+	letter-spacing: 0.3px;
+	opacity: 0.9;
+}
+
 /* Visual Keycap Badges */
 .ticket-controls {
 	margin-top: 20px;
@@ -634,7 +660,7 @@ body.choosing-character #top-bar { display: none; }
 .character-setup-card #entrance-status { margin: 8px 0; color: #b9b0a4; font-size: 11px; }
 .character-setup-card #btn-enter-museum { margin-top: 20px; padding: 15px; }
 .character-setup-card :is(button, input):focus-visible { outline: 2px solid #f3d18a; outline-offset: 4px; }
-@media (max-width: 680px) {
+@media (max-width: 768px) {
 	#overlay { overflow-y: auto; align-items: flex-start; padding: 24px 0 32px; }
 	.character-setup-card#ticket-card { width: calc(100% - 24px); padding: 22px 18px; margin: auto; }
 	.character-layout { grid-template-columns: 1fr; gap: 20px; }
@@ -643,10 +669,35 @@ body.choosing-character #top-bar { display: none; }
 	.character-details #avatar-grid { margin-bottom: 18px; }
 	.character-setup-card .ticket-title { font-size: 13px; }
 	#overlay-footer { display: none; }
-	.hud-animations-drawer { width: 100vw; padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)) 14px; }
+	.hud-animations-drawer,
+	.hud-chat-drawer { width: 100vw; padding: max(16px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)) 14px; }
 	.anim-drawer-close { width: 44px; height: 44px; font-size: 18px; }
 	.anim-card-btn { min-height: 52px; padding: 12px 10px; }
 	.anim-tab-btn { min-height: 40px; padding: 8px 14px; }
+
+	/* On mobile, when drawer is open, hide top-bar entirely to prevent any screen clutter */
+	body.drawer-open #top-bar,
+	body.chat-open #top-bar {
+		opacity: 0;
+		pointer-events: none;
+	}
+
+	#top-bar {
+		top: 10px;
+		right: 10px;
+		gap: 6px;
+	}
+	.top-bar-btn {
+		padding: 6px 10px;
+		font-size: 11.5px;
+		gap: 4px;
+	}
+	.top-bar-key {
+		display: none !important;
+	}
+	#camera-hud-group {
+		display: none !important;
+	}
 }
 
 #room-curtain {
@@ -701,6 +752,11 @@ body.choosing-character #top-bar { display: none; }
 	margin: 14px auto;
 	max-width: 380px;
 	text-align: center;
+}
+
+#invite-input-row[hidden],
+.invite-input-row[hidden] {
+	display: none !important;
 }
 
 .invite-input-row {
@@ -835,36 +891,36 @@ body.in-sanctuary.is-touch-device #mobile-controls {
 
 .mobile-action-buttons {
 	position: fixed;
-	right: max(16px, env(safe-area-inset-right, 16px));
-	bottom: max(24px, env(safe-area-inset-bottom, 24px));
-	display: flex;
-	flex-direction: column;
-	gap: 12px;
+	right: max(12px, env(safe-area-inset-right, 12px));
+	bottom: max(16px, env(safe-area-inset-bottom, 16px));
+	display: grid;
+	grid-template-columns: repeat(2, 46px);
+	gap: 8px;
 	z-index: 955;
 	pointer-events: auto;
 }
 
 .mobile-btn {
-	width: 52px;
-	height: 52px;
+	width: 46px;
+	height: 46px;
 	border-radius: 50%;
 	border: 1.5px solid rgba(216, 176, 106, 0.65);
-	background: rgba(28, 20, 12, 0.88);
+	background: rgba(24, 18, 12, 0.9);
 	color: #f5eedf;
 	font-family: 'Cinzel', serif, system-ui;
-	font-size: 11px;
+	font-size: 10px;
 	font-weight: 700;
-	letter-spacing: 0.5px;
+	letter-spacing: 0.4px;
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.55);
-	backdrop-filter: blur(6px);
-	-webkit-backdrop-filter: blur(6px);
+	box-shadow: 0 3px 12px rgba(0, 0, 0, 0.55);
+	backdrop-filter: blur(8px);
+	-webkit-backdrop-filter: blur(8px);
 	cursor: pointer;
 	-webkit-tap-highlight-color: transparent;
 	touch-action: manipulation;
-	transition: transform 0.1s ease, background 0.15s ease;
+	transition: transform 0.15s ease, background 0.15s ease;
 }
 
 .mobile-btn:active {
@@ -1284,4 +1340,331 @@ body.in-sanctuary.is-touch-device #mobile-controls {
 	border-top: 1px solid rgba(255, 255, 255, 0.08);
 	margin-top: 8px;
 	font-family: system-ui, sans-serif;
+}
+
+/* =========================================================================
+   SANCTUARY CHAT / MESSAGES DRAWER & TOAST (MP-05, CHAT-NEW)
+   ========================================================================= */
+.hud-chat-drawer {
+	position: fixed;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	width: min(390px, 92vw);
+	z-index: 970;
+	background: rgba(14, 11, 8, 0.96);
+	border-left: 1.5px solid rgba(216, 176, 106, 0.45);
+	box-shadow: -10px 0 40px rgba(0, 0, 0, 0.75);
+	backdrop-filter: blur(16px);
+	-webkit-backdrop-filter: blur(16px);
+	display: flex;
+	flex-direction: column;
+	transform: translateX(100%);
+	transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+	padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom)) 16px;
+	box-sizing: border-box;
+	overflow: hidden;
+	pointer-events: auto;
+}
+
+.hud-chat-drawer.drawer-open {
+	transform: translateX(0);
+}
+
+.chat-drawer-header {
+	display: flex;
+	justify-content: space-between;
+	align-items: center;
+	padding-bottom: 12px;
+	border-bottom: 1px solid rgba(216, 176, 106, 0.2);
+	margin-bottom: 12px;
+}
+
+.chat-header-title-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+}
+
+.chat-drawer-title {
+	font-family: 'Cinzel', serif;
+	font-size: 15px;
+	font-weight: 700;
+	color: #f5eedf;
+	letter-spacing: 0.8px;
+	background: linear-gradient(135deg, #fff 0%, #d8b06a 100%);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+.chat-status-badge {
+	font-size: 10.5px;
+	color: #6bc07a;
+	background: rgba(107, 192, 122, 0.15);
+	border: 1px solid rgba(107, 192, 122, 0.3);
+	padding: 2px 8px;
+	border-radius: 999px;
+	font-family: system-ui, sans-serif;
+}
+
+.chat-messages-container {
+	flex: 1;
+	overflow-y: auto;
+	padding-right: 4px;
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	scrollbar-width: thin;
+	scrollbar-color: rgba(216, 176, 106, 0.3) transparent;
+}
+
+.chat-messages-list {
+	display: flex;
+	flex-direction: column;
+	gap: 10px;
+	margin-top: auto;
+}
+
+.chat-empty-hint {
+	text-align: center;
+	padding: 30px 16px;
+	color: rgba(245, 238, 223, 0.5);
+	font-size: 12px;
+	font-style: italic;
+	line-height: 1.5;
+}
+
+.chat-bubble-item {
+	padding: 10px 14px;
+	border-radius: 12px;
+	max-width: 88%;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	word-break: break-word;
+	animation: chatFadeIn 0.2s ease-out;
+}
+
+@keyframes chatFadeIn {
+	from { opacity: 0; transform: translateY(6px); }
+	to { opacity: 1; transform: translateY(0); }
+}
+
+.chat-msg-local {
+	align-self: flex-end;
+	background: linear-gradient(135deg, rgba(60, 42, 22, 0.95), rgba(40, 26, 12, 0.95));
+	border: 1px solid rgba(216, 176, 106, 0.4);
+	border-bottom-right-radius: 4px;
+}
+
+.chat-msg-remote {
+	align-self: flex-start;
+	background: rgba(28, 22, 16, 0.92);
+	border: 1px solid rgba(255, 255, 255, 0.12);
+	border-bottom-left-radius: 4px;
+}
+
+.chat-bubble-meta {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	font-size: 10.5px;
+}
+
+.chat-sender-name {
+	font-weight: 700;
+	letter-spacing: 0.3px;
+}
+.chat-sender-name.is-self {
+	color: #d8b06a;
+}
+.chat-sender-name.is-partner {
+	color: #f3a8b2;
+}
+
+.chat-timestamp {
+	color: rgba(245, 238, 223, 0.5);
+	font-size: 9.5px;
+}
+
+.chat-bubble-text {
+	color: #f5eedf;
+	font-size: 13px;
+	line-height: 1.4;
+	font-family: system-ui, -apple-system, sans-serif;
+}
+
+.chat-drawer-form {
+	display: flex;
+	gap: 8px;
+	padding-top: 12px;
+	border-top: 1px solid rgba(255, 255, 255, 0.08);
+	margin-top: 8px;
+}
+
+.chat-drawer-input {
+	flex: 1;
+	background: rgba(0, 0, 0, 0.45);
+	border: 1px solid rgba(216, 176, 106, 0.35);
+	border-radius: 8px;
+	padding: 10px 14px;
+	font-size: 13px;
+	color: #fff;
+	outline: none;
+	font-family: system-ui, sans-serif;
+	transition: border-color 0.2s ease;
+}
+
+.chat-drawer-input:focus {
+	border-color: #d8b06a;
+	box-shadow: 0 0 8px rgba(216, 176, 106, 0.3);
+}
+
+.btn-send-chat {
+	background: linear-gradient(135deg, rgba(216, 176, 106, 0.5), rgba(180, 140, 70, 0.6));
+	border: 1px solid #d8b06a;
+	color: #fff;
+	padding: 0 16px;
+	border-radius: 8px;
+	cursor: pointer;
+	font-size: 15px;
+	transition: transform 0.15s ease, background 0.15s ease;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+}
+
+.btn-send-chat:hover {
+	transform: scale(1.05);
+	background: linear-gradient(135deg, rgba(216, 176, 106, 0.7), rgba(180, 140, 70, 0.8));
+}
+
+/* Floating Toast Banner */
+.chat-toast-banner {
+	position: fixed;
+	top: 76px;
+	left: 50%;
+	transform: translateX(-50%) translateY(-10px);
+	background: rgba(20, 14, 8, 0.94);
+	border: 1.5px solid rgba(216, 176, 106, 0.5);
+	box-shadow: 0 8px 30px rgba(0, 0, 0, 0.65);
+	border-radius: 12px;
+	padding: 10px 18px;
+	z-index: 965;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	max-width: min(480px, 90vw);
+	pointer-events: none;
+	opacity: 0;
+	transition: opacity 0.28s ease, transform 0.28s ease;
+}
+
+.chat-toast-banner.toast-show {
+	opacity: 1;
+	transform: translateX(-50%) translateY(0);
+}
+
+.chat-toast-icon {
+	font-size: 18px;
+}
+
+.chat-toast-content {
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
+	font-size: 13px;
+	line-height: 1.35;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.chat-toast-sender {
+	font-weight: 700;
+	color: #d8b06a;
+	font-family: 'Cinzel', serif;
+}
+
+.chat-toast-text {
+	color: #f5eedf;
+	font-family: system-ui, sans-serif;
+}
+
+/* Floating On-Screen Contextual Seating Prompt (Milestone M8) */
+.hud-seat-prompt {
+	position: fixed;
+	bottom: 96px;
+	left: 50%;
+	transform: translateX(-50%);
+	background: rgba(20, 14, 8, 0.92);
+	border: 1.5px solid rgba(216, 176, 106, 0.7);
+	box-shadow: 0 8px 26px rgba(0, 0, 0, 0.65), 0 0 16px rgba(216, 176, 106, 0.25);
+	backdrop-filter: blur(12px);
+	-webkit-backdrop-filter: blur(12px);
+	border-radius: 999px;
+	padding: 10px 22px;
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	cursor: pointer;
+	z-index: 950;
+	pointer-events: auto;
+	user-select: none;
+	-webkit-user-select: none;
+	transition: transform 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+	animation: pulseSeatPrompt 2.5s infinite ease-in-out;
+}
+
+.hud-seat-prompt:hover {
+	transform: translateX(-50%) scale(1.05);
+	box-shadow: 0 10px 32px rgba(0, 0, 0, 0.75), 0 0 24px rgba(216, 176, 106, 0.45);
+	border-color: #ffd88a;
+}
+
+.hud-seat-prompt:active {
+	transform: translateX(-50%) scale(0.98);
+}
+
+.hud-seat-icon {
+	font-size: 20px;
+	line-height: 1;
+}
+
+.hud-seat-text {
+	font-family: 'Cinzel', serif, Georgia;
+	font-size: 13.5px;
+	font-weight: 700;
+	color: #f7eedb;
+	letter-spacing: 0.5px;
+}
+
+.hud-seat-badge {
+	background: rgba(216, 176, 106, 0.25);
+	border: 1px solid rgba(216, 176, 106, 0.55);
+	color: #ffd88a;
+	padding: 2px 7px;
+	border-radius: 6px;
+	font-size: 11px;
+	font-family: monospace;
+	font-weight: bold;
+}
+
+@keyframes pulseSeatPrompt {
+	0%, 100% { border-color: rgba(216, 176, 106, 0.65); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6), 0 0 14px rgba(216, 176, 106, 0.2); }
+	50% { border-color: rgba(255, 220, 140, 0.95); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.65), 0 0 22px rgba(216, 176, 106, 0.4); }
+}
+
+@media (max-width: 768px) {
+	.hud-seat-prompt {
+		bottom: 124px;
+		padding: 8px 18px;
+	}
+	.hud-seat-text {
+		font-size: 12.5px;
+	}
 }

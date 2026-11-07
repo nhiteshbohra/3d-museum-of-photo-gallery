@@ -3,7 +3,7 @@
   "after": 2214152618,
   "peers": [
     {
-      "peerId": "peer_mw3ak673_e0o6zn",
+      "peerId": "peer_mw618q7u_jiy1y7",
       "name": "Asha",
       "color": "#d8b06a",
       "model": "woman.glb",
@@ -13,20 +13,35 @@
         "top": "#22aa66",
         "trousers": null
       },
-      "room": "lobby"
+      "location": "lobby",
+      "room": "lobby",
+      "seated": null,
+      "p": [
+        0,
+        1.7,
+        4
+      ],
+      "ry": 0,
+      "anim": "idle",
+      "mode": "stand"
     },
     {
-      "peerId": "peer_mw3ak7r6_tmsjij",
+      "peerId": "peer_mw618rqd_zz1gnq",
       "name": "Observer",
       "color": "#d8b06a",
       "model": "man.glb",
-      "appearance": {
-        "skin": null,
-        "hair": null,
-        "top": null,
-        "trousers": null
-      },
-      "room": "lobby"
+      "appearance": {},
+      "location": "lobby",
+      "room": "lobby",
+      "seated": null,
+      "p": [
+        0,
+        1.7,
+        4
+      ],
+      "ry": 0,
+      "anim": "idle",
+      "mode": "stand"
     }
   ],
   "errors": []

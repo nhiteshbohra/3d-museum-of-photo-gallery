@@ -302,6 +302,13 @@ export function initMultiplayer({
         const av = state.world?.remote.get(msg.id)
         const pos = avatarHeadScreenPosition(av)
         showChatBubble(msg.id, msg.m, pos)
+        if (typeof options.onChatMessage === 'function') {
+          options.onChatMessage({
+            sender: msg.name || state.partner?.name || 'Partner',
+            text: msg.m,
+            time: new Date()
+          })
+        }
         break
       }
       case 'error': {
@@ -495,39 +502,44 @@ export function initMultiplayer({
 
   // ---- chat (MP-05) -----------------------------------------------------
   function openChat() {
-    if (state.chatOpen || !state.connected) return
-
-    // Require pointer lock & sanctuary entry
-    const canvas = document.querySelector('#scene')
+    if (state.chatOpen) return
     const hasEntered = document.body.classList.contains('in-sanctuary')
-    const isLocked = document.pointerLockElement === canvas
-
-    if (!hasEntered || !isLocked) return
+    if (!hasEntered) return
 
     state.chatOpen = true
-    ui.chatInput.style.display = 'block'
-    ui.chatInput.value = ''
-    ui.chatInput.focus()
+    if (ui.chatInput) {
+      ui.chatInput.style.display = 'block'
+      ui.chatInput.value = ''
+      ui.chatInput.focus()
+    }
     if (document.pointerLockElement) document.exitPointerLock()
+  }
+
+  function sendChat(text) {
+    if (!text || typeof text !== 'string') return
+    const val = text.trim()
+    if (!val) return
+    netChat(val)
+    const pos = localHeadScreenPosition()
+    showChatBubble('local', val, pos)
   }
 
   function closeChat(send) {
     if (!state.chatOpen) return
-    const val = ui.chatInput.value.trim()
+    const val = ui.chatInput ? ui.chatInput.value.trim() : ''
     state.chatOpen = false
-    ui.chatInput.style.display = 'none'
-    ui.chatInput.value = ''
+    if (ui.chatInput) {
+      ui.chatInput.style.display = 'none'
+      ui.chatInput.value = ''
+    }
 
     if (send && val) {
-      netChat(val)
-      // Display local chat bubble above self (MP-05)
-      const pos = localHeadScreenPosition()
-      showChatBubble('local', val, pos)
+      sendChat(val)
     }
 
     // Restore pointer lock if still in sanctuary
     const canvas = document.querySelector('#scene')
-    if (canvas && document.body.classList.contains('in-sanctuary')) {
+    if (canvas && document.body.classList.contains('in-sanctuary') && !document.querySelector('#hud-chat-drawer')?.classList.contains('drawer-open')) {
       try { canvas.requestPointerLock() } catch {}
     }
   }
@@ -648,8 +660,11 @@ export function initMultiplayer({
     function doJoin() {
       const av = resolveAvatar()
       const playerState = engineApi?.getPlayerState?.() || {}
+      const storedCode = (typeof window !== 'undefined' && window.sessionStorage?.getItem('ourmuseum:lastCode')) || ''
+      const storedToken = (typeof window !== 'undefined' && window.sessionStorage?.getItem('ourmuseum:sessionToken')) || ''
       netJoin({
         peerId: getPeerId(),
+        avatarId: av?.id || (av?.model === 'woman.glb' ? 'maya' : 'ethan'),
         name: av?.name || 'Visitor',
         color: av?.color || '#d8b06a',
         model: av?.model || '',
@@ -657,8 +672,8 @@ export function initMultiplayer({
         room: currentRoomKey(),
         p: playerState.p || [0, 1.7, 4],
         ry: playerState.ry || 0,
-        code: '',
-        sessionToken: ''
+        code: storedCode,
+        sessionToken: storedToken
       })
     }
 
@@ -770,6 +785,7 @@ export function initMultiplayer({
     trySit: () => trySit(),
     standUp: () => standUp(),
     openChat: () => openChat(),
+    sendChat: (text) => sendChat(text),
     leave: () => { try { netLeave() } catch {} },
     destroy: () => destroy(),
   }

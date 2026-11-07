@@ -83,7 +83,7 @@ export function connectNet(url) {
 
     // Intercept terminal errors from server
     if (data && data.t === 'error') {
-      if (data.msg === 'room-full' || data.msg === 'bad-code' || data.msg === 'update-required') {
+      if (data.msg === 'room-full' || data.msg === 'bad-code' || data.msg === 'update-required' || data.msg === 'character-taken') {
         NET.terminalError = true
         emitNet('status', { kind: 'terminal-error', code: data.msg })
       }
@@ -176,11 +176,12 @@ export function sendNet(msg) {
 
 // ---- high-level helpers --------------------------------------------------
 
-export function netJoin({ peerId, name, color, model, room, appearance, code, sessionToken }) {
+export function netJoin({ peerId, avatarId, name, color, model, room, appearance, code, sessionToken }) {
   sendNet({
     t: 'join',
     proto: PROTOCOL_VERSION,
     id: peerId,
+    avatarId: avatarId || (model === 'woman.glb' ? 'maya' : 'ethan'),
     name,
     color,
     model,

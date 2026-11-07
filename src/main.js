@@ -30,6 +30,10 @@ app.innerHTML = `
       <span>⛶</span>
       <span class="top-bar-key">F</span>
     </button>
+    <button id="btn-chat-toggle" class="top-bar-btn" title="Messages (Press Enter or T)">
+      <span>💬 Message</span>
+      <span class="top-bar-key">Enter</span>
+    </button>
     <div id="camera-hud-group" class="top-bar-group" hidden>
       <button id="btn-camera-toggle" class="top-bar-btn" title="Toggle 360° Free Orbit / Follow (Press C)">
         <span id="camera-mode-icon">👁️</span>
@@ -68,7 +72,7 @@ app.innerHTML = `
       <div class="ticket-divider"></div>
 
       <div id="invite-box" class="invite-box">
-        <div class="invite-input-row">
+        <div id="invite-input-row" class="invite-input-row">
           <input id="invite-code-input" class="invite-code-input" type="text" placeholder="Passcode (e.g. maya-love)" autocomplete="off" />
           <button id="btn-redeem-invite" class="btn-redeem-invite" type="button">Verify Pass</button>
         </div>
@@ -160,6 +164,46 @@ app.innerHTML = `
         Press <strong>G</strong> or <strong>Esc</strong> to close · Keys <strong>1-3</strong> for quick emotes
       </div>
     </div>
+
+    <!-- Right-Side Chat / Messages Drawer -->
+    <div id="hud-chat-drawer" class="hud-chat-drawer" aria-label="Messages" aria-hidden="true">
+      <div class="chat-drawer-header">
+        <div class="chat-header-title-row">
+          <span class="chat-drawer-title">✦ Sanctuary Messages ✦</span>
+          <span id="chat-partner-badge" class="chat-status-badge">● Active</span>
+        </div>
+        <button id="btn-close-chat-drawer" class="anim-drawer-close" type="button" aria-label="Close messages">✕</button>
+      </div>
+
+      <!-- Messages History Container -->
+      <div id="chat-messages-container" class="chat-messages-container">
+        <div id="chat-messages-list" class="chat-messages-list">
+          <div class="chat-empty-hint">Whisper a romantic thought or note to Maya &amp; Ethan below…</div>
+        </div>
+      </div>
+
+      <!-- Chat Input Area -->
+      <form id="chat-drawer-form" class="chat-drawer-form" autocomplete="off">
+        <input id="chat-drawer-input" class="chat-drawer-input" type="text" placeholder="Send a message to your partner…" maxlength="140" />
+        <button id="btn-send-chat" class="btn-send-chat" type="submit" aria-label="Send message">➤</button>
+      </form>
+    </div>
+
+    <!-- Floating Toast Notification Banner -->
+    <div id="chat-toast-banner" class="chat-toast-banner" style="display:none;" aria-live="polite">
+      <span class="chat-toast-icon">💬</span>
+      <div class="chat-toast-content">
+        <span id="chat-toast-sender" class="chat-toast-sender"></span>
+        <span id="chat-toast-text" class="chat-toast-text"></span>
+      </div>
+    </div>
+
+    <!-- Floating On-Screen Contextual Seating Prompt (Milestone M8) -->
+    <div id="hud-seat-prompt" class="hud-seat-prompt" style="display:none;" aria-live="polite" role="button" tabindex="0">
+      <span class="hud-seat-icon">🛋️</span>
+      <span id="hud-seat-text" class="hud-seat-text">Sit on Sofa</span>
+      <span id="hud-seat-badge" class="hud-seat-badge">Press E</span>
+    </div>
   </div>
 
   <div id="mobile-controls" aria-hidden="true">
@@ -205,6 +249,7 @@ const lobby_title = 'Lobby'
 let activeNavId = 0
 let activeDoorLabelOverride = null
 let historyIndex = 0
+let popstateBound = false
 
 // Mobile touch-device notice (UX-01)
 const isTouchDevice = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(pointer: coarse)').matches
@@ -237,6 +282,7 @@ if (isTouchDevice && mobileNoticeEl) {
 const inviteCodeInput = document.querySelector('#invite-code-input')
 const redeemBtn = document.querySelector('#btn-redeem-invite')
 const inviteStatusEl = document.querySelector('#invite-status')
+const inviteInputRow = document.querySelector('#invite-input-row')
 let inviteRedeemed = false
 let lastInviteRecipient = null
 
@@ -262,6 +308,10 @@ function updateAuthState(newState, payload = {}) {
 
 	switch (newState) {
 		case AUTH_STATE.UNVERIFIED:
+			if (inviteInputRow) {
+				inviteInputRow.hidden = false
+				inviteInputRow.style.display = ''
+			}
 			redeemBtn.disabled = false
 			redeemBtn.textContent = 'Verify Pass'
 			if (inviteCodeInput) {
@@ -270,11 +320,19 @@ function updateAuthState(newState, payload = {}) {
 			break
 
 		case AUTH_STATE.VERIFYING:
+			if (inviteInputRow) {
+				inviteInputRow.hidden = false
+				inviteInputRow.style.display = ''
+			}
 			redeemBtn.disabled = true
 			redeemBtn.textContent = 'Verifying…'
 			break
 
 		case AUTH_STATE.VERIFIED:
+			if (inviteInputRow) {
+				inviteInputRow.hidden = false
+				inviteInputRow.style.display = ''
+			}
 			redeemBtn.disabled = false
 			redeemBtn.textContent = 'Enter Sanctuary →'
 			if (inviteCodeInput) {
@@ -285,11 +343,19 @@ function updateAuthState(newState, payload = {}) {
 			break
 
 		case AUTH_STATE.STARTING:
+			if (inviteInputRow) {
+				inviteInputRow.hidden = true
+				inviteInputRow.style.display = 'none'
+			}
 			redeemBtn.disabled = true
 			redeemBtn.textContent = 'Entering…'
 			break
 
 		case AUTH_STATE.IN_SANCTUARY:
+			if (inviteInputRow) {
+				inviteInputRow.hidden = true
+				inviteInputRow.style.display = 'none'
+			}
 			redeemBtn.disabled = true
 			break
 	}
@@ -316,7 +382,9 @@ async function enterSanctuaryFromPass() {
 		await startMuseumExperience()
 	} catch (err) {
 		console.error('[Experience Boot Error]', err)
+		museumStarted = false
 		updateAuthState(AUTH_STATE.VERIFIED)
+		setInviteStatus('Could not enter sanctuary. Please try again.', false)
 	}
 }
 
@@ -351,6 +419,10 @@ async function redeemInviteCode() {
 
 	inviteRedeemed = true
 	lastInviteRecipient = data.recipient || null
+	try {
+		window.sessionStorage.setItem('ourmuseum:lastCode', code)
+		if (data.sessionToken) window.sessionStorage.setItem('ourmuseum:sessionToken', data.sessionToken)
+	} catch (_) {}
 	window.__museumAuthenticated = true
 	window.__museumSessionToken = true
 	setInviteStatus(`✦ Pass Verified: Welcome, ${data.recipient || 'Beloved Visitor'} ✦`, true)
@@ -426,7 +498,7 @@ async function checkAuthSession() {
 			if (match) selectedAvatarId = match.id
 
 			// Do not leak or hardcode passcodes in DOM input (AUTH-NEW-02)
-			updateAuthState(AUTH_STATE.VERIFIED)
+			updateAuthState(AUTH_STATE.STARTING)
 
 			const entranceLoadingEl = document.querySelector('#entrance-loading')
 			if (entranceLoadingEl) {
@@ -435,8 +507,15 @@ async function checkAuthSession() {
 				if (entranceStatus) entranceStatus.textContent = `Preparing museum sanctuary for ${recipient}…`
 			}
 
-			await loadPrivateLetters()
-			await startMuseumExperience()
+			try {
+				await loadPrivateLetters()
+				await startMuseumExperience()
+			} catch (bootErr) {
+				console.error('[Session Boot Error]', bootErr)
+				museumStarted = false
+				updateAuthState(AUTH_STATE.VERIFIED)
+				setInviteStatus('Could not load sanctuary session. Click Enter Sanctuary to retry.', false)
+			}
 		} else {
 			updateAuthState(AUTH_STATE.UNVERIFIED)
 			setInviteStatus('Please enter your private invitation pass to enter the sanctuary.', false)
@@ -481,6 +560,7 @@ function updateVisitor(profile) {
 
 async function selectAvatar(id) {
 	selectedAvatarId = id
+	characterSetup?.select?.(id, false)
 	const av = characterSetup?.getProfile?.() || AVATARS.find(a => a.id === id)
 	if (!av) return
 	selectedProfile = av
@@ -509,19 +589,64 @@ async function selectAvatar(id) {
 	}
 }
 
+let occupancyPollTimer = null
+
+async function syncOccupancy() {
+	if (hasEntered) {
+		if (occupancyPollTimer) {
+			clearInterval(occupancyPollTimer)
+			occupancyPollTimer = null
+		}
+		return
+	}
+	try {
+		const res = await fetch('/api/occupancy')
+		if (!res.ok) return
+		const occ = await res.json()
+		if (!occ || !occ.ok) return
+		const claimed = occ.claimedCharacters || []
+		characterSetup?.setClaimedCharacters?.(claimed)
+
+		if (occ.full) {
+			enterButton.disabled = true
+			enterButton.textContent = 'Museum Full (2/2 Visitors)'
+			entranceStatus.textContent = 'Both visitors are currently inside the sanctuary. Please wait for a visitor to leave.'
+		} else {
+			if (enterButton.textContent.includes('Museum Full')) {
+				enterButton.textContent = 'Enter Sanctuary →'
+			}
+			if (!avatarLoading && entranceReady) {
+				enterButton.disabled = false
+				entranceStatus.textContent = 'Your character is ready. Welcome.'
+			}
+		}
+	} catch (_) {}
+}
+
 function showAvatarSelection() {
 	if (!avatarSelectEl) return
-	if (!characterSetup) characterSetup = createCharacterSetup(avatarSelectEl, AVATARS, { onSelect: selectAvatar, onChange: updateVisitor })
+	const defaultId = selectedAvatarId || (AVATARS.length > 0 ? AVATARS[0].id : null)
+	if (!characterSetup) {
+		characterSetup = createCharacterSetup(avatarSelectEl, AVATARS, {
+			onSelect: selectAvatar,
+			onChange: updateVisitor,
+			initialId: defaultId,
+		})
+	} else if (defaultId) {
+		characterSetup.select?.(defaultId, false)
+	}
 	const ticketCard = document.querySelector('#ticket-card')
 	if (ticketCard) ticketCard.classList.add('character-setup-card')
 	const inviteBox = document.querySelector('#invite-box')
 	if (inviteBox) inviteBox.style.display = 'none'
 	document.body.classList.add('choosing-character')
 	avatarSelectEl.hidden = false
-	if (selectedAvatarId && characterSetup) {
-		selectAvatar(selectedAvatarId)
-	} else if (AVATARS.length > 0) {
-		selectAvatar(AVATARS[0].id)
+	if (defaultId) {
+		selectAvatar(defaultId)
+	}
+	syncOccupancy()
+	if (!occupancyPollTimer) {
+		occupancyPollTimer = setInterval(syncOccupancy, 2500)
 	}
 }
 let assetsLoading = false
@@ -917,8 +1042,12 @@ function initMobileControls(engineApi, multiplayer) {
 
 	btnChat?.addEventListener('touchstart', (e) => {
 		e.preventDefault()
-		multiplayer?.openChat?.()
+		toggleChatDrawer()
 	}, { passive: false })
+	btnChat?.addEventListener('click', (e) => {
+		e.preventDefault()
+		toggleChatDrawer()
+	})
 
 	btnEmotes?.addEventListener('touchstart', (e) => {
 		e.preventDefault()
@@ -931,6 +1060,10 @@ function enterMuseum() {
 	if (inviteRequired && !inviteRedeemed) {
 		setInviteStatus('Please verify your private invitation pass before entering.', false)
 		return
+	}
+	if (occupancyPollTimer) {
+		clearInterval(occupancyPollTimer)
+		occupancyPollTimer = null
 	}
 	try {
 		characterSetup?.enter?.(engineApi.scene)
@@ -957,6 +1090,14 @@ function enterMuseum() {
 		initMobileControls(engineApi, multiplayer)
 	}
 }
+
+// Immediate server notification upon tab close or page navigation to release occupancy slot
+window.addEventListener('beforeunload', () => {
+	try { multiplayer?.stop?.() } catch (_) {}
+})
+window.addEventListener('pagehide', () => {
+	try { multiplayer?.stop?.() } catch (_) {}
+})
 
 // ---- HUD CAMERA CONTROLS & ANIMATIONS DRAWER (UI-ANIM-01, CAM-01..02) ----
 const btnCamMode = document.querySelector('#btn-camera-toggle')
@@ -1209,8 +1350,10 @@ function toggleAnimationsDrawer(forceOpen) {
 	const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen
 
 	if (shouldOpen) {
+		toggleChatDrawer(false)
 		animDrawer.classList.add('drawer-open')
 		animDrawer.setAttribute('aria-hidden', 'false')
+		document.body.classList.add('drawer-open')
 		btnAnimToggle?.classList.add('active')
 		if (document.pointerLockElement) {
 			document.exitPointerLock()
@@ -1223,13 +1366,14 @@ function toggleAnimationsDrawer(forceOpen) {
 	} else {
 		animDrawer.classList.remove('drawer-open')
 		animDrawer.setAttribute('aria-hidden', 'true')
+		document.body.classList.remove('drawer-open')
 		btnAnimToggle?.classList.remove('active')
 		if (drawerPollTimer) {
 			clearInterval(drawerPollTimer)
 			drawerPollTimer = null
 		}
 		// Click/G are user gestures; restore WASD control after closing the panel.
-		if (hasEntered && !isTouchDevice && lightboxEl?.hidden && !document.pointerLockElement) {
+		if (hasEntered && !isTouchDevice && lightboxEl?.hidden && !document.pointerLockElement && !chatDrawer?.classList.contains('drawer-open')) {
 			requestPlay()
 		}
 	}
@@ -1247,12 +1391,230 @@ btnCloseAnimDrawer?.addEventListener('click', (e) => {
 
 initAnimationsDrawer()
 
+// ---- PROXIMITY SEATING HUD (Milestone M8) ----
+const hudSeatPrompt = document.querySelector('#hud-seat-prompt')
+const hudSeatText = document.querySelector('#hud-seat-text')
+const hudSeatBadge = document.querySelector('#hud-seat-badge')
+
+function updateProximitySeatHud() {
+	if (!hudSeatPrompt) return
+	const inSanctuary = document.body.classList.contains('in-sanctuary')
+	if (!inSanctuary) {
+		hudSeatPrompt.style.display = 'none'
+		return
+	}
+
+	const isSeated = multiplayer?.isSeated?.()
+	if (isSeated) {
+		hudSeatPrompt.style.display = 'flex'
+		if (hudSeatText) hudSeatText.textContent = 'Stand Up'
+		if (hudSeatBadge) hudSeatBadge.textContent = 'E / Space'
+		return
+	}
+
+	const nearestSeat = multiplayer?.getNearestSeat?.(3.2)
+	if (nearestSeat) {
+		hudSeatPrompt.style.display = 'flex'
+		const isChair = String(nearestSeat.id || '').toLowerCase().includes('chair')
+		if (hudSeatText) hudSeatText.textContent = isChair ? 'Sit on Chair' : 'Sit on Sofa'
+		if (hudSeatBadge) hudSeatBadge.textContent = 'Press E'
+		return
+	}
+
+	hudSeatPrompt.style.display = 'none'
+}
+
+hudSeatPrompt?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	if (multiplayer?.isSeated?.()) {
+		multiplayer.standUp?.()
+	} else {
+		multiplayer?.trySit?.()
+	}
+	setTimeout(updateProximitySeatHud, 100)
+})
+
+hudSeatPrompt?.addEventListener('touchend', (e) => {
+	e.stopPropagation()
+	e.preventDefault()
+	if (multiplayer?.isSeated?.()) {
+		multiplayer.standUp?.()
+	} else {
+		multiplayer?.trySit?.()
+	}
+	setTimeout(updateProximitySeatHud, 100)
+})
+
+setInterval(updateProximitySeatHud, 120)
+
+// Also listen for KeyE or Space globally in sanctuary
+window.addEventListener('keydown', (e) => {
+	if (e.code === 'KeyE') {
+		const target = e.target
+		if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+		if (document.body.classList.contains('in-sanctuary')) {
+			if (multiplayer?.isSeated?.()) {
+				multiplayer.standUp?.()
+			} else {
+				multiplayer?.trySit?.()
+			}
+			setTimeout(updateProximitySeatHud, 100)
+		}
+	} else if (e.code === 'Space' && multiplayer?.isSeated?.()) {
+		const target = e.target
+		if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) return
+		e.preventDefault()
+		multiplayer.standUp?.()
+		setTimeout(updateProximitySeatHud, 100)
+	}
+})
+
+// ---- SANCTUARY MESSAGES & CHAT SYSTEM (MP-05, CHAT-NEW) ----
+const chatDrawer = document.querySelector('#hud-chat-drawer')
+const btnCloseChatDrawer = document.querySelector('#btn-close-chat-drawer')
+const btnChatToggle = document.querySelector('#btn-chat-toggle')
+const chatDrawerForm = document.querySelector('#chat-drawer-form')
+const chatDrawerInput = document.querySelector('#chat-drawer-input')
+const chatMessagesList = document.querySelector('#chat-messages-list')
+const chatToastBanner = document.querySelector('#chat-toast-banner')
+let chatToastTimer = null
+
+function formatISTTime(date = new Date()) {
+	const istOffset = 5.5 * 60 * 60 * 1000
+	const istDate = new Date(date.getTime() + istOffset)
+	const hours = istDate.getUTCHours()
+	const minutes = istDate.getUTCMinutes()
+	const ampm = hours >= 12 ? 'PM' : 'AM'
+	const h = hours % 12 || 12
+	const m = String(minutes).padStart(2, '0')
+	return `${h}:${m} ${ampm} IST`
+}
+
+function showChatToast(sender, text) {
+	if (!chatToastBanner) return
+	const senderEl = document.querySelector('#chat-toast-sender')
+	const textEl = document.querySelector('#chat-toast-text')
+	if (senderEl) senderEl.textContent = `${sender}: `
+	if (textEl) textEl.textContent = text
+	chatToastBanner.style.display = 'flex'
+	chatToastBanner.classList.add('toast-show')
+
+	if (chatToastTimer) clearTimeout(chatToastTimer)
+	chatToastTimer = setTimeout(() => {
+		chatToastBanner.classList.remove('toast-show')
+		setTimeout(() => {
+			if (!chatToastBanner.classList.contains('toast-show')) {
+				chatToastBanner.style.display = 'none'
+			}
+		}, 300)
+	}, 6000)
+}
+
+function appendChatMessage({ sender, text, isLocal = false, time = new Date() }) {
+	if (!chatMessagesList) return
+	const emptyHint = chatMessagesList.querySelector('.chat-empty-hint')
+	if (emptyHint) emptyHint.remove()
+
+	const msgEl = document.createElement('div')
+	msgEl.className = `chat-bubble-item ${isLocal ? 'chat-msg-local' : 'chat-msg-remote'}`
+
+	const timeStr = formatISTTime(time instanceof Date ? time : new Date(time))
+
+	msgEl.innerHTML = `
+		<div class="chat-bubble-meta">
+			<span class="chat-sender-name ${isLocal ? 'is-self' : 'is-partner'}">${sender}</span>
+			<span class="chat-timestamp">${timeStr}</span>
+		</div>
+		<div class="chat-bubble-text"></div>
+	`
+	msgEl.querySelector('.chat-bubble-text').textContent = text
+
+	chatMessagesList.appendChild(msgEl)
+	const container = document.querySelector('#chat-messages-container')
+	if (container) container.scrollTop = container.scrollHeight
+
+	// Also display floating toast notification
+	showChatToast(sender, text)
+}
+
+function toggleChatDrawer(forceOpen) {
+	if (!chatDrawer) return
+	const isOpen = chatDrawer.classList.contains('drawer-open')
+	const shouldOpen = forceOpen !== undefined ? forceOpen : !isOpen
+
+	if (shouldOpen) {
+		// Close gestures drawer if open to prevent overlap
+		toggleAnimationsDrawer(false)
+
+		chatDrawer.classList.add('drawer-open')
+		chatDrawer.setAttribute('aria-hidden', 'false')
+		document.body.classList.add('chat-open')
+		btnChatToggle?.classList.add('active')
+
+		if (document.pointerLockElement) {
+			document.exitPointerLock()
+		}
+
+		setTimeout(() => chatDrawerInput?.focus(), 150)
+	} else {
+		chatDrawer.classList.remove('drawer-open')
+		chatDrawer.setAttribute('aria-hidden', 'true')
+		document.body.classList.remove('chat-open')
+		btnChatToggle?.classList.remove('active')
+
+		if (hasEntered && !isTouchDevice && lightboxEl?.hidden && !document.pointerLockElement && !animDrawer?.classList.contains('drawer-open')) {
+			requestPlay()
+		}
+	}
+}
+
+btnChatToggle?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	toggleChatDrawer()
+})
+
+btnCloseChatDrawer?.addEventListener('click', (e) => {
+	e.stopPropagation()
+	toggleChatDrawer(false)
+})
+
+chatDrawer?.addEventListener('pointerdown', (e) => e.stopPropagation())
+chatDrawer?.addEventListener('mousedown', (e) => e.stopPropagation())
+chatDrawer?.addEventListener('click', (e) => e.stopPropagation())
+
+chatDrawerForm?.addEventListener('submit', (e) => {
+	e.preventDefault()
+	const text = chatDrawerInput?.value?.trim()
+	if (!text) return
+
+	chatDrawerInput.value = ''
+	const localName = selectedProfile?.name || lastInviteRecipient || 'You'
+
+	// 1. Send over multiplayer network
+	if (multiplayer?.sendChat) {
+		multiplayer.sendChat(text)
+	}
+
+	// 2. Add to chat drawer message log locally
+	appendChatMessage({
+		sender: localName,
+		text,
+		isLocal: true,
+		time: new Date()
+	})
+})
+
 // Unified Hotkeys Handler (Camera, Audio, Fullscreen, Gestures, Lightbox)
 window.addEventListener('keydown', (e) => {
 	if (['INPUT', 'TEXTAREA'].includes(document.activeElement?.tagName) || ['INPUT', 'TEXTAREA'].includes(e.target?.tagName)) return
 
-	// Escape closes animations drawer or photo lightbox
+	// Escape closes animations drawer, chat drawer, or photo lightbox
 	if (e.key === 'Escape') {
+		if (chatDrawer?.classList.contains('drawer-open')) {
+			e.preventDefault()
+			toggleChatDrawer(false)
+			return
+		}
 		if (animDrawer?.classList.contains('drawer-open')) {
 			e.preventDefault()
 			toggleAnimationsDrawer(false)
@@ -1264,7 +1626,7 @@ window.addEventListener('keydown', (e) => {
 		}
 	}
 
-	// Hotkeys for Music and Fullscreen (accessible anytime)
+	// Hotkeys for Music, Fullscreen, and Chat (accessible anytime in sanctuary)
 	if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') {
 		toggleAmbientAudio()
 		return
@@ -1275,6 +1637,11 @@ window.addEventListener('keydown', (e) => {
 		} else {
 			document.exitFullscreen().catch(() => {})
 		}
+		return
+	}
+	if (hasEntered && (e.code === 'KeyT' || e.key === 't' || e.key === 'T' || e.code === 'Enter')) {
+		e.preventDefault()
+		toggleChatDrawer()
 		return
 	}
 
@@ -1317,6 +1684,10 @@ document.querySelector('#btn-enter-museum')?.addEventListener('click', enterMuse
 
 // Resume pointer lock on canvas click if already entered and unlocked
 canvas.addEventListener('click', () => {
+	if (chatDrawer?.classList.contains('drawer-open')) {
+		toggleChatDrawer(false)
+		return
+	}
 	if (animDrawer?.classList.contains('drawer-open')) {
 		toggleAnimationsDrawer(false)
 		return
@@ -1585,14 +1956,15 @@ async function startMuseumExperience() {
 	if (museumStarted) return
 	museumStarted = true
 
-	const entranceLoadingEl = document.querySelector('#entrance-loading')
-	if (entranceLoadingEl) {
-		entranceLoadingEl.removeAttribute('hidden')
-		entranceLoadingEl.style.display = 'block'
-	}
+	try {
+		const entranceLoadingEl = document.querySelector('#entrance-loading')
+		if (entranceLoadingEl) {
+			entranceLoadingEl.removeAttribute('hidden')
+			entranceLoadingEl.style.display = 'block'
+		}
 
-	const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
-	engineApi = startYourEngines({
+		const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
+		engineApi = startYourEngines({
 		canvas,
 		roomSeedTitle: initialTitle ?? 'Lobby',
 		roomMode: initialTitle ? 'gallery' : 'lobby',
@@ -1669,6 +2041,14 @@ async function startMuseumExperience() {
 		getRoomKey: () => {
 			try { return engineApi.getRoomKey() } catch { return 'lobby' }
 		},
+		onChatMessage(msg) {
+			appendChatMessage({
+				sender: msg.sender || 'Partner',
+				text: msg.text,
+				isLocal: false,
+				time: msg.time || new Date()
+			})
+		},
 		goToRoom(roomKey) {
 			if (!roomKey) return
 			if (roomKey === 'lobby') {
@@ -1694,29 +2074,44 @@ async function startMuseumExperience() {
 
 	setUrlAndState(initialTitle ? initialTitle : null, { push: false })
 
-	window.addEventListener('popstate', (e) => {
-		const st = e?.state
-		if (st && st.ourmuseum && typeof st.idx === 'number') {
-			historyIndex = st.idx
-		}
+	if (!popstateBound) {
+		popstateBound = true
+		window.addEventListener('popstate', (e) => {
+			const st = e?.state
+			if (st && st.ourmuseum && typeof st.idx === 'number') {
+				historyIndex = st.idx
+			}
 
-		const p = new URLSearchParams(window.location.search)
-		const title = p.get('exhibit')
+			const p = new URLSearchParams(window.location.search)
+			const title = p.get('exhibit')
 
-		if (title) {
-			loadAndEnterGallery(title, {
-				pushHistory: false,
-				updateUrlState: false,
-				spawn: { type: 'fromWall', wall: 'south' },
-			})
-			return
-		}
+			if (title) {
+				loadAndEnterGallery(title, {
+					pushHistory: false,
+					updateUrlState: false,
+					spawn: { type: 'fromWall', wall: 'south' },
+				})
+				return
+			}
 
-		enterlobby({ push: false })
-		setLoading(false)
-	})
+			enterlobby({ push: false })
+			setLoading(false)
+		})
+	}
 
 	await prepareEntrance()
+	} catch (err) {
+		museumStarted = false
+		if (engineApi && typeof engineApi.stop === 'function') {
+			try { engineApi.stop() } catch (_) {}
+			engineApi = null
+		}
+		if (multiplayer && typeof multiplayer.stop === 'function') {
+			try { multiplayer.stop() } catch (_) {}
+			multiplayer = null
+		}
+		throw err
+	}
 }
 
 async function prepareEntrance() {
@@ -1752,6 +2147,7 @@ async function prepareEntrance() {
 		queuePrebuildSalons(coupleCategories)
 	} catch (error) {
 		console.error('[Museum] Entrance loading failed:', error)
+		museumStarted = false
 		entranceProgress.hidden = true
 		document.querySelector('#entrance-loading')?.setAttribute('aria-busy', 'false')
 		entranceStatus.textContent = 'The room could not finish loading. Please reload the page to try again.'

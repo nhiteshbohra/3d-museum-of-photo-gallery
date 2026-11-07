@@ -7,7 +7,7 @@ import http from 'http';
 import { WebSocket } from 'ws';
 import { spawn } from 'child_process';
 import assert from 'assert';
-import { revokeInvite, createInvite } from '../scripts/inviteStore.js';
+import { revokeInvite, createInvite, validateSession, redeemInvite } from '../scripts/inviteStore.js';
 
 const TEST_PORT = 8991;
 const BASE_URL = `http://127.0.0.1:${TEST_PORT}`;
@@ -511,6 +511,75 @@ async function runTests() {
     assert.strictEqual(resBlockedHttp.status, 401, 'Revoked session must immediately fail HTTP auth with 401');
     console.log('  ✓ Fix 4 Verified: Live CLI revocation immediately evicts connected WebSocket and invalidates HTTP sessions');
     wsObserver.close();
+
+    // -------------------------------------------------------------
+    // 9. AUTH-SEC-01: Prototype Property Hardening & Regression Suite
+    // -------------------------------------------------------------
+    console.log('\n--- 9. Testing AUTH-SEC-01: Prototype Property Hardening ---');
+
+    // 9.1: HTTP /api/letters with Cookie: museum_session=constructor must return 401
+    const resProtoLetters = await fetchUrl('/api/letters', {
+      headers: { Cookie: 'museum_session=constructor' }
+    });
+    assert.strictEqual(resProtoLetters.status, 401, 'Request to /api/letters with museum_session=constructor must return 401');
+    console.log('  ✓ GET /api/letters with museum_session=constructor correctly rejected with 401');
+
+    // 9.2: HTTP /photos/README.md with Cookie: museum_session=constructor must return 401
+    const resProtoPhoto = await fetchUrl('/photos/README.md', {
+      headers: { Cookie: 'museum_session=constructor' }
+    });
+    assert.strictEqual(resProtoPhoto.status, 401, 'Request to /photos/* with museum_session=constructor must return 401');
+    console.log('  ✓ GET /photos/* with museum_session=constructor correctly rejected with 401');
+
+    // Additional prototype property checks for HTTP endpoints (__proto__, toString, valueOf)
+    for (const protoKey of ['__proto__', 'toString', 'valueOf']) {
+      const resLetters = await fetchUrl('/api/letters', {
+        headers: { Cookie: `museum_session=${protoKey}` }
+      });
+      assert.strictEqual(resLetters.status, 401, `Request to /api/letters with museum_session=${protoKey} must return 401`);
+
+      const resPhoto = await fetchUrl('/photos/README.md', {
+        headers: { Cookie: `museum_session=${protoKey}` }
+      });
+      assert.strictEqual(resPhoto.status, 401, `Request to /photos/* with museum_session=${protoKey} must return 401`);
+    }
+    console.log('  ✓ All prototype keys (__proto__, toString, valueOf) correctly return 401 on /api/letters and /photos/*');
+
+    // 9.3: WebSocket connections with museum_session=constructor are rejected with 4003 (unauthorized)
+    const wsProtoClient = new WebSocket(WS_URL, {
+      headers: { Cookie: 'museum_session=constructor' }
+    });
+    const pProtoClose = new Promise((resolve) => {
+      wsProtoClient.on('close', (code, reason) => resolve({ code, reason: reason.toString() }));
+    });
+    await new Promise((resolve) => wsProtoClient.on('open', resolve));
+    wsProtoClient.send(JSON.stringify({ t: 'join', proto: 2, name: 'AttackerConstructor' }));
+    const msgProtoWsError = await nextMessage(wsProtoClient, m => m.t === 'error');
+    assert.strictEqual(msgProtoWsError.msg, 'unauthorized', 'WebSocket join with prototype session token must receive unauthorized error');
+    const protoCloseEvt = await pProtoClose;
+    assert.strictEqual(protoCloseEvt.code, 4003, 'WebSocket with museum_session=constructor must be closed with 4003');
+    console.log('  ✓ WebSocket connection with museum_session=constructor rejected with error and closed with code 4003');
+
+    // 9.4: revokeInvite('__proto__') returns false and does not pollute Object.prototype.revoked
+    const revokeProtoResult = revokeInvite('__proto__');
+    assert.strictEqual(revokeProtoResult, false, 'revokeInvite("__proto__") must return false');
+    assert.strictEqual(Object.prototype.revoked, undefined, 'Object.prototype.revoked must remain undefined (no prototype pollution)');
+    assert.strictEqual(revokeInvite('constructor'), false, 'revokeInvite("constructor") must return false');
+    console.log('  ✓ revokeInvite("__proto__") safely returns false without prototype pollution');
+
+    // 9.5: redeemInvite prototype rejection
+    const redeemProtoResult = redeemInvite('__proto__');
+    assert.strictEqual(redeemProtoResult.success, false);
+    const redeemCtorResult = redeemInvite('constructor');
+    assert.strictEqual(redeemCtorResult.success, false);
+    console.log('  ✓ redeemInvite correctly rejects prototype property codes');
+
+    // 9.6: validateSession unit assertions
+    assert.strictEqual(validateSession('constructor'), null);
+    assert.strictEqual(validateSession('__proto__'), null);
+    assert.strictEqual(validateSession('toString'), null);
+    assert.strictEqual(validateSession('valueOf'), null);
+    console.log('  ✓ validateSession directly returns null for all prototype properties');
 
     console.log('\n=======================================================');
     console.log('  ALL STEP 1 HARDENING & PROTOCOL TESTS PASSED! (100%)');

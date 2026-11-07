@@ -90,52 +90,6 @@ registerArtifact({
 })
 
 registerArtifact({
-	id: 'model_couch_large',
-	name: 'Couch Large (3D model)',
-	category: 'furniture',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/furniture/furniture_couch_large.glb',
-	defaultScale: 0.4036,
-	footprint: { shape: 'box', w: 2.1, d: 1.0, height: 0.85 },
-	seats: [
-		{ id: 'couch_l_1', x: -0.65, z: 0.35, yaw: 0, height: 0.46 },
-		{ id: 'couch_l_2', x: 0.65, z: 0.35, yaw: 0, height: 0.46 },
-	],
-})
-
-registerArtifact({
-	id: 'model_couch_wide',
-	name: 'Couch Wide (3D model)',
-	category: 'furniture',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/furniture/furniture_couch_wide.glb',
-	defaultScale: 1.6569,
-	footprint: { shape: 'box', w: 2.4, d: 1.0, height: 0.85 },
-	seats: [
-		{ id: 'couch_w_1', x: -0.75, z: 0.35, yaw: 0, height: 0.46 },
-		{ id: 'couch_w_2', x: 0, z: 0.35, yaw: 0, height: 0.46 },
-		{ id: 'couch_w_3', x: 0.75, z: 0.35, yaw: 0, height: 0.46 },
-	],
-})
-
-registerArtifact({
-	id: 'model_delica_couch',
-	name: 'Delica Couch (3D model)',
-	category: 'furniture',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/furniture/furniture_delica_couch.glb',
-	defaultScale: 0.577,
-	footprint: { shape: 'box', w: 2.0, d: 0.95, height: 0.85 },
-	seats: [
-		{ id: 'delica_1', x: -0.6, z: 0.35, yaw: 0, height: 0.46 },
-		{ id: 'delica_2', x: 0.6, z: 0.35, yaw: 0, height: 0.46 },
-	],
-})
-
-registerArtifact({
 	id: 'model_gothiccabinet',
 	name: 'Gothic Cabinet (3D model)',
 	category: 'furniture',
@@ -180,40 +134,6 @@ registerArtifact({
 	footprint: { shape: 'cylinder', radius: 0.9, height: 1.1 },
 })
 
-registerArtifact({
-	id: 'model_chandelier_unitario',
-	name: 'Unitario Chandelier (3D model)',
-	category: 'lighting',
-	contact: 'ceiling',
-	pri: 1,
-	path: 'models/ready/lighting/lighting_chandelier_unitario.glb',
-	defaultScale: 0.001929,
-	footprint: { shape: 'cylinder', radius: 0.7, height: 0.9 },
-})
-
-registerArtifact({
-	id: 'model_wall_light_antique',
-	name: 'Antique Wall Light (3D model)',
-	category: 'lighting',
-	contact: 'wall',
-	pri: 1,
-	path: 'models/ready/lighting/lighting_wall_light_antique.glb',
-	defaultScale: 0.225,
-	footprint: { shape: 'box', w: 0.5, d: 0.35, height: 0.45 },
-})
-
-// Plants
-registerArtifact({
-	id: 'model_potted_plant_04',
-	name: 'Potted Plant (3D model)',
-	category: 'plants',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/plants/plants_potted_plant_04.glb',
-	defaultScale: 5.618,
-	footprint: { shape: 'cylinder', radius: 0.45, height: 1.5 },
-})
-
 // ─────────────────────────────────────────────────────────────────────────────
 // ADDITIONAL MODELS (imported from the '3d models/' source folder)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -225,7 +145,7 @@ registerArtifact({
 	category: 'furniture',
 	contact: 'floor',
 	pri: 1,
-	path: 'models/ready/furniture/furniture_sofa_1_3dx/scene.gltf',
+	path: 'models/ready/furniture/furniture_sofa_1_3dx.glb',
 	defaultScale: 0.018,
 	footprint: { shape: 'box', w: 2.3, d: 1.0, height: 0.85 },
 	seats: [
@@ -252,22 +172,6 @@ registerArtifact({
 	],
 })
 
-// Furniture — Bench 3 USSR (game ready)
-registerArtifact({
-	id: 'model_bench_ussr',
-	name: 'Bench USSR (3D model)',
-	category: 'furniture',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/furniture/furniture_bench_ussr.glb',
-	defaultScale: 0.9,
-	footprint: { shape: 'box', w: 2.0, d: 0.6, height: 0.9 },
-	seats: [
-		{ id: 'bench_1', x: -0.5, z: 0.25, yaw: 0, height: 0.50 },
-		{ id: 'bench_2', x: 0.5, z: 0.25, yaw: 0, height: 0.50 },
-	],
-})
-
 // Plants — Monstera
 registerArtifact({
 	id: 'model_monstera',
@@ -278,28 +182,4 @@ registerArtifact({
 	path: 'models/ready/plants/plants_monstera.glb',
 	defaultScale: 1.0,
 	footprint: { shape: 'cylinder', radius: 0.5, height: 1.5 },
-})
-
-// Plants — Potted Plant 01 (4k)
-registerArtifact({
-	id: 'model_potted_plant_01',
-	name: 'Potted Plant 01 (3D model)',
-	category: 'plants',
-	contact: 'floor',
-	pri: 1,
-	path: 'models/ready/plants/plants_potted_plant_01_4k/potted_plant_01_4k.gltf',
-	defaultScale: 0.8,
-	footprint: { shape: 'cylinder', radius: 0.4, height: 1.4 },
-})
-
-// Lighting — Marmara Lightstar chandelier (LIGHTSTAR GROUP)
-registerArtifact({
-	id: 'model_chandelier_marmara',
-	name: 'Marmara Lightstar Chandelier (3D model)',
-	category: 'lighting',
-	contact: 'ceiling',
-	pri: 1,
-	path: 'models/ready/lighting/lighting_marmara_lightstar/scene.gltf',
-	defaultScale: 0.004,
-	footprint: { shape: 'cylinder', radius: 0.9, height: 1.1 },
 })

@@ -307,6 +307,41 @@ function getResolvedCustomization() {
       return;
     }
 
+    // Real-time Sanctuary Occupancy & Character Claim status endpoint
+    if (pathname === '/api/occupancy') {
+      const activePeers = Array.from(sessionPeers.values());
+      const claimedCharacters = [];
+      for (const p of activePeers) {
+        const id = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : 'ethan');
+        if (!claimedCharacters.includes(id)) {
+          claimedCharacters.push(id);
+        }
+      }
+      for (const grace of graceSessions.values()) {
+        const p = grace.profile;
+        if (p) {
+          const id = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : 'ethan');
+          if (!claimedCharacters.includes(id)) {
+            claimedCharacters.push(id);
+          }
+        }
+      }
+
+      const totalOccupants = sessionPeers.size + graceSessions.size;
+      const isFull = totalOccupants >= MAX_PLAYERS_PER_SESSION;
+
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({
+        ok: true,
+        count: totalOccupants,
+        max: MAX_PLAYERS_PER_SESSION,
+        full: isFull,
+        claimedCharacters,
+        availableCharacters: ['maya', 'ethan'].filter(id => !claimedCharacters.includes(id))
+      }));
+      return;
+    }
+
     // POST /api/invite/redeem (AUTH-01..03, Q2)
     if (pathname === '/api/invite/redeem' && req.method === 'POST') {
       let body;
@@ -830,6 +865,31 @@ wss.on('connection', ws => {
         return;
       }
 
+      // Model validation
+      const rawModel = String(data.model || '');
+      const safeModel = ALLOWED_MODELS.has(rawModel) ? rawModel : 'woman.glb';
+
+      // Enforce character exclusivity (only one Maya and one Ethan allowed simultaneously)
+      const rawName = safeStr(data.name || authenticatedSession?.recipient, 24);
+      const rawCharId = safeStr(data.avatarId || data.character, 16).toLowerCase();
+      const resolvedCharId = rawCharId === 'maya' || rawCharId === 'ethan'
+        ? rawCharId
+        : (safeModel === 'woman.glb' || rawName.toLowerCase().includes('maya') ? 'maya' : (safeModel === 'man.glb' || rawName.toLowerCase().includes('ethan') ? 'ethan' : null));
+
+      if (resolvedCharId) {
+        const charConflict = Array.from(sessionPeers.values()).some(p => {
+          if (sessKey && p.sessionToken === sessKey) return false;
+          const pCharId = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : (p.model === 'man.glb' || (p.name && p.name.toLowerCase().includes('ethan')) ? 'ethan' : null));
+          return pCharId === resolvedCharId;
+        });
+
+        if (charConflict && (data.avatarId || data.character || rawName.toLowerCase().includes('maya') || rawName.toLowerCase().includes('ethan'))) {
+          deny('character-taken');
+          ws.close(4005, 'character-taken');
+          return;
+        }
+      }
+
       joined = true;
       ws._sessionKey = sessKey;
 
@@ -842,10 +902,6 @@ wss.on('connection', ws => {
       // Color hex validation
       const colorHex = String(data.color || '');
       const safeColor = /^#[0-9a-f]{6}$/i.test(colorHex) ? colorHex : '#d8b06a';
-
-      // Model validation
-      const rawModel = String(data.model || '');
-      const safeModel = ALLOWED_MODELS.has(rawModel) ? rawModel : 'woman.glb';
 
       // Location carries initial gameplay room (e.g. 'lobby')
       const location = safeStr(data.location || data.room, 32) || 'lobby';
@@ -865,6 +921,7 @@ wss.on('connection', ws => {
 
       const profile = {
         peerId,
+        avatarId: resolvedCharId || (safeModel === 'woman.glb' ? 'maya' : 'ethan'),
         name: safeStr(data.name || authenticatedSession?.recipient, 24) || 'Guest',
         color: safeColor,
         model: safeModel,
@@ -1090,7 +1147,9 @@ wss.on('connection', ws => {
     if (type === 'chat') {
       const msg = safeStr(data.m, MAX_CHAT_LEN);
       if (!msg) return;
-      broadcast({ t: 'chat', id: peerId, m: msg }, ws);
+      const profile = sessionPeers.get(ws);
+      const senderName = (profile && profile.name) || 'Partner';
+      broadcast({ t: 'chat', id: peerId, name: senderName, m: msg }, ws);
       return;
     }
   });

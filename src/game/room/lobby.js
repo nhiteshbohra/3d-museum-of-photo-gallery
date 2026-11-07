@@ -820,15 +820,94 @@ export function buildLobbyRoom(ctx, lobby) {
 
 		const artSizes = getArtworkSizes()
 		const lobbyCfg = artSizes.lobbyMasterpiece || {}
-		const frameW = typeof lobbyCfg.width === 'number' ? lobbyCfg.width : roundTo(clamp(width * 0.72, 2.4, 5.8), 0.05)
-		const frameH = typeof lobbyCfg.height === 'number' ? lobbyCfg.height : roundTo(clamp(height * 0.58, 1.2, 2.0), 0.05)
+		const frameW = typeof lobbyCfg.width === 'number' ? lobbyCfg.width : 1.70
+		const frameH = typeof lobbyCfg.height === 'number' ? lobbyCfg.height : 2.40
 		const frameDepth = 0.08
 		const frameThickness = 0.12
-		const frameY = typeof lobbyCfg.y === 'number' ? lobbyCfg.y : height * 0.7
+		const frameY = typeof lobbyCfg.y === 'number' ? lobbyCfg.y : 2.45
 
 		const frameMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1f, roughness: 0.3, metalness: 0.1 })
 		const matteMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f0, roughness: 0.9, metalness: 0.0 })
 		disposables.push(frameMat, matteMat)
+
+		// 1.0m Architectural Wainscot Dado Rail along the South Ground Wall (Milestone M6)
+		const dadoGeo = new THREE.BoxGeometry(centerWidth, 0.08, 0.04)
+		const dadoMat = new THREE.MeshStandardMaterial({ color: 0x221a14, roughness: 0.55, metalness: 0.1 })
+		const dadoRail = new THREE.Mesh(dadoGeo, dadoMat)
+		dadoRail.position.set(0, 1.0, innerSouthZ - 0.02)
+		decoSouth.add(dadoRail)
+		disposables.push(dadoGeo, dadoMat)
+
+		// Symmetrical Companion Gallery Architectural Frames at x = ±2.8m (Milestone M6 / 75 Photo Architecture)
+		const companionConfigs = [
+			{ x: -2.80, file: '02_south_wall_companion_left.png', title: 'Grand Lobby • West Companion' },
+			{ x: 2.80, file: '03_south_wall_companion_right.png', title: 'Grand Lobby • East Companion' },
+		]
+		for (const comp of companionConfigs) {
+			const compW = 1.00
+			const compH = 1.80
+			const compGroup = new THREE.Group()
+			compGroup.name = `companion-panel-${comp.x < 0 ? 'west' : 'east'}`
+			compGroup.position.set(comp.x, frameY, innerSouthZ - 0.01)
+			compGroup.rotation.y = Math.PI
+
+			const compBackGeo = new THREE.BoxGeometry(compW + 0.12, compH + 0.12, 0.04)
+			const compBackMat = new THREE.MeshStandardMaterial({ color: 0x14110e, roughness: 0.4, metalness: 0.3 })
+			const compBack = new THREE.Mesh(compBackGeo, compBackMat)
+			compGroup.add(compBack)
+
+			const compPhotoGeo = new THREE.PlaneGeometry(compW, compH)
+			const compPhotoMat = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.FrontSide })
+			const compPhoto = new THREE.Mesh(compPhotoGeo, compPhotoMat)
+			compPhoto.position.z = 0.022
+			compGroup.add(compPhoto)
+
+			const photoUrl = `/photos/00_grand_lobby/${comp.file}`
+			compPhoto.userData = {
+				pickable: true,
+				isPhoto: true,
+				pickableType: 'wall-photo',
+				photoUrl,
+				photoTitle: comp.title,
+			}
+			ctx.deferredTextureLoads.push({
+				url: photoUrl,
+				onLoad(texture) {
+					texture.colorSpace = THREE.SRGBColorSpace
+					fitPhotoToFrame(compPhoto, texture, compW, compH)
+					compPhotoMat.map = texture
+					compPhotoMat.needsUpdate = true
+					disposables.push(texture)
+				},
+				onError(error) {
+					console.warn('[OurMuseum] Failed to load lobby companion photo', photoUrl, error)
+				},
+			})
+			pickableMeshes.push(compPhoto)
+
+			decoSouth.add(compGroup)
+			disposables.push(compBackGeo, compBackMat, compPhotoGeo, compPhotoMat)
+		}
+
+		// Antique Credenza Console Table centered on floor beneath South Masterpiece (Milestone M6)
+		spawnGlbItem(
+			{
+				type: 'glb',
+				path: 'models/ready/furniture/furniture_chinese_commode.glb',
+				x: 0,
+				y: 0,
+				z: innerSouthZ - 0.55,
+				rotationY: Math.PI,
+				scale: 0.445,
+				targetHeight: 0.90,
+				alignToSurface: true,
+				contact: 'floor',
+			},
+			'lobby',
+			{ group: decoSouth, disposables, obstacles }
+		).catch((err) => {
+			console.warn('[lobby] Credenza model load failed:', err)
+		})
 
 		const frameGroup = new THREE.Group()
 		frameGroup.name = 'photo-frame-south'

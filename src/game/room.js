@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import { clamp, roundTo, configureGalleryTexture, isSupportedImageUrl, fitPhotoToFrame } from '../misc/helper.js'
 import { buildLobbyRoom, createRealisticGalleryPlant } from './room/lobby.js'
 import { applyRoomDecorations } from './room/decorations.js'
-import { applyPlacedItems } from './room/placedItems.js'
+import { applyPlacedItems, spawnGlbItem } from './room/placedItems.js'
 import { addDoor as addDoorToRoom } from './room/doors.js'
 import { addSlot as addSlotToRoom } from './room/slots.js'
 import { getSharedRoomMaterialTextures } from './room/textures.js'
@@ -42,6 +42,8 @@ const PHOTO_SLOT_FILE = [
 	'08_east_wall_artwork_3',
 	'09_east_wall_artwork_4',
 	'10_east_wall_artwork_5',
+	'11_partition_front_companion',
+	'12_partition_back_companion',
 ]
 
 export function buildRoom({ width, length, height, wallThickness = 0.2, mode = 'gallery', roomKey, lobby = {}, gallery = {} }) {
@@ -804,137 +806,171 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		const longExtract = typeof gallery.longExtract === 'string' ? gallery.longExtract.trim() : ''
 		const mainThumbnailUrl = typeof gallery.mainThumbnailUrl === 'string' ? gallery.mainThumbnailUrl.trim() : ''
 
-		// Centered Highlight Artwork on FRONT FACE of partition wall (South-facing)
-		const centerCfg = artSizes.centerPartition || {}
-		const centerPhotoW = typeof centerCfg.width === 'number' ? centerCfg.width : 3.50
-		const centerPhotoH = typeof centerCfg.height === 'number' ? centerCfg.height : 2.50
-		const customCenterY = typeof centerCfg.y === 'number' ? centerCfg.y : 2.05
-		const panelY = clamp(customCenterY, centerPhotoH / 2 + 0.1, height - centerPhotoH / 2 - 0.05)
-		const panelZ = pillarD / 2 + 0.08
+		// Suggestion A: Dual-Portrait Diptych Layout on FRONT & BACK of partition wall
+		// Two dedicated portrait frames side-by-side on each face, perfectly framed and flanked by antique sconces
+		const diptychW = 1.45
+		const diptychH = 2.15
 		const panelDepth = 0.06
-
-		const panelBackGeo = new THREE.BoxGeometry(centerPhotoW, centerPhotoH, panelDepth)
-		const panelBackMat = new THREE.MeshStandardMaterial({
-			color: 0xffffff,
-			map: photoFrameBackTex,
-			roughness: 0.86,
-			metalness: 0.0,
-		})
-		disposables.push(panelBackGeo, panelBackMat)
-
-		const imgBack = new THREE.Mesh(panelBackGeo, panelBackMat)
-		imgBack.position.set(0, panelY, panelZ)
-		group.add(imgBack)
-
-		const imgGeo = new THREE.PlaneGeometry(centerPhotoW * 0.94, centerPhotoH * 0.94)
-		const imgMat = new THREE.MeshBasicMaterial({
-			color: 0xffffff,
-			transparent: true,
-			depthWrite: false,
-			premultipliedAlpha: true,
-		})
-		const img = new THREE.Mesh(imgGeo, imgMat)
-		img.position.set(0, panelY, panelZ + panelDepth / 2 + 0.002)
-		group.add(img)
-		disposables.push(imgGeo, imgMat)
-
-		const frontPhotoUrl = localPhotoPath(0) || (gallery.photos && gallery.photos[0]) || mainThumbnailUrl || null
-		img.userData = {
-			pickable: true,
-			isPhoto: true,
-			pickableType: 'column-photo',
-			photoUrl: frontPhotoUrl,
-			photoTitle: gallery.title ? `${gallery.title} • Feature Art` : 'Salon Feature Art',
-		}
-		pickableMeshes.push(img)
-
-		if (frontPhotoUrl) {
-			deferredTextureLoads.push({
-				url: frontPhotoUrl,
-				onLoad(tex) {
-					tex.colorSpace = THREE.SRGBColorSpace
-					tex.premultiplyAlpha = true
-					configureGalleryTexture(tex)
-					fitPhotoToFrame(img, tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
-					imgMat.map = tex
-					imgMat.color.setHex(0xffffff)
-					imgMat.needsUpdate = true
-					disposables.push(tex)
-				},
-				onError(err) {
-					console.warn('[OurMuseum] Failed to load front column photo', frontPhotoUrl, err)
-					imgMat.map = getStaticCache().noPhotoTex
-					imgMat.needsUpdate = true
-				},
-			})
-		} else {
-			imgMat.map = getStaticCache().noPhotoTex
-			imgMat.needsUpdate = true
-		}
-
-		// Centered Highlight Artwork on BACK FACE of partition wall (North-facing)
+		const panelY = clamp(2.05, diptychH / 2 + 0.1, height - diptychH / 2 - 0.05)
+		const panelZ = pillarD / 2 + 0.08
 		const panelZNorth = -(pillarD / 2 + 0.08)
 
-		const backGeo = new THREE.BoxGeometry(centerPhotoW, centerPhotoH, panelDepth)
-		const backMat = new THREE.MeshStandardMaterial({
-			color: 0xffffff,
-			map: photoFrameBackTex,
-			roughness: 0.86,
-			metalness: 0.0,
-		})
-		disposables.push(backGeo, backMat)
+		// 1.0m Architectural Wainscot Dado Moulding Rails on Partition Wall (Milestone M6)
+		const partDadoGeo = new THREE.BoxGeometry(pillarW, 0.08, 0.04)
+		const partDadoMat = new THREE.MeshStandardMaterial({ color: 0x221a14, roughness: 0.55, metalness: 0.1 })
+		const partDadoSouth = new THREE.Mesh(partDadoGeo, partDadoMat)
+		partDadoSouth.position.set(0, 1.0, panelZ - 0.04)
+		group.add(partDadoSouth)
+		const partDadoNorth = new THREE.Mesh(partDadoGeo, partDadoMat)
+		partDadoNorth.position.set(0, 1.0, panelZNorth + 0.04)
+		group.add(partDadoNorth)
+		disposables.push(partDadoGeo, partDadoMat)
 
-		const backMesh = new THREE.Mesh(backGeo, backMat)
-		backMesh.position.set(0, panelY, panelZNorth)
-		backMesh.rotation.y = Math.PI
-		group.add(backMesh)
-
-		const imgGeoNorth = new THREE.PlaneGeometry(centerPhotoW * 0.94, centerPhotoH * 0.94)
-		const imgMatNorth = new THREE.MeshBasicMaterial({
-			color: 0xffffff,
-			transparent: true,
-			depthWrite: false,
-			premultipliedAlpha: true,
-		})
-		const imgNorth = new THREE.Mesh(imgGeoNorth, imgMatNorth)
-		imgNorth.position.set(0, panelY, panelZNorth - panelDepth / 2 - 0.002)
-		imgNorth.rotation.y = Math.PI
-		group.add(imgNorth)
-		disposables.push(imgGeoNorth, imgMatNorth)
-
-		const backPhotoUrl = localPhotoPath(1) || (gallery.photos && gallery.photos[1]) || (gallery.photos && gallery.photos[0]) || null
-		imgNorth.userData = {
-			pickable: true,
-			isPhoto: true,
-			pickableType: 'column-photo',
-			photoUrl: backPhotoUrl,
-			photoTitle: gallery.title ? `${gallery.title} • North Feature` : 'Salon North Feature',
+		// Flanking Antique Wall Light Sconces on FRONT (South) Face (Milestone M6)
+		for (const sx of [-2.10, 2.10]) {
+			spawnGlbItem(
+				{
+					type: 'glb',
+					path: 'models/ready/lighting/antique_wall_light.glb',
+					x: sx,
+					y: 2.20,
+					z: panelZ,
+					rotationY: 0,
+					scale: 0.35,
+					targetHeight: 0.70,
+					alignToSurface: false,
+				},
+				roomKey,
+				{ group, disposables, obstacles }
+			).catch((err) => console.warn('[room] Front partition sconce failed:', err))
 		}
-		pickableMeshes.push(imgNorth)
 
-		if (backPhotoUrl) {
-			deferredTextureLoads.push({
-				url: backPhotoUrl,
-				onLoad(tex) {
-					tex.colorSpace = THREE.SRGBColorSpace
-					tex.premultiplyAlpha = true
-					configureGalleryTexture(tex)
-					fitPhotoToFrame(imgNorth, tex, centerPhotoW * 0.94, centerPhotoH * 0.94)
-					imgMatNorth.map = tex
-					imgMatNorth.color.setHex(0xffffff)
-					imgMatNorth.needsUpdate = true
-					disposables.push(tex)
+		// Flanking Antique Wall Light Sconces on BACK (North) Face (Milestone M6)
+		for (const sx of [-2.10, 2.10]) {
+			spawnGlbItem(
+				{
+					type: 'glb',
+					path: 'models/ready/lighting/antique_wall_light.glb',
+					x: sx,
+					y: 2.20,
+					z: panelZNorth,
+					rotationY: Math.PI,
+					scale: 0.35,
+					targetHeight: 0.70,
+					alignToSurface: false,
 				},
-				onError(err) {
-					console.warn('[OurMuseum] Failed to load back column photo', backPhotoUrl, err)
-					imgMatNorth.map = getStaticCache().noPhotoTex
-					imgMatNorth.needsUpdate = true
-				},
+				roomKey,
+				{ group, disposables, obstacles }
+			).catch((err) => console.warn('[room] Back partition sconce failed:', err))
+		}
+
+		// Helper to build a responsive, tightly-framed portrait photo frame
+		function addPartitionFrame({ x, z, rotY, slotIdx, fallbackUrl, label, isBack = false }) {
+			const backGeo = new THREE.BoxGeometry(diptychW, diptychH, panelDepth)
+			const backMat = new THREE.MeshStandardMaterial({
+				color: 0xffffff,
+				map: photoFrameBackTex,
+				roughness: 0.86,
+				metalness: 0.0,
 			})
-		} else {
-			imgMatNorth.map = getStaticCache().noPhotoTex
-			imgMatNorth.needsUpdate = true
+			disposables.push(backGeo, backMat)
+
+			const backMesh = new THREE.Mesh(backGeo, backMat)
+			backMesh.position.set(x, panelY, z)
+			if (rotY) backMesh.rotation.y = rotY
+			group.add(backMesh)
+
+			const imgGeo = new THREE.PlaneGeometry(diptychW * 0.92, diptychH * 0.92)
+			const imgMat = new THREE.MeshBasicMaterial({
+				color: 0xffffff,
+				transparent: true,
+				depthWrite: false,
+				premultipliedAlpha: true,
+			})
+			const img = new THREE.Mesh(imgGeo, imgMat)
+			const zOffset = isBack ? -(panelDepth / 2 + 0.002) : (panelDepth / 2 + 0.002)
+			img.position.set(x, panelY, z + zOffset)
+			if (rotY) img.rotation.y = rotY
+			group.add(img)
+			disposables.push(imgGeo, imgMat)
+
+			const photoUrl = localPhotoPath(slotIdx) || fallbackUrl || null
+			img.userData = {
+				pickable: true,
+				isPhoto: true,
+				pickableType: 'column-photo',
+				photoUrl,
+				photoTitle: gallery.title ? `${gallery.title} • ${label}` : `Salon • ${label}`,
+			}
+			pickableMeshes.push(img)
+
+			if (photoUrl) {
+				deferredTextureLoads.push({
+					url: photoUrl,
+					onLoad(tex) {
+						tex.colorSpace = THREE.SRGBColorSpace
+						tex.premultiplyAlpha = true
+						configureGalleryTexture(tex)
+						fitPhotoToFrame(img, tex, diptychW * 0.92, diptychH * 0.92)
+						const actualW = img.scale.x * imgGeo.parameters.width
+						const actualH = img.scale.y * imgGeo.parameters.height
+						backMesh.scale.set((actualW + 0.14) / diptychW, (actualH + 0.14) / diptychH, 1)
+						imgMat.map = tex
+						imgMat.color.setHex(0xffffff)
+						imgMat.needsUpdate = true
+						disposables.push(tex)
+					},
+					onError(err) {
+						console.warn('[OurMuseum] Failed to load partition photo', photoUrl, err)
+						imgMat.map = getStaticCache().noPhotoTex
+						imgMat.needsUpdate = true
+					},
+				})
+			} else {
+				imgMat.map = getStaticCache().noPhotoTex
+				imgMat.needsUpdate = true
+			}
 		}
+
+		// FRONT FACE DIPTYCH: Left (slot 0) & Right (slot 10)
+		addPartitionFrame({
+			x: -0.95,
+			z: panelZ,
+			rotY: 0,
+			slotIdx: 0,
+			fallbackUrl: (gallery.photos && gallery.photos[0]) || mainThumbnailUrl || null,
+			label: 'Front Feature (Left)',
+			isBack: false,
+		})
+		addPartitionFrame({
+			x: 0.95,
+			z: panelZ,
+			rotY: 0,
+			slotIdx: 10,
+			fallbackUrl: (gallery.photos && gallery.photos[1]) || null,
+			label: 'Front Companion (Right)',
+			isBack: false,
+		})
+
+		// BACK FACE DIPTYCH: Left (slot 1) & Right (slot 11)
+		addPartitionFrame({
+			x: -0.95,
+			z: panelZNorth,
+			rotY: Math.PI,
+			slotIdx: 1,
+			fallbackUrl: (gallery.photos && gallery.photos[1]) || (gallery.photos && gallery.photos[0]) || null,
+			label: 'North Feature (Left)',
+			isBack: true,
+		})
+		addPartitionFrame({
+			x: 0.95,
+			z: panelZNorth,
+			rotY: Math.PI,
+			slotIdx: 11,
+			fallbackUrl: (gallery.photos && gallery.photos[2]) || null,
+			label: 'North Companion (Right)',
+			isBack: true,
+		})
 	}
 
 	{

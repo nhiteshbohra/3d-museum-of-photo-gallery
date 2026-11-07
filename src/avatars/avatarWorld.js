@@ -608,6 +608,34 @@ export class RemoteAvatar {
     }
 
     if (this.mixer && this.root) {
+      // Dynamic locomotion velocity scaling to eliminate stair/slope foot sliding and jitter (Milestone M7)
+      if (this.lastPosX !== undefined && dt > 0.001) {
+        const vx = (this.group.position.x - this.lastPosX) / dt
+        const vz = (this.group.position.z - this.lastPosZ) / dt
+        const hSpeed = Math.hypot(vx, vz)
+        this.smoothedSpeed = THREE.MathUtils.damp(this.smoothedSpeed !== undefined ? this.smoothedSpeed : hSpeed, hSpeed, 12, dt)
+
+        const walkAction = this.actions.get('walk')
+        if (walkAction && this.currentBaseLogical === 'walk') {
+          if (this.smoothedSpeed > 0.1) {
+            walkAction.timeScale = THREE.MathUtils.clamp(this.smoothedSpeed / 2.2, 0.85, 1.25)
+          } else {
+            walkAction.timeScale = 1.0
+          }
+        }
+        const runAction = this.actions.get('run')
+        if (runAction && this.currentBaseLogical === 'run') {
+          if (this.smoothedSpeed > 0.1) {
+            runAction.timeScale = THREE.MathUtils.clamp(this.smoothedSpeed / 4.4, 0.85, 1.30)
+          } else {
+            runAction.timeScale = 1.0
+          }
+        }
+      }
+      this.lastPosX = this.group.position.x
+      this.lastPosY = this.group.position.y
+      this.lastPosZ = this.group.position.z
+
       this.mixer.update(dt)
       // Select animation: emote beats base locomotion
       if (!this.emoteAction) {

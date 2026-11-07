@@ -5,7 +5,7 @@ const REGIONS = { skin: 'Skin', hair: 'Hair', top: 'Top', trousers: 'Trousers' }
 const DEFAULT_COLORS = { skin: '#bb805c', hair: '#69452d', top: '#3c665a', trousers: '#303d62' }
 const STORAGE_KEY = 'ourmuseum:characterLooks:v1'
 
-export function createCharacterSetup(container, roster, { onSelect, onChange }) {
+export function createCharacterSetup(container, roster, { onSelect, onChange, initialId } = {}) {
   let saved = {}
   try { saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}') || {} } catch {}
   const looks = Object.fromEntries(roster.map(a => [a.id, {
@@ -43,6 +43,24 @@ export function createCharacterSetup(container, roster, { onSelect, onChange }) 
     }
     onChange(profile())
   }
+
+  function select(id, triggerSelect = true) {
+    const avatar = roster.find(a => a.id === id) || roster[0]
+    if (!avatar) return
+    selectedId = avatar.id
+    fields.hidden = false
+    nameInput.value = looks[avatar.id].name
+    for (const card of grid.children) {
+      const active = card.dataset.avatarId === avatar.id
+      card.classList.toggle('selected', active)
+      card.setAttribute('aria-pressed', String(active))
+    }
+    renderColors()
+    if (triggerSelect && typeof onSelect === 'function') {
+      onSelect(avatar.id)
+    }
+  }
+
   for (const a of roster) {
     const button = document.createElement('button')
     button.type = 'button'
@@ -51,16 +69,7 @@ export function createCharacterSetup(container, roster, { onSelect, onChange }) 
     button.textContent = a.name
     button.setAttribute('aria-pressed', 'false')
     button.addEventListener('click', () => {
-      selectedId = a.id
-      fields.hidden = false
-      nameInput.value = looks[a.id].name
-      for (const card of grid.children) {
-        const active = card.dataset.avatarId === a.id
-        card.classList.toggle('selected', active)
-        card.setAttribute('aria-pressed', String(active))
-      }
-      renderColors()
-      onSelect(a.id)
+      select(a.id, true)
     })
     grid.appendChild(button)
   }
@@ -92,6 +101,11 @@ export function createCharacterSetup(container, roster, { onSelect, onChange }) 
       })
       colors.appendChild(row)
     }
+  }
+
+  const defaultTargetId = initialId || roster[0]?.id
+  if (defaultTargetId) {
+    select(defaultTargetId, false)
   }
 
   const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true })
@@ -149,6 +163,37 @@ export function createCharacterSetup(container, roster, { onSelect, onChange }) 
   })
   frameId = requestAnimationFrame(previewFrame)
   return {
+    select(id, triggerSelect = false) {
+      select(id, triggerSelect)
+    },
+    setClaimedCharacters(claimedIds = []) {
+      const claimedSet = new Set((claimedIds || []).map(id => String(id).toLowerCase()))
+      for (const card of grid.children) {
+        const isClaimed = claimedSet.has(card.dataset.avatarId)
+        card.disabled = isClaimed
+        card.classList.toggle('claimed', isClaimed)
+        if (isClaimed) {
+          card.title = `${card.textContent} is already visiting the sanctuary`
+          if (!card.querySelector('.claimed-badge')) {
+            const badge = document.createElement('span')
+            badge.className = 'claimed-badge'
+            badge.textContent = ' (In Museum)'
+            card.appendChild(badge)
+          }
+        } else {
+          card.removeAttribute('title')
+          const badge = card.querySelector('.claimed-badge')
+          if (badge) badge.remove()
+        }
+      }
+      // If currently selected avatar is claimed by partner inside museum, switch to unclaimed avatar
+      if (claimedSet.has(selectedId)) {
+        const available = roster.find(a => !claimedSet.has(a.id))
+        if (available) {
+          select(available.id, true)
+        }
+      }
+    },
     getProfile: profile,
     setAvatar(avatar) {
       preview.avatar = avatar

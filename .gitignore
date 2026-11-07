@@ -5,20 +5,48 @@ dist/
 .cache/
 .avatar_fix_backup/
 
-# ── Environment & Secrets ──────────────────────────────────────
+# ── Environment, Passcodes & Secrets ───────────────────────────
 .env
-.env.local
-.env.*.local
-data/invites.json
-data/letters.json
-*.pyc
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+.cloudflared/
+tunnel*.json
+cert.pem
+
+# ── Private Access Passes, Invites & Personal Letters ──────────
+data/invites*.json
+data/letters*.json
+!data/letters.example.json
+data/*.tmp
+data/*.bak
+data/*.backup
+data/*.old
+data/*.json.tmp*
 
 # ── Private Media & Personal Photos (Local originals preserved, protected from Git) ──
-public/photos/**/*.png
-public/photos/**/*.jpg
-public/photos/**/*.jpeg
-public/photos/**/*.webp
+# Protect all files in public/photos/ regardless of format or subfolder, keeping folder structure and README
+public/photos/**/*
+public/photos/*.*
 !public/photos/README.md
+!public/photos/**/
+
+# Staging, uploads, and media folders
+temp_photos/
+photos/
+private_photos/
+user_photos/
+uploads/
+user_uploads/
+.user_uploaded/
+media/
 
 # ── Raw 3D Model Downloads & Staging (Keep normalized in public/models/ready) ──
 /3d model/
@@ -32,6 +60,13 @@ archive/
 *.tar.gz
 *.rar
 *.7z
+
+# ── Databases, State & Dumps ───────────────────────────────────
+*.sqlite
+*.sqlite3
+*.db
+*.sql
+*.dump
 
 # ── Dev / Test Artifacts & Reports ─────────────────────────────
 screenshots/
@@ -48,6 +83,13 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+test_output.txt
+tests_output.txt
+run_output.txt
+*.out
+auth.json
+storage_state.json
+.auth/
 
 # ── OS & IDE Artifacts ─────────────────────────────────────────
 .DS_Store
@@ -67,4 +109,10 @@ desktop.ini
 
 # ── Local AI Agent Workspaces & Tool Cache ─────────────────────
 .agents/
+.antigravity/
+.gemini/
+.claude/
+.copilot/
 skills-lock.json
+*.pyc
+__pycache__/

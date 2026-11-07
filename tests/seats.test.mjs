@@ -10,10 +10,10 @@ import { registerRuntimeSeat, unregisterRuntimeSeat, clearRuntimeSeats, getRunti
 import { findArtifactByPath } from '../src/game/room/artifactRegistry.js'
 
 test('SEAT-01: Artifact registry seat offsets are in real meters at final size', () => {
-  const couch = findArtifactByPath('models/ready/furniture/furniture_couch_wide.glb')
-  assert.ok(couch, 'couch_wide must exist in artifact registry')
-  assert.ok(Array.isArray(couch.seats), 'couch_wide must define seats')
-  assert.equal(couch.seats.length, 3, 'couch_wide should have 3 seat positions')
+  const couch = findArtifactByPath('models/ready/furniture/furniture_sofa_1_3dx.glb')
+  assert.ok(couch, 'couch must exist in artifact registry')
+  assert.ok(Array.isArray(couch.seats), 'couch must define seats')
+  assert.equal(couch.seats.length, 3, 'couch should have 3 seat positions')
 
   for (const s of couch.seats) {
     assert.ok(s.height >= 0.40 && s.height <= 0.60, `Seat cushion height (${s.height}m) must be human scale`)
