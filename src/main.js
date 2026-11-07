@@ -1,10 +1,8 @@
 import './style.css'
-import { DefaultLoadingManager } from 'three'
-import { startYourEngines } from './engine/engine.js'
 import { coupleSalons, coupleCategories, ROOM_KEY_TO_TITLE } from './data/coupleMuseum.js'
 import { getArtworkSizes } from './config/artworkSizes.js'
 import charactersJson from './data/characters.json'
-import { initMultiplayer } from './avatars/multiplayer.js'
+import { disconnectNet } from './net/wsClient.js'
 import { createCharacterSetup } from './avatars/characterSetup.js'
 import { ACTION_CATEGORIES, ACTIONS, getActionById, getActionsByCategory } from './avatars/actionManifest.js'
 
@@ -578,6 +576,7 @@ async function selectAvatar(id) {
 		avatarLoading = false
 		entranceProgress.value = 100
 		entranceStatus.textContent = 'Your character is ready. Welcome.'
+		entranceStatus.style.color = ''
 		enterButton.hidden = false
 		enterButton.disabled = false
 	} catch (error) {
@@ -651,16 +650,20 @@ function showAvatarSelection() {
 }
 let assetsLoading = false
 let resolveAssetsLoaded = null
-DefaultLoadingManager.onStart = () => { assetsLoading = true }
-DefaultLoadingManager.onProgress = (_url, loaded, total) => {
-	if (entranceReady && !avatarLoading) return
-	const percent = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0
-	entranceProgress.value = Math.max(entranceProgress.value, percent)
-	entranceStatus.textContent = `Loading ${avatarLoading ? 'character' : 'museum'} (${entranceProgress.value}%)…`
-}
-DefaultLoadingManager.onLoad = () => {
-	assetsLoading = false
-	resolveAssetsLoaded?.()
+
+function bindLoadingManagerCallbacks(DefaultLoadingManager) {
+	if (!DefaultLoadingManager) return
+	DefaultLoadingManager.onStart = () => { assetsLoading = true }
+	DefaultLoadingManager.onProgress = (_url, loaded, total) => {
+		if (entranceReady && !avatarLoading) return
+		const percent = total > 0 ? Math.min(99, Math.round((loaded / total) * 100)) : 0
+		entranceProgress.value = Math.max(entranceProgress.value, percent)
+		entranceStatus.textContent = `Loading ${avatarLoading ? 'character' : 'museum'} (${entranceProgress.value}%)…`
+	}
+	DefaultLoadingManager.onLoad = () => {
+		assetsLoading = false
+		resolveAssetsLoaded?.()
+	}
 }
 
 async function withFadeTransition(actionFn) {
@@ -1053,6 +1056,52 @@ function initMobileControls(engineApi, multiplayer) {
 		e.preventDefault()
 		toggleAnimationsDrawer()
 	}, { passive: false })
+}
+
+function handleCharacterClaimRejected({ reason } = {}) {
+	console.warn('[Multiplayer] Character claim was rejected by server (taken by partner).', reason)
+
+	// 1. Revert sanctuary DOM state
+	hasEntered = false
+	document.body.classList.remove('in-sanctuary')
+	document.body.classList.add('choosing-character')
+	document.querySelector('#camera-hud-group')?.setAttribute('hidden', '')
+	if (document.exitPointerLock) {
+		try { document.exitPointerLock() } catch (_) {}
+	}
+	try { window.sessionStorage.removeItem('ourmuseum:entered') } catch (_) {}
+
+	// 2. Stop multiplayer and disconnect socket
+	try { multiplayer?.stop?.() } catch (_) {}
+	try { disconnectNet() } catch (_) {}
+
+	// 3. Unhide overlay and ticket card
+	if (overlayEl) overlayEl.hidden = false
+	const ticketCard = document.querySelector('#ticket-card')
+	if (ticketCard) {
+		ticketCard.classList.remove('card-hidden')
+		ticketCard.classList.add('character-setup-card')
+	}
+	const entranceLoadingEl = document.querySelector('#entrance-loading')
+	if (entranceLoadingEl) {
+		entranceLoadingEl.removeAttribute('hidden')
+		entranceLoadingEl.style.display = 'block'
+	}
+
+	// 4. Reset characterSetup = null and recreate preview stage
+	characterSetup = null
+	showAvatarSelection()
+
+	// 5. Display an informative notification toast (showChatToast) and update #entrance-status
+	const message = 'That character was just claimed by your partner. Please choose another character to enter the sanctuary.'
+	if (entranceStatus) {
+		entranceStatus.textContent = message
+		entranceStatus.style.color = '#e7a854'
+	}
+	showChatToast('Sanctuary Entrance', message)
+
+	// 6. Call syncOccupancy() to fetch /api/occupancy, disable claimed card, and auto-select available character
+	syncOccupancy()
 }
 
 function enterMuseum() {
@@ -1963,6 +2012,17 @@ async function startMuseumExperience() {
 			entranceLoadingEl.style.display = 'block'
 		}
 
+		const [
+			{ DefaultLoadingManager },
+			{ startYourEngines },
+			{ initMultiplayer },
+		] = await Promise.all([
+			import('three'),
+			import('./engine/engine.js'),
+			import('./avatars/multiplayer.js'),
+		])
+		bindLoadingManagerCallbacks(DefaultLoadingManager)
+
 		const initialSalon = initialTitle ? findCoupleSalon(initialTitle) : null
 		engineApi = startYourEngines({
 		canvas,
@@ -2065,6 +2125,7 @@ async function startMuseumExperience() {
 				spawn: { type: 'fromWall', wall: 'south' },
 			})
 		},
+		onClaimRejected: handleCharacterClaimRejected,
 	})
 	window.__multiplayer = multiplayer
 

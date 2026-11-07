@@ -32,6 +32,13 @@ export default defineConfig({
             input: {
                 main: resolve(__dirname, 'index.html'),
             },
+            output: {
+                manualChunks(id) {
+                    if (id.includes('node_modules/three')) return 'vendor-three'
+                    if (id.includes('/src/engine/') || id.includes('\\src\\engine\\') || id.includes('/src/game/') || id.includes('\\src\\game\\')) return 'engine-3d'
+                    if (id.includes('avatarWorld') || id.includes('multiplayer')) return 'avatars-multiplayer'
+                },
+            },
         },
     },
 })

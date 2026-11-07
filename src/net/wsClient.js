@@ -107,14 +107,15 @@ export function connectNet(url) {
   }
 
   ws.onclose = (ev) => {
+    if (NET.ws !== ws) return
     const wasConnected = NET.connected
     NET.connected = false
     NET.joined = false
     NET.ws = null
     emitNet('status', { kind: wasConnected ? 'close' : 'closed', code: ev.code, reason: ev.reason })
 
-    // If server sent terminal code (room-full, bad-code, update-required), do not retry
-    if (ev.code === 4001 || ev.code === 4002 || ev.code === 4003 || NET.terminalError) {
+    // If server sent terminal code (room-full, bad-code, update-required, character-taken), do not retry
+    if (ev.code === 4001 || ev.code === 4002 || ev.code === 4003 || ev.code === 4005 || NET.terminalError) {
       return
     }
 
@@ -122,6 +123,7 @@ export function connectNet(url) {
   }
 
   ws.onerror = (ev) => {
+    if (NET.ws !== ws) return
     console.error('[net] ws.onerror fired:', ev)
     emitNet('status', { kind: 'error', event: ev })
   }
@@ -135,11 +137,18 @@ export function disconnectNet() {
     NET.reconnectTimer = 0
   }
   if (NET.ws) {
-    try { NET.ws.close(1000, 'client-disconnect') } catch {}
+    const oldWs = NET.ws
     NET.ws = null
+    oldWs.onopen = null
+    oldWs.onmessage = null
+    oldWs.onclose = null
+    oldWs.onerror = null
+    try { oldWs.close(1000, 'client-disconnect') } catch {}
   }
   NET.connected = false
   NET.joined = false
+  NET.terminalError = false
+  NET.reconnectAttempts = 0
   NET.pendingChat.length = 0
 }
 

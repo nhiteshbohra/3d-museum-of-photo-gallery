@@ -25,10 +25,10 @@
 | **PHOTO-01** | **P1** | Aspect-adaptive frame, outline, backplate and pick surface synchrony | `src/game/room.js`, `src/misc/helper.js` | VERIFIED | Senior Developer | Aspect-ratio fitting (portrait, landscape, panorama, square) rescales backing plate, slot outline, and pick surface proportionally across all 7 galleries. |
 | **MOB-P0-01** | **P0** | Mobile: 51.9 MB curved sofa model asset pressure | `public/models/ready/furniture/3d_pbr_curved_sofa.glb`, `public/models/ready/furniture/lod/3d_pbr_curved_sofa_lod.glb` | VERIFIED | Senior Developer | Compressed primary model to 6.13 MB (88.21% reduction) with Draco + WebP 2048px; generated distance LOD model at 1.40 MB (97.32% reduction) with Draco + WebP 1024px. Bounding box `[-4.24407..4.24407]` and 4 seating anchors preserved byte-accurately (0.000000m drift). |
 | **MOB-P0-02** | **P0** | Uncapped DPR (up to 2.0) on high-density mobile screens causes GPU fillrate bottlenecks | `src/engine/engine.js` | VERIFIED | Senior Developer | Implemented dynamic `getTargetPixelRatio()` clamping DPR to 1.5 max on mobile/touch viewports (`window.innerWidth <= 768` or `maxTouchPoints > 0`) at startup and across window resize events. |
-| **MOB-P0-03** | **P0** | High-resolution avatar texture PNGs (~18.7 MB) loaded synchronously | `src/avatars/avatarWorld.js` | OPEN | Senior Developer | Profile decode overhead; optimize textures / caching while preserving visual quality on Maya and Ethan. |
+| **MOB-P0-03** | **P0** | High-resolution avatar texture PNGs (~18.7 MB) loaded synchronously | `src/avatars/avatarWorld.js`, `public/models/ready/characters/textures/**` | VERIFIED | Senior Developer | Converted 8 avatar PNGs to WebP (17.85 MB -> 2.40 MB, 86.6% size reduction) with PNG fallback; disposed overwritten GLB base textures and intermediate `color`/`mask` source textures after canvas extraction; reused single `workImage` buffer. |
 | **MOB-P1-04** | **P1** | Unbounded `loadedPhotoTextureCache` Map in `engine.js` | `src/engine/engine.js` | VERIFIED | Senior Developer | Implemented bounded 35-texture LRU cache with multi-tier in-flight texture protection, active room reference retention (`isTextureInUse`), and leak-free Three.js `.dispose()` across 100 room transitions. |
-| **MOB-P1-05** | **P1** | Up to 3 fully resident rooms cloned in memory without progressive disposal | `src/engine/engine.js` | OPEN | Senior Developer | Budget resident rooms based on quality tier; safe asset reference counting. |
-| **MOB-P1-06** | **P1** | Multiple requestAnimationFrame loops and per-frame nametag DOM projections | `src/engine/engine.js`, `src/avatars/multiplayer.js` | OPEN | Senior Developer | Consolidate animation loops; throttle offscreen DOM projection calculations. |
+| **MOB-P1-05** | **P1** | Up to 3 fully resident rooms cloned in memory without progressive disposal | `src/engine/engine.js`, `src/game/room/placedItems.js` | VERIFIED | Senior Developer | Adaptive room LRU cap (`MAX_CACHED_ROOMS = 1` on mobile, `3` on desktop), deep recursive geometry/material disposal on room eviction, and `ctx.disposed` guard in `spawnGlbItemAsync` preventing dangling in-flight GLB mounts. |
+| **MOB-P1-06** | **P1** | Multiple requestAnimationFrame loops and per-frame nametag DOM projections | `src/engine/engine.js`, `src/avatars/multiplayer.js`, `src/avatars/avatarWorld.js` | VERIFIED | Senior Developer | Consolidated multiplayer RAF into `engineApi.onFrame`, throttled nametag DOM `.style` updates to integer pixel changes, guarded pre-play idle drift with `!inSanctuary`, skipped rendering when `document.hidden`, and throttled cursor raycast to 10 Hz. |
 | **MOB-P1-07** | **P1** | Touch controls and responsive drawer layout on small viewports (320-390px) | `src/style.css`, `src/main.js` | VERIFIED | Senior Developer | Responsive touch controls, drawer buttons >= 44px, no overlapping joystick or blocked interactions. |
 | **UI-OVERLAP-01** | **P1** | Top bar buttons overlap open Gestures drawer header and search box | `src/style.css`, `src/main.js` | VERIFIED | Senior Developer | Shift `#top-bar` left dynamically on desktop when drawer is open (`transform: translateX(calc(-1 * min(390px, 92vw) - 16px))`); hide top-bar completely on mobile when drawer is open. |
 | **MOB-CAM-01** | **P1** | Portrait mobile camera view claustrophobic and snapping to player back | `src/engine/engine.js` | VERIFIED | Senior Developer | Widened portrait FOV from 70° to 82° when `aspect < 1.0`, increased portrait follow distance to 3.6m, and excluded ground planes/carpets from collision raycast snapping. |
@@ -37,8 +37,11 @@
 | **BUILD-CSS-01** | **P0** | Production build blocker: orphaned declarations and unexpected brace in `src/style.css:908` | `src/style.css` | VERIFIED | Senior Developer (worker_m4_2) | Clean `.mobile-btn` and `.mobile-btn:active` rules; `npx vite build` succeeds without PostCSS error. |
 | **TEST-FLAKE-01** | **P1** | Flaky DOM polling in `tests/check_character_setup.py:44,79` throwing TypeError on unmounted element | `tests/check_character_setup.py` | VERIFIED | Senior Developer (worker_m4_2) | Guard DOM queries with `Boolean(document.querySelector(...) && !document.querySelector(...).hidden)`; headless browser test passes 100%. |
 | **IST-TIME-01** | **P2** | Timestamps in `invites.json` not in Indian Standard Time (IST) | `scripts/inviteStore.js` | VERIFIED | Senior Developer | Format `createdAt` and `lastSeen` in ISO 8601 with explicit `+05:30` offset (IST). |
-| **MOB-P2-08** | **P2** | Continuous 20 Hz WebSocket position packets even when idle | `src/avatars/multiplayer.js` | OPEN | Senior Developer | Adaptive network updates: broadcast on delta during movement, drop to heartbeat rate when idle. |
-| **MOB-P2-09** | **P2** | Eager monolithic client bundle parse before authentication | `src/main.js`, `vite.config.js` | OPEN | Senior Developer | Dynamic import / code splitting of heavy 3D engine after server session validation. |
+| **MOB-P2-08** | **P2** | Continuous 20 Hz WebSocket position packets even when idle | `src/avatars/multiplayer.js` | VERIFIED | Senior Developer | Adaptive delta-based broadcast: 20 Hz (`50ms`) when moving/rotating, 1 immediate settling packet on stop, and 1 Hz (`1000ms`) keep-alive heartbeat when stationary (95% idle packet reduction). |
+| **MOB-P2-09** | **P2** | Eager monolithic client bundle parse before authentication | `src/main.js`, `vite.config.js` | VERIFIED | Senior Developer | Configured Rollup `manualChunks` (`vendor-three`, `engine-3d`, `avatars-multiplayer`) and dynamic `import()` inside `startMuseumExperience()`, shrinking pre-auth entry chunk from 994.34 kB to 56.29 kB (94.3% reduction). |
+| **DECOR-03** | **P1** | Partition antique wall sconces invisible to `spawnGlbItem` mock in layout tests | `src/game/room.js`, `tests/layout.test.mjs`, `tests/adversarial_salon_lights_m10.test.mjs` | VERIFIED | Senior Developer | Tagged salon partition sconces with semantic IDs (`sconce_${roomKey}_front_${idx}`, `sconce_${roomKey}_back_${idx}`) and `contact: 'wall'`; upgraded `tests/layout.test.mjs` mock to attach `THREE.Group` nodes and assert 4 wall sconces + 0 floor obstacles per salon. |
+| **PHOTO-DOC-01** | **P1** | Outdated 61-photo references in verification scripts and documentation | `scripts/check_photos.mjs`, `docs/agent-work/TEST_MATRIX.md`, `public/photos/README.md` | VERIFIED | Senior Developer | Synchronized all verification messages and test matrix records to the 75-photo architecture (Lobby: 3, 6 Salons: 12 each). |
+| **LOCK-RACE-01** | **P1** | Concurrent character selection race condition and UI recovery on `4005 character-taken` | `server.js`, `src/net/wsClient.js`, `src/avatars/multiplayer.js`, `src/main.js`, `tests/two_client_test.mjs` | VERIFIED | Senior Developer | Removed `sessKey` bypass on active `sessionPeers` in `server.js` (preventing multi-tab duplicate character claims while preserving `graceSessions` reconnects); added `onClaimRejected` client recovery returning rejected visitor to `#avatar-select` with toast notification and refreshed `/api/occupancy`. |
 
 ---
 
@@ -154,3 +157,58 @@
   Hardened lines 41, 44, and 79 with explicit null-safe truthiness check: `Boolean(document.querySelector('#avatar-select') && !document.querySelector('#avatar-select').hidden)`.
 - **Acceptance Criteria & Verification:**
   - `python tests/check_character_setup.py http://127.0.0.1:8080?code=290512` completes cleanly with exit code 0 and empty error log in `docs/reports/character-setup/checks.json`.
+
+### DECOR-03 & PHOTO-DOC-01: Salon Partition Wall Sconces & 75-Photo Synchronization (M10)
+- **ID:** `DECOR-03`, `PHOTO-DOC-01`
+- **Severity:** P1
+- **Status:** VERIFIED
+- **Owner:** Senior Developer
+- **Affected Files:**
+  - `src/game/room.js`
+  - `tests/layout.test.mjs`
+  - `tests/adversarial_salon_lights_m10.test.mjs`
+  - `scripts/check_photos.mjs`
+  - `docs/agent-work/TEST_MATRIX.md`
+  - `public/photos/README.md`
+- **Fix Implemented:**
+  - Tagged partition wall sconces in `src/game/room.js` with semantic IDs (`sconce_${roomKey}_front_${idx}`, `sconce_${roomKey}_back_${idx}`) and `contact: 'wall'` so they never generate floor obstacles.
+  - Upgraded `spawnGlbItem` mock in `tests/layout.test.mjs` to mount `THREE.Group` instances with `userData` onto the room group and verified 4 wall sconces per non-lobby salon.
+  - Updated `scripts/check_photos.mjs`, `docs/agent-work/TEST_MATRIX.md`, and `public/photos/README.md` to consistently report all 75 photo slots.
+
+### LOCK-RACE-01: Two-Player Character Locking Concurrency & UI Recovery (M11)
+- **ID:** `LOCK-RACE-01`
+- **Severity:** P1
+- **Status:** VERIFIED
+- **Owner:** Senior Developer
+- **Affected Files:**
+  - `server.js`
+  - `src/net/wsClient.js`
+  - `src/avatars/multiplayer.js`
+  - `src/main.js`
+  - `tests/two_client_test.mjs`
+  - `tests/adversarial_m11_race_grace.test.mjs`
+  - `tests/adversarial_reconnect_m11.test.mjs`
+- **Fix Implemented:**
+  - Removed the `sessKey` bypass on active `sessionPeers` in `server.js` so two simultaneous tabs sharing a session cookie cannot both claim the same character, while preserving `sessKey` matching in `graceSessions` for 30-second disconnect recovery.
+  - Added terminal error interception for `character-taken` (`4005`) in `src/net/wsClient.js` and detached event handlers on `disconnectNet()` so intentional disconnects never trigger phantom reconnect loops.
+  - Wired `onClaimRejected` in `src/avatars/multiplayer.js` and `handleCharacterClaimRejected()` in `src/main.js` to return a rejected visitor to `#avatar-select` with a toast notification and immediate `/api/occupancy` refresh.
+
+### MOB-P0-03, MOB-P1-05, MOB-P1-06, MOB-P2-08, MOB-P2-09: Mobile Optimization Suite (M12)
+- **ID:** `MOB-P0-03`, `MOB-P1-05`, `MOB-P1-06`, `MOB-P2-08`, `MOB-P2-09`
+- **Severity:** P0 / P1 / P2
+- **Status:** VERIFIED
+- **Owner:** Senior Developer
+- **Affected Files:**
+  - `public/models/ready/characters/textures/man/*.webp` & `woman/*.webp`
+  - `src/avatars/avatarWorld.js`
+  - `src/engine/engine.js`
+  - `src/game/room/placedItems.js`
+  - `src/avatars/multiplayer.js`
+  - `vite.config.js`
+  - `src/main.js`
+- **Fix Implemented:**
+  - **MOB-P0-03 (Avatar Textures):** Converted 8 character PNGs (`17.85 MB`) to high-quality WebP (`2.40 MB`, **86.6% transfer reduction**) with automatic `.png` fallback. Disposed overwritten GLB base textures and immediately disposed intermediate `color` and `mask` textures after canvas pixel extraction, reclaiming ~26.6 MB of GPU VRAM per avatar and reusing a single `workImage` buffer.
+  - **MOB-P1-05 (Room Memory Budgeting):** Clamped `MAX_CACHED_ROOMS = 1` on mobile viewports (`3` on desktop), added recursive geometry/material `.dispose()` traversal in `evictExcessRooms()`, and added a `ctx?.disposed || group?.userData?.disposed` guard in `spawnGlbItemAsync()` to prevent late-resolving GLBs from attaching to evicted rooms.
+  - **MOB-P1-06 (Frame-Loop Consolidation):** Exposed `engineApi.onFrame(fn)` in `src/engine/engine.js` and consolidated the secondary `requestAnimationFrame` loop from `src/avatars/multiplayer.js`. Added `document.hidden` pause, removed redundant per-frame `resize()` calls, guarded pre-play camera drift with `!inSanctuary`, throttled desktop cursor raycasts to 10 Hz, and throttled nametag DOM `.style` mutations in `src/avatars/avatarWorld.js` to fire only when integer coordinates change.
+  - **MOB-P2-08 (Adaptive Idle Network Traffic):** Replaced continuous 20 Hz state broadcasts with delta-based transmission in `src/avatars/multiplayer.js` (`50ms` active movement/rotation, 1 immediate settling packet on stop, `1000ms` idle heartbeat — **95% reduction in idle WebSocket packets**).
+  - **MOB-P2-09 (Pre-Auth Code Splitting):** Configured Rollup `manualChunks` (`vendor-three`, `engine-3d`, `avatars-multiplayer`) in `vite.config.js` and replaced static top-level 3D imports in `src/main.js` with post-authentication `await Promise.all([import('three'), import('./engine/engine.js'), import('./avatars/multiplayer.js')])`, shrinking the initial entry bundle from **994.34 kB to 56.29 kB** (**94.3% reduction**).

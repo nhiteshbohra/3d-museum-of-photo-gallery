@@ -16,14 +16,19 @@ import {
 } from './chat.js'
 import { EMOTES, getEmoteByKey, getEmoteById } from './emotes.js'
 
-const STATE_INTERVAL_MS = 50 // ~20 Hz
+const STATE_INTERVAL_MS = 50 // ~20 Hz active locomotion
+const IDLE_HEARTBEAT_MS = 1000 // ~1 Hz idle keep-alive (MOB-P2-08)
+const POS_EPSILON = 0.008 // 8mm movement threshold
+const ROT_EPSILON = 0.015 // ~0.85 deg rotation threshold
 
-export function initMultiplayer({
-  engineApi,
-  selectedAvatar,
-  getRoomKey,
-  goToRoom,
-}) {
+export function initMultiplayer(options = {}) {
+  const {
+    engineApi,
+    selectedAvatar,
+    getRoomKey,
+    goToRoom,
+    onClaimRejected,
+  } = options
   // selectedAvatar normalizer
   const resolveAvatar = typeof selectedAvatar === 'function'
     ? selectedAvatar
@@ -560,12 +565,15 @@ export function initMultiplayer({
     })
   }
 
-  // ---- frame loop -------------------------------------------------------
+  // ---- frame loop & adaptive network broadcast (MOB-P1-06, MOB-P2-08) ---
   let lastFrame = performance.now()
-  function frame() {
+  let lastBroadcastState = null
+  let wasMoving = false
+
+  function tickFrame(engineDt, engineNow) {
     if (!state.started) return
-    const now = performance.now()
-    const dt = Math.min((now - lastFrame) / 1000, 0.05)
+    const now = typeof engineNow === 'number' ? engineNow : performance.now()
+    const dt = typeof engineDt === 'number' ? engineDt : Math.min((now - lastFrame) / 1000, 0.05)
     lastFrame = now
 
     if (state.world) {
@@ -575,23 +583,59 @@ export function initMultiplayer({
 
     updateEmoteHint()
 
-    // Reposition any active chat bubbles
-    for (const [peerId, av] of state.world?.remote.entries() || []) {
-      const pos = avatarHeadScreenPosition(av)
-      if (pos) positionChatBubble(peerId, pos)
-    }
-    const localPos = localHeadScreenPosition()
-    if (localPos) positionChatBubble('local', localPos)
-
-    if (state.chatOpen) {
-      requestAnimationFrame(frame)
-      return
+    // Reposition active chat bubbles only when bubbles exist in DOM (MOB-P1-06)
+    if (typeof document !== 'undefined' && document.querySelector('.chat-bubble')) {
+      for (const [peerId, av] of state.world?.remote.entries() || []) {
+        const pos = avatarHeadScreenPosition(av)
+        if (pos) positionChatBubble(peerId, pos)
+      }
+      const localPos = localHeadScreenPosition()
+      if (localPos) positionChatBubble('local', localPos)
     }
 
-    // Send state at ~20 Hz
-    if (state.connected && now - state.lastSend >= STATE_INTERVAL_MS) {
-      state.lastSend = now
-      netState(gatherLocalState())
+    if (state.chatOpen) return
+
+    // Adaptive delta-based state broadcast: 20 Hz active, 1 Hz idle (MOB-P2-08)
+    if (state.connected) {
+      const current = gatherLocalState()
+      const elapsed = now - state.lastSend
+      const p = current.p || [0, 0, 0]
+      const isMoving = Boolean(current.moving)
+
+      let hasDelta = false
+      if (isMoving !== wasMoving) {
+        hasDelta = true
+        wasMoving = isMoving
+      } else if (lastBroadcastState) {
+        const lp = lastBroadcastState.p || [0, 0, 0]
+        const dPos = Math.hypot(p[0] - lp[0], p[1] - lp[1], p[2] - lp[2])
+        const dRy = Math.abs((current.ry || 0) - (lastBroadcastState.ry || 0))
+        const metaChanged =
+          current.room !== lastBroadcastState.room ||
+          current.anim !== lastBroadcastState.anim ||
+          current.mode !== lastBroadcastState.mode ||
+          current.seat !== lastBroadcastState.seat
+        if (metaChanged || dPos > POS_EPSILON || dRy > ROT_EPSILON) {
+          hasDelta = true
+        }
+      } else {
+        hasDelta = true
+      }
+
+      const targetInterval = isMoving || hasDelta ? STATE_INTERVAL_MS : IDLE_HEARTBEAT_MS
+      if (elapsed >= targetInterval) {
+        state.lastSend = now
+        lastBroadcastState = {
+          p: [p[0], p[1], p[2]],
+          ry: current.ry || 0,
+          moving: isMoving,
+          room: current.room,
+          anim: current.anim,
+          mode: current.mode,
+          seat: current.seat,
+        }
+        netState(current)
+      }
     }
 
     // Cancel emote if player starts walking or running
@@ -605,7 +649,11 @@ export function initMultiplayer({
     if (state.emoteActive && !state.emoteActive.loop && now > state.emoteActive.until) {
       stopEmote()
     }
+  }
 
+  function frame() {
+    if (!state.started || state.unsubFrame) return
+    tickFrame()
     requestAnimationFrame(frame)
   }
 
@@ -692,6 +740,10 @@ export function initMultiplayer({
       } else if (s.kind === 'terminal-error') {
         state.connected = false
         setConnection(s.code)
+        if (s.code === 'character-taken') {
+          stop()
+          options.onClaimRejected?.({ reason: 'character-taken' })
+        }
       }
     }))
 
@@ -705,19 +757,27 @@ export function initMultiplayer({
     window.addEventListener('keydown', onKeyDown, { capture: true })
     startChatListener()
 
-    // 2-second ping heartbeat
+    // 4-second ping heartbeat (skipped when hidden - MOB-P2-08)
     state.pingInterval = setInterval(() => {
-      if (state.connected) {
+      if (state.connected && !(typeof document !== 'undefined' && document.hidden)) {
         state.lastPing = performance.now()
         netPing(state.lastPing)
       }
-    }, 2000)
+    }, 4000)
 
-    requestAnimationFrame(frame)
+    if (typeof engineApi?.onFrame === 'function') {
+      state.unsubFrame = engineApi.onFrame(tickFrame)
+    } else {
+      requestAnimationFrame(frame)
+    }
   }
 
   function stop() {
     state.started = false
+    if (state.unsubFrame) {
+      try { state.unsubFrame() } catch {}
+      state.unsubFrame = null
+    }
     window.removeEventListener('keydown', onKeyDown, { capture: true })
 
     // Unsubscribe net listeners

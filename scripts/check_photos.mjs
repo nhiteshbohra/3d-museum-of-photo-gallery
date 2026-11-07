@@ -80,6 +80,6 @@ if (missing.length > 0) {
     console.warn(`\n⚠️ ${missing.length} photos missing. Run with --strict to enforce in CI.`)
   }
 } else {
-  console.log('✓ All 61 photo assets present!')
+  console.log(`✓ All ${total} photo assets present!`)
 }
 

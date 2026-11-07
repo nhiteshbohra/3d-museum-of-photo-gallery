@@ -91,13 +91,19 @@ export function startYourEngines({
 	let deferredTextureLoadToken = 0
 	let lastDoorTriggerTime = 0
 
-	// Room LRU Cache (max 3 cached rooms)
-	const MAX_CACHED_ROOMS = 3
+	const isMobileViewport = typeof window !== 'undefined' && (
+		(typeof window.innerWidth === 'number' && window.innerWidth <= 768) ||
+		(typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0) ||
+		(typeof window !== 'undefined' && 'ontouchstart' in window)
+	)
+
+	// Room LRU Cache (max 1 on mobile to prevent RAM exhaustion, max 3 on desktop - MOB-P1-05)
+	const MAX_CACHED_ROOMS = isMobileViewport ? 1 : 3
 	const roomCache = new Map()
 	const prebuildingPromises = new Map()
 
-	// Photo Texture LRU Cache (max 35 textures bounded to prevent mobile GPU memory exhaustion)
-	const MAX_CACHED_PHOTO_TEXTURES = 35
+	// Photo Texture LRU Cache (bounded to prevent mobile GPU memory exhaustion - MOB-P1-05)
+	const MAX_CACHED_PHOTO_TEXTURES = isMobileViewport ? 24 : 35
 	const loadedPhotoTextureCache = new Map()
 	const inFlightTextures = new Set()
 	const inFlightPromises = new Map()
@@ -596,7 +602,19 @@ export function startYourEngines({
 			const evicted = roomCache.get(oldestKey)
 			roomCache.delete(oldestKey)
 			if (evicted) {
-				scene.remove(evicted.group)
+				evicted.disposed = true
+				if (evicted.group) {
+					scene.remove(evicted.group)
+					evicted.group.userData = evicted.group.userData || {}
+					evicted.group.userData.disposed = true
+					evicted.group.traverse?.((obj) => {
+						if (obj.geometry?.dispose) obj.geometry.dispose()
+						if (obj.material) {
+							const mats = Array.isArray(obj.material) ? obj.material : [obj.material]
+							for (const m of mats) if (m?.dispose) m.dispose()
+						}
+					})
+				}
 				disposeMany(evicted.disposables)
 			}
 		}
@@ -1571,14 +1589,23 @@ export function startYourEngines({
 	let fpsTime = 0
 	let lastFpsReport = 0
 	let lastHeadingReport = 0
+	let lastCursorCheckTime = 0
+	const _previousPosition = new THREE.Vector3()
+	const _lastLodPosition = new THREE.Vector3(Infinity, Infinity, Infinity)
+	const frameListeners = []
 
 	function frame() {
+		if (typeof document !== 'undefined' && document.hidden) {
+			clock.getDelta()
+			rafId = window.requestAnimationFrame(frame)
+			return
+		}
 		const dt = Math.min(clock.getDelta(), 0.05)
+		const now = clock.elapsedTime
 
 		if (typeof onFps === 'function') {
 			fpsFrames += 1
 			fpsTime += dt
-			const now = clock.elapsedTime
 
 			if (fpsTime >= 0.25 && now - lastFpsReport >= 0.25) {
 				const fps = fpsFrames / fpsTime
@@ -1590,41 +1617,49 @@ export function startYourEngines({
 		}
 
 		if (typeof onHeading === 'function' && document.pointerLockElement === canvas) {
-			const now = clock.elapsedTime
 			if (now - lastHeadingReport >= 0.1) {
 				onHeading(headingFromYaw(yaw))
 				lastHeadingReport = now
 			}
 		}
 
-		const previousPosition = camera.position.clone()
+		_previousPosition.copy(camera.position)
 		updatePlayer(dt)
-		updateAvatar(dt, previousPosition)
+		updateAvatar(dt, _previousPosition)
+
+		for (let i = 0; i < frameListeners.length; i++) {
+			frameListeners[i](dt, performance.now())
+		}
 
 		// Animate dynamic room decorations (flickering fire/candles, petals, ceiling fan, clock pendulum, etc.)
 		if (currentRoom?.animatedDecorations) {
-			const animTime = clock.elapsedTime
 			for (let i = 0; i < currentRoom.animatedDecorations.length; i++) {
-				currentRoom.animatedDecorations[i](animTime, dt)
+				currentRoom.animatedDecorations[i](now, dt)
 			}
 		}
 
-		// Cinematic drift before entering
-		if (!isPointerLocked()) {
+		// Cinematic drift before entering (guarded on mobile once inside sanctuary - MOB-P1-06)
+		const inSanctuary = typeof document !== 'undefined' && document.body?.classList?.contains('in-sanctuary')
+		if (!isPointerLocked() && !inSanctuary) {
 			prePlayIdleTime += dt
 			camera.rotation.y = yaw + Math.sin(prePlayIdleTime * 0.25) * 0.06
 			camera.rotation.x = pitch + Math.sin(prePlayIdleTime * 0.35) * 0.02
 		}
 
-		setBodyClickableCursor(computeIsAimingAtClickable())
+		if (!isMobileViewport && now - lastCursorCheckTime >= 0.1) {
+			lastCursorCheckTime = now
+			setBodyClickableCursor(computeIsAimingAtClickable())
+		}
 
-		// Advance distance-based LOD switching for placed GLB models.
-		updateLodSwitchers(camera.position)
+		// Advance distance-based LOD switching only when camera moves >= 5cm (MOB-P1-06)
+		if (camera.position.distanceToSquared(_lastLodPosition) > 0.0025) {
+			_lastLodPosition.copy(camera.position)
+			updateLodSwitchers(camera.position)
+		}
 
 		// Calibration helper when ?debug=seats is active.
 		updateDebugSeatsHud(camera.position)
 
-		resize()
 		renderer.render(scene, activeCamera || camera)
 		rafId = window.requestAnimationFrame(frame)
 	}
@@ -1784,6 +1819,13 @@ export function startYourEngines({
 		},
 		triggerResize() {
 			resize()
+		},
+		onFrame(fn) {
+			if (typeof fn === 'function') frameListeners.push(fn)
+			return () => {
+				const idx = frameListeners.indexOf(fn)
+				if (idx >= 0) frameListeners.splice(idx, 1)
+			}
 		},
 		getTargetPixelRatio,
 		setCameraPosition(x, y, z, newYaw = 0, newPitch = 0) {

@@ -58,14 +58,16 @@ test('Every placed GLB item points to an existing file in public/', () => {
   }
 })
 
-test('Lobby contains seating, and non-lobby rooms obey simplification rule (only plants allowed from decor)', () => {
+test('Lobby contains seating, and non-lobby rooms obey simplification rule (furnishings limited to plants; architectural partition sconces added programmatically)', () => {
   const rooms = layout.rooms || {}
   // 1. Lobby must contain seating (sofas)
   const lobbyItems = rooms.lobby || []
   const lobbyHasSeat = lobbyItems.some(itm => itm.id && (itm.id.includes('sofa') || itm.id.includes('couch') || itm.id.includes('bench')))
   assert.ok(lobbyHasSeat, 'Lobby must have a seating item placed')
 
-  // 2. Non-lobby rooms must contain only plants from decorative assets (no sofas, no bookcases/artifacts, no chandeliers)
+  // 2. Non-lobby rooms must contain only plants from decorative furnishings in museumLayout.json.
+  // Note: Static layout checks in museumLayout.json apply to placed furnishings (no sofas, no bookcases/artifacts, no chandeliers),
+  // while architectural partition sconces (antique wall lights) are added programmatically in src/game/room.js.
   for (const [roomKey, items] of Object.entries(rooms)) {
     if (roomKey === 'lobby') continue
     for (const itm of items) {
@@ -99,7 +101,27 @@ test('Runtime buildRoom() traversal validates that non-lobby salons contain no b
         name: 'omit-model-downloads',
         setup(builder) {
           builder.onLoad({ filter: /[\\/]placedItems\.js$/ }, () => ({
-            contents: 'export function applyPlacedItems() {} export function spawnGlbItem() { return Promise.resolve(null) } export function getPlantsConfig() { return { overrides: [] } }'
+            contents: `
+              import * as THREE from 'three'
+              export function applyPlacedItems() {}
+              export function spawnGlbItem(itm, roomKey, ctx) {
+                const grp = new THREE.Group()
+                if (itm) {
+                  if (typeof itm.x === 'number') grp.position.x = itm.x
+                  if (typeof itm.y === 'number') grp.position.y = itm.y
+                  if (typeof itm.z === 'number') grp.position.z = itm.z
+                  if (typeof itm.rotationX === 'number') grp.rotation.x = itm.rotationX
+                  if (typeof itm.rotationY === 'number') grp.rotation.y = itm.rotationY
+                  if (typeof itm.rotationZ === 'number') grp.rotation.z = itm.rotationZ
+                  grp.userData = { isPlacedArtifact: true, glbPath: itm.path, roomKey, ...itm }
+                }
+                if (ctx && ctx.group) {
+                  ctx.group.add(grp)
+                }
+                return Promise.resolve(grp)
+              }
+              export function getPlantsConfig() { return { overrides: [] } }
+            `
           }))
         }
       }],
@@ -147,6 +169,20 @@ test('Runtime buildRoom() traversal validates that non-lobby salons contain no b
         }
       })
       assert.ok(plantsFound.length > 0, `Non-lobby room "${roomKey}" must contain botanical planters`)
+
+      // 4. Wall lights verification: every non-lobby room must contain exactly 4 antique wall lights on partition walls
+      const wallLights = []
+      room.group.traverse(obj => {
+        if (obj.userData?.glbPath === 'models/ready/lighting/antique_wall_light.glb') {
+          wallLights.push(obj)
+        }
+      })
+      assert.equal(wallLights.length, 4, `Non-lobby room "${roomKey}" must contain exactly 4 antique wall lights, found ${wallLights.length}`)
+      for (const light of wallLights) {
+        assert.equal(light.userData.contact, 'wall', `Wall light "${light.userData.id}" in "${roomKey}" must have contact: 'wall'`)
+        assert.equal(light.position.y, 2.20, `Wall light "${light.userData.id}" in "${roomKey}" must have position.y === 2.20`)
+        assert.equal(Math.abs(light.position.x), 2.10, `Wall light "${light.userData.id}" in "${roomKey}" must have |position.x| === 2.10`)
+      }
     }
   } finally {
     globalThis.document = originalDocument

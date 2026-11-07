@@ -326,6 +326,9 @@ async function spawnGlbItemAsync(itm, roomKey, ctx = {}) {
 	}
 
 	const gltf = await getGltf(path)
+	if (ctx?.disposed || group?.userData?.disposed) {
+		return null
+	}
 	const { root, disposables: clonedResources } = deepCloneScene(gltf.scene)
 
 	const t = parseTransform(itm)

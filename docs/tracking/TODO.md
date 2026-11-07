@@ -77,6 +77,18 @@
 ### 2.4 Production Deployment & Hosting
 - [ ] Configure production domain / reverse-proxy WebSocket pass-through when migrating from local server (`http://localhost:8080`) to remote cloud host.
 
+### 2.5 Multi-Customer Photo Management (plan/research, no code yet)
+- [ ] Review planning doc: `docs/planning/MULTI_CUSTOMER_PHOTO_MANAGEMENT.md`.
+- [ ] Phase 1: `--customer` support in `tools/organize_photos.py` + per-customer folder layout + SQLite scaffold.
+- [ ] Phase 2: server scoping of `/photos/*` by session customer + `/api/customer/photos` catalog endpoint + two-customer test matrix.
+- [ ] Phase 3: admin/import UI, per-customer preview, optional subdomain routing.
+
+### 2.5 Multi-Customer Photo Management (plan/research, no code yet)
+- [ ] Review planning doc: `docs/planning/MULTI_CUSTOMER_PHOTO_MANAGEMENT.md`.
+- [ ] Phase 1: `--customer` support in `tools/organize_photos.py` + per-customer folder layout + SQLite scaffold.
+- [ ] Phase 2: server scoping of `/photos/*` by session customer + `/api/customer/photos` catalog endpoint + two-customer test matrix.
+- [ ] Phase 3: admin/import UI, per-customer preview, optional subdomain routing.
+
 ### Photo frames (2026-11-05)
 - [x] Restore the five east-wall photos in each salon after legacy photo-list removal.
 - [x] Preserve full image proportions in salon wall, partition, and lobby frames; verify with regression tests and production build.

@@ -870,20 +870,33 @@ wss.on('connection', ws => {
       const safeModel = ALLOWED_MODELS.has(rawModel) ? rawModel : 'woman.glb';
 
       // Enforce character exclusivity (only one Maya and one Ethan allowed simultaneously)
-      const rawName = safeStr(data.name || authenticatedSession?.recipient, 24);
+      const recipient = safeStr(authenticatedSession?.recipient, 24).toLowerCase();
+      const rawName = safeStr(data.name || authenticatedSession?.recipient, 24).toLowerCase();
       const rawCharId = safeStr(data.avatarId || data.character, 16).toLowerCase();
-      const resolvedCharId = rawCharId === 'maya' || rawCharId === 'ethan'
+
+      const resolvedCharId = (rawCharId === 'maya' || rawCharId === 'ethan')
         ? rawCharId
-        : (safeModel === 'woman.glb' || rawName.toLowerCase().includes('maya') ? 'maya' : (safeModel === 'man.glb' || rawName.toLowerCase().includes('ethan') ? 'ethan' : null));
+        : (rawName.includes('maya') || recipient.includes('maya')
+          ? 'maya'
+          : (rawName.includes('ethan') || recipient.includes('ethan')
+            ? 'ethan'
+            : null));
 
       if (resolvedCharId) {
-        const charConflict = Array.from(sessionPeers.values()).some(p => {
-          if (sessKey && p.sessionToken === sessKey) return false;
-          const pCharId = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : (p.model === 'man.glb' || (p.name && p.name.toLowerCase().includes('ethan')) ? 'ethan' : null));
-          return pCharId === resolvedCharId;
-        });
+        const charConflict =
+          Array.from(sessionPeers.values()).some(p => {
+            const pCharId = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : (p.model === 'man.glb' || (p.name && p.name.toLowerCase().includes('ethan')) ? 'ethan' : null));
+            return pCharId === resolvedCharId;
+          }) ||
+          Array.from(graceSessions.values()).some(g => {
+            if (sessKey && g.profile?.sessionToken === sessKey) return false;
+            const p = g.profile;
+            if (!p) return false;
+            const pCharId = p.avatarId || (p.model === 'woman.glb' || (p.name && p.name.toLowerCase().includes('maya')) ? 'maya' : (p.model === 'man.glb' || (p.name && p.name.toLowerCase().includes('ethan')) ? 'ethan' : null));
+            return pCharId === resolvedCharId;
+          });
 
-        if (charConflict && (data.avatarId || data.character || rawName.toLowerCase().includes('maya') || rawName.toLowerCase().includes('ethan'))) {
+        if (charConflict) {
           deny('character-taken');
           ws.close(4005, 'character-taken');
           return;

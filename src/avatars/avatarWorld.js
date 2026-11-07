@@ -227,16 +227,28 @@ export class RemoteAvatar {
       }
     })
     if (mats.length === 0) return
-    const load = (f) => texLoader.loadAsync(`${texBase}${f}`)
-    return Promise.all([load(`${gender}-realism-v2.png`), load(`${gender}-roughness.png`), load(`${gender}-micro-normal.png`), load(`${gender}-masks.png`)])
+    const load = (stem) =>
+      texLoader.loadAsync(`${texBase}${stem}.webp`).catch(() => texLoader.loadAsync(`${texBase}${stem}.png`))
+    return Promise.all([
+      load(`${gender}-realism-v2`),
+      load(`${gender}-roughness`),
+      load(`${gender}-micro-normal`),
+      load(`${gender}-masks`),
+    ])
       .then(([color, rough, normal, mask]) => {
-        this.ownedTextures = [color, rough, normal, mask].filter(Boolean)
-        if (!this.alive) { this.ownedTextures.forEach(t => t.dispose()); return }
+        if (!this.alive) {
+          ;[color, rough, normal, mask].filter(Boolean).forEach(t => t.dispose())
+          return
+        }
+        // Dispose any embedded GLB base textures before replacing them (MOB-P0-03)
         for (const m of mats) {
-          if (color) { m.map = color; m.map.colorSpace = THREE.SRGBColorSpace; m.map.flipY = false; m.needsUpdate = true }
+          if (color && m.map && m.map !== color) m.map.dispose?.()
+          if (rough && m.roughnessMap && m.roughnessMap !== rough) m.roughnessMap.dispose?.()
+          if (normal && m.normalMap && m.normalMap !== normal) m.normalMap.dispose?.()
           if (rough) { m.roughnessMap = rough; m.roughnessMap.flipY = false; m.needsUpdate = true }
           if (normal) { m.normalMap = normal; m.normalMap.flipY = false; m.normalScale = new THREE.Vector2(0.35, 0.35); m.needsUpdate = true }
         }
+        this.ownedTextures = [rough, normal].filter(Boolean)
         if (color && mask) {
           const canvas = document.createElement('canvas')
           canvas.width = color.image.width
@@ -247,13 +259,22 @@ export class RemoteAvatar {
           ctx.clearRect(0, 0, canvas.width, canvas.height)
           ctx.drawImage(mask.image, 0, 0, canvas.width, canvas.height)
           const masks = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+          const workImage = ctx.createImageData(canvas.width, canvas.height)
+          // Release intermediate GPU/CPU texture handles immediately (MOB-P0-03)
+          color.dispose()
+          mask.dispose()
           const map = new THREE.CanvasTexture(canvas)
           map.colorSpace = THREE.SRGBColorSpace
           map.flipY = false
           this.ownedTextures.push(map)
           for (const m of mats) { m.map = map; m.color.setHex(0xffffff); m.needsUpdate = true }
-          this.appearanceTexture = { ctx, map, original, masks }
+          this.appearanceTexture = { ctx, map, original, masks, workImage }
           this.applyAppearance(this.appearance)
+        } else if (color) {
+          this.ownedTextures.push(color)
+          for (const m of mats) {
+            m.map = color; m.map.colorSpace = THREE.SRGBColorSpace; m.map.flipY = false; m.needsUpdate = true
+          }
         }
       })
   }
@@ -267,7 +288,8 @@ export class RemoteAvatar {
     if (signature === this.appearanceSignature) return
     this.appearanceSignature = signature
     const { ctx, map, original, masks } = state
-    const image = ctx.createImageData(original.width, original.height)
+    const image = state.workImage || ctx.createImageData(original.width, original.height)
+    state.workImage = image
     image.data.set(original.data)
     const targets = keys.map(k => this.appearance[k] ? [1, 3, 5].map(i => parseInt(this.appearance[k].slice(i, i + 2), 16)) : null)
     // V4 mask RGBA channels identify skin, hair, top and trousers respectively.
@@ -643,22 +665,34 @@ export class RemoteAvatar {
       }
     }
 
-    // Name tag projection
-    if (this.group.visible && this.group.children.length) {
-      const headPos = new THREE.Vector3(0, 1.9, 0)
-      this.group.localToWorld(headPos)
-      const v = headPos.clone().project(this.camera)
-      const x = (v.x * 0.5 + 0.5) * window.innerWidth
-      const y = (-v.y * 0.5 + 0.5) * window.innerHeight
+    // Name tag projection (throttled DOM updates & pre-allocated Vector3 for MOB-P1-06)
+    if (this.tag && this.camera && this.group.visible && this.group.children.length) {
+      if (!this._headPos) this._headPos = new THREE.Vector3()
+      this._headPos.set(0, 1.9, 0)
+      this.group.localToWorld(this._headPos)
+      const v = this._headPos.project(this.camera)
+      const x = Math.round((v.x * 0.5 + 0.5) * window.innerWidth)
+      const y = Math.round((-v.y * 0.5 + 0.5) * window.innerHeight)
       if (v.z < 1 && x > -80 && x < window.innerWidth + 80 && y > -40 && y < window.innerHeight + 40) {
-        this.tag.style.left = `${x}px`
-        this.tag.style.top = `${y}px`
-        this.tag.style.display = 'block'
-      } else {
+        if (this._lastTagX !== x) {
+          this.tag.style.left = `${x}px`
+          this._lastTagX = x
+        }
+        if (this._lastTagY !== y) {
+          this.tag.style.top = `${y}px`
+          this._lastTagY = y
+        }
+        if (this._lastTagDisplay !== 'block') {
+          this.tag.style.display = 'block'
+          this._lastTagDisplay = 'block'
+        }
+      } else if (this._lastTagDisplay !== 'none') {
         this.tag.style.display = 'none'
+        this._lastTagDisplay = 'none'
       }
-    } else {
+    } else if (this.tag && this._lastTagDisplay !== 'none') {
       this.tag.style.display = 'none'
+      this._lastTagDisplay = 'none'
     }
   }
 

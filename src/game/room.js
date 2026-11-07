@@ -830,8 +830,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		for (const sx of [-2.10, 2.10]) {
 			spawnGlbItem(
 				{
+					id: `sconce_front_${sx < 0 ? 'left' : 'right'}`,
 					type: 'glb',
 					path: 'models/ready/lighting/antique_wall_light.glb',
+					contact: 'wall',
 					x: sx,
 					y: 2.20,
 					z: panelZ,
@@ -849,8 +851,10 @@ export function buildRoom({ width, length, height, wallThickness = 0.2, mode = '
 		for (const sx of [-2.10, 2.10]) {
 			spawnGlbItem(
 				{
+					id: `sconce_back_${sx < 0 ? 'left' : 'right'}`,
 					type: 'glb',
 					path: 'models/ready/lighting/antique_wall_light.glb',
+					contact: 'wall',
 					x: sx,
 					y: 2.20,
 					z: panelZNorth,

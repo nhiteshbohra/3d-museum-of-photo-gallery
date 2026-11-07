@@ -35,7 +35,23 @@ function redeem(code) {
   })
 }
 
-function connect(cookie, name, model) {
+function fetchOccupancy() {
+  return new Promise((resolve, reject) => {
+    http.get(`${BASE_URL}/api/occupancy`, (res) => {
+      let body = ''
+      res.on('data', chunk => { body += chunk })
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body))
+        } catch (err) {
+          reject(err)
+        }
+      })
+    }).on('error', reject)
+  })
+}
+
+function connect(cookie, name, model, avatarId) {
   return new Promise((resolve, reject) => {
     const ws = new WebSocket(WS_URL, {
       headers: { Cookie: cookie, Origin: BASE_URL }
@@ -46,6 +62,7 @@ function connect(cookie, name, model) {
         t: 'join',
         proto: 2,
         name,
+        avatarId: avatarId || (model === 'woman.glb' ? 'maya' : 'ethan'),
         model,
         room: 'lobby',
         p: [0, 1.7, 4],
@@ -105,21 +122,122 @@ async function run() {
   console.log('✓ Maya redeemed successfully with cookie')
   console.log('✓ Ethan redeemed successfully with cookie')
 
-  console.log('--- 2. Connecting Maya ---')
-  const p1 = await connect(c1, 'Maya', 'woman.glb')
-  console.log('✓ Maya joined! Peers in room_state:', p1.msg.peers.length)
+  console.log('--- 1.5. Concurrent Character Claim Race & Recovery ---')
+  const wsA = new WebSocket(WS_URL, { headers: { Cookie: c1, Origin: BASE_URL } })
+  const wsB = new WebSocket(WS_URL, { headers: { Cookie: c2, Origin: BASE_URL } })
 
-  console.log('--- 3. Connecting Ethan ---')
-  const p2 = await connect(c2, 'Ethan', 'man.glb')
-  console.log('✓ Ethan joined! Peers in room_state:', p2.msg.peers.length)
+  await Promise.all([
+    new Promise(res => wsA.on('open', res)),
+    new Promise(res => wsB.on('open', res)),
+  ])
 
-  await sleep(250)
-  const peerJoinedMsg = p1.messages.find(m => m.t === 'peer_joined')
-  console.log('✓ Maya received peer_joined for:', peerJoinedMsg?.name, 'model:', peerJoinedMsg?.model)
+  const clientA = { id: 'Client 1', cookie: c1, ws: wsA, messages: [], closed: false, closeCode: null, closeReason: null }
+  const clientB = { id: 'Client 2', cookie: c2, ws: wsB, messages: [], closed: false, closeCode: null, closeReason: null }
 
-  if (peerJoinedMsg?.name !== 'Ethan' || peerJoinedMsg?.model !== 'man.glb') {
-    throw new Error('peer_joined missing or mismatched model')
+  for (const client of [clientA, clientB]) {
+    client.ws.on('message', (data) => {
+      try { client.messages.push(JSON.parse(data.toString())) } catch {}
+    })
+    client.ws.on('close', (code, reason) => {
+      client.closed = true
+      client.closeCode = code
+      client.closeReason = reason ? reason.toString() : ''
+    })
   }
+
+  // Both clients concurrently send { t: 'join', avatarId: 'maya' }
+  const joinPayload = JSON.stringify({
+    t: 'join',
+    proto: 2,
+    name: 'Maya',
+    avatarId: 'maya',
+    model: 'woman.glb',
+    room: 'lobby',
+    p: [0, 1.7, 4],
+    ry: 0
+  })
+
+  wsA.send(joinPayload)
+  wsB.send(joinPayload)
+
+  await sleep(350)
+
+  // Exactly one client receives room_state. The other receives { t: 'error', msg: 'character-taken' } and WS close code 4005.
+  const aState = clientA.messages.find(m => m.t === 'room_state')
+  const bState = clientB.messages.find(m => m.t === 'room_state')
+  const aError = clientA.messages.find(m => m.t === 'error' && m.msg === 'character-taken')
+  const bError = clientB.messages.find(m => m.t === 'error' && m.msg === 'character-taken')
+
+  let winner, rejected
+  if (aState && !bState && bError) {
+    winner = clientA
+    rejected = clientB
+  } else if (bState && !aState && aError) {
+    winner = clientB
+    rejected = clientA
+  } else {
+    throw new Error(`Race condition expectation failed: A(state=${Boolean(aState)}, err=${Boolean(aError)}), B(state=${Boolean(bState)}, err=${Boolean(bError)})`)
+  }
+
+  if (!rejected.closed) {
+    await new Promise(r => rejected.ws.once('close', r))
+  }
+
+  if (rejected.closeCode !== 4005) {
+    throw new Error(`Rejected client expected close code 4005, got ${rejected.closeCode} (${rejected.closeReason})`)
+  }
+  console.log(`✓ Concurrent race resolved: ${winner.id} claimed Maya; ${rejected.id} duplicate claim strictly rejected with code 4005 (character-taken)!`)
+
+  // Check GET /api/occupancy: returns count: 1, claimedCharacters: ['maya'], availableCharacters: ['ethan']
+  const occ1 = await fetchOccupancy()
+  console.log('✓ GET /api/occupancy count:', occ1.count, 'claimed:', occ1.claimedCharacters, 'available:', occ1.availableCharacters)
+  if (occ1.count !== 1 || !occ1.claimedCharacters.includes('maya') || !occ1.availableCharacters.includes('ethan')) {
+    throw new Error(`Occupancy after single join mismatch: ${JSON.stringify(occ1)}`)
+  }
+
+  // The rejected client recovers, switches to avatarId: 'ethan', and joins successfully.
+  console.log(`--- Recovering rejected client (${rejected.id}) as Ethan ---`)
+  const recoveredWs = new WebSocket(WS_URL, { headers: { Cookie: rejected.cookie, Origin: BASE_URL } })
+  const recoveredClient = { id: rejected.id, cookie: rejected.cookie, ws: recoveredWs, messages: [] }
+  await new Promise(res => recoveredWs.on('open', res))
+  recoveredWs.on('message', (data) => {
+    try { recoveredClient.messages.push(JSON.parse(data.toString())) } catch {}
+  })
+
+  recoveredWs.send(JSON.stringify({
+    t: 'join',
+    proto: 2,
+    name: 'Ethan',
+    avatarId: 'ethan',
+    model: 'man.glb',
+    room: 'lobby',
+    p: [0, 1.7, 4],
+    ry: 0
+  }))
+
+  await sleep(350)
+  const recoveredState = recoveredClient.messages.find(m => m.t === 'room_state')
+  if (!recoveredState) {
+    throw new Error('Recovered client failed to receive room_state')
+  }
+  console.log('✓ Recovered client joined successfully as Ethan! Peers in room_state:', recoveredState.peers.length)
+
+  // Verify winning client receives peer_joined for Ethan
+  const peerJoinedMsg = winner.messages.find(m => m.t === 'peer_joined')
+  if (!peerJoinedMsg || peerJoinedMsg.name !== 'Ethan' || peerJoinedMsg.model !== 'man.glb') {
+    throw new Error('Winner did not receive peer_joined for Ethan')
+  }
+  console.log('✓ Winner received peer_joined for:', peerJoinedMsg.name, 'model:', peerJoinedMsg.model)
+
+  // Check GET /api/occupancy: returns count: 2, full: true
+  const occ2 = await fetchOccupancy()
+  console.log('✓ GET /api/occupancy count:', occ2.count, 'full:', occ2.full, 'claimed:', occ2.claimedCharacters)
+  if (occ2.count !== 2 || !occ2.full || !occ2.claimedCharacters.includes('maya') || !occ2.claimedCharacters.includes('ethan')) {
+    throw new Error(`Occupancy after recovery mismatch: ${JSON.stringify(occ2)}`)
+  }
+
+  const p1 = { ws: winner.ws, msg: winner.messages.find(m => m.t === 'room_state'), messages: winner.messages }
+  const p2 = { ws: recoveredClient.ws, msg: recoveredState, messages: recoveredClient.messages }
 
   console.log('--- 4. Testing Movement Synchronization ---')
   p2.ws.send(JSON.stringify({
